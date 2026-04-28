@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ANG · AI Network Group</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+  // Tweakable defaults
+  window.ANG_TWEAKS = /*EDITMODE-BEGIN*/{
+    "primaryHue": 360,
+    "density": "comfortable",
+    "role": "member",
+    "showOrgMemory": true,
+    "orgName": "평생교육원 학사팀"
+  }/*EDITMODE-END*/;
+</script>
+
+<style>
+  :root {
+    --primary-h: 195;
+    --primary: oklch(0.62 0.09 var(--primary-h));
+    --primary-600: oklch(0.55 0.10 var(--primary-h));
+    --primary-700: oklch(0.48 0.10 var(--primary-h));
+    --primary-50:  oklch(0.97 0.02 var(--primary-h));
+    --primary-100: oklch(0.93 0.035 var(--primary-h));
+    --accent: oklch(0.72 0.13 75);     /* warm amber for AI */
+    --accent-50: oklch(0.97 0.03 75);
+    --accent-100: oklch(0.93 0.06 75);
+    --bg: #FAFAF7;
+    --card: #FFFFFF;
+    --ink: #111413;
+    --ink-2: #3A3F3E;
+    --ink-3: #6B7170;
+    --ink-4: #9CA09F;
+    --line: #E9E9E4;
+    --line-2: #F1F1EC;
+    --good: oklch(0.65 0.11 155);
+    --warn: oklch(0.70 0.14 55);
+    --danger: oklch(0.62 0.18 25);
+  }
+  html, body { margin:0; padding:0; background: var(--bg); color: var(--ink);
+    font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased; font-feature-settings: 'ss01','cv01';
+  }
+  * { box-sizing: border-box; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'zero'; }
+  button { font-family: inherit; cursor: pointer; }
+  input, textarea, select { font-family: inherit; }
+  ::selection { background: var(--primary-100); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: #d9d9d3; border-radius: 4px; }
+  .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+  @keyframes fadein { from {opacity:0; transform: translateY(8px)} to {opacity:1; transform: none} }
+  .fadein { animation: fadein .28s ease-out both }
+  @keyframes slide-up { from {opacity:0; transform: translateY(16px)} to {opacity:1; transform: none} }
+  .slide-up { animation: slide-up .35s cubic-bezier(.2,.8,.2,1) both }
+  @keyframes pulse-dot { 0%,100% {opacity:1} 50% {opacity:.3} }
+  .pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite }
+  @keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+  .shimmer {
+    background: linear-gradient(90deg, #f0f0ea 0%, #f7f7f2 50%, #f0f0ea 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s linear infinite;
+  }
+  /* chat bubble */
+  .bubble { max-width: 75%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; }
+
+  /* scrolling columns */
+  .col-scroll { overflow-y: auto; }
+  .col-scroll::-webkit-scrollbar { width: 6px }
+  .col-scroll::-webkit-scrollbar-thumb { background: #dedcd2; border-radius: 3px }
+  .col-scroll::-webkit-scrollbar-track { background: transparent }
+
+  /* focus ring */
+  .ring-focus:focus { outline: none; box-shadow: 0 0 0 3px oklch(0.62 0.09 var(--primary-h) / 0.15); border-color: var(--primary); }
+
+  [data-density="compact"] .pad-y { padding-top: 12px; padding-bottom: 12px; }
+  [data-density="comfortable"] .pad-y { padding-top: 18px; padding-bottom: 18px; }
+
+  .link { color: var(--primary-700); cursor: pointer; }
+  .link:hover { text-decoration: underline; }
+
+  .kbd { font-family: 'JetBrains Mono', monospace; font-size: 10px; background: #f1f1ec; border: 1px solid #e3e3dc; border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; color: #6b6b66; }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- helpers/components -->
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+  <script type="text/babel" src="src/dashboard.jsx"></script>
+  <script type="text/babel" src="src/ai_docs.jsx"></script>
+  <script type="text/babel" src="src/calendar.jsx"></script>
+  <script type="text/babel" src="src/files.jsx"></script>
+  <script type="text/babel" src="src/approval.jsx"></script>
+  <script type="text/babel" src="src/board.jsx"></script>
+  <script type="text/babel" src="src/org.jsx"></script>
+  <script type="text/babel" src="src/chat.jsx"></script>
+  <script type="text/babel" src="src/mail.jsx"></script>
+  <script type="text/babel" src="src/admin.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
