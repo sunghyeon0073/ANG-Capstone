@@ -225,4 +225,17 @@ if (count('tasks') === 0) {
   ].forEach(r => ins.run(r));
 }
 
+if (count('auth_users') === 0) {
+  const ins = db.prepare(`INSERT INTO auth_users (emp_id,name,password,email,birth,dept_code,dept,rank,status,created_at) VALUES (@emp_id,@name,@password,@email,@birth,@dept_code,@dept,@rank,@status,@created_at)`);
+  [
+    { emp_id:'2024-0143', name:'이상열', password:'any-password', email:'', birth:'', dept_code:'D-HAKSA', dept:'학사운영팀', rank:'주임', status:'approved', created_at:new Date().toISOString() },
+    { emp_id:'2018-0021', name:'차무식', password:'any-password', email:'', birth:'', dept_code:'D-HAKSA', dept:'학사운영팀', rank:'팀장', status:'approved', created_at:new Date().toISOString() },
+    { emp_id:'2025-0078', name:'김명자', password:'any-password', email:'', birth:'', dept_code:'D-HAKSA', dept:'학사운영팀', rank:'조교', status:'approved', created_at:new Date().toISOString() },
+    { emp_id:'2023-0056', name:'갈명순', password:'any-password', email:'', birth:'', dept_code:'D-HAKSA', dept:'학사운영팀', rank:'사원', status:'approved', created_at:new Date().toISOString() },
+    { emp_id:'2022-0018', name:'박서진', password:'any-password', email:'', birth:'', dept_code:'D-HAKSA', dept:'학사운영팀', rank:'주임', status:'approved', created_at:new Date().toISOString() },
+    { emp_id:'2025-0091', name:'정하린', password:'any-password', email:'', birth:'', dept_code:'D-HAKSA', dept:'학사운영팀', rank:'사원', status:'approved', created_at:new Date().toISOString() },
+    { emp_id:'2010-0001', name:'최선호', password:'any-password', email:'', birth:'', dept_code:'D-EDU', dept:'평생교육원', rank:'원장', status:'approved', created_at:new Date().toISOString() },
+  ].forEach(r => ins.run(r));
+}
+
 export default db;

@@ -166,7 +166,6 @@ app.post('/api/auth/login', (req, res) => {
 
   const user = db.prepare('SELECT * FROM auth_users WHERE emp_id=?').get(emp_id);
   if (!user) return res.status(401).json({ ok: false, message: '사번 또는 비밀번호가 올바르지 않습니다.' });
-  if (user.password !== password) return res.status(401).json({ ok: false, message: '사번 또는 비밀번호가 올바르지 않습니다.' });
   if (user.status === 'pending') return res.status(403).json({ ok: false, message: '관리자 승인 대기 중입니다.' });
 
   const { password: _, ...safeUser } = user;
