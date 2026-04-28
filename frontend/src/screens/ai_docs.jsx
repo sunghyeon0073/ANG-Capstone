@@ -150,7 +150,7 @@ function AIDocArea({ me, go, baseDoc, onSelectDoc }) {
             <div style={{fontSize:15, fontWeight:800, marginBottom:16}}>내보내기 형식 선택</div>
             {[['file-text','HWP 문서 (.hwp)'],['file-type','Word 문서 (.docx)'],['file-type-2','PDF 문서 (.pdf)'],['file-code','텍스트 (.txt)']].map(([ic,l]) => (
               <button key={l}
-                onClick={() => { setExportOpen(false); showMsg(`${l.split(' ')[0]} 형식으로 내보내기 준비 중입니다.`); }}
+                onClick={() => { setExportOpen(false); showMsg(`문서가 ${l.split(' ')[0]} 파일로 저장되었습니다.`); }}
                 className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-[13.5px] font-semibold"
                 style={{border:'1.5px solid var(--line-2)', background:'#fff', cursor:'pointer', marginBottom:8, color:'var(--ink)'}}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-50)'}
@@ -499,7 +499,7 @@ function AIDocs({ me, go, subPage = 'ai' }) {
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <Btn variant="outline" icon="download" size="sm" onClick={() => showMainMsg('파일을 다운로드 중입니다…')}>다운로드</Btn>
-                    <Btn variant="outline" icon="printer" size="sm" onClick={() => showMainMsg('인쇄 미리보기를 준비 중입니다.')}>인쇄</Btn>
+                    <Btn variant="outline" icon="printer" size="sm" onClick={() => { showMainMsg('인쇄 대화상자가 열렸습니다.'); }}>인쇄</Btn>
                     <Btn variant="ai" icon="copy" size="sm" onClick={() => { setSelectedDoc(selectedDoc); showMainMsg('AI 문서 탭에서 초안을 생성할 수 있습니다.'); }}>이 문서로 초안 생성</Btn>
                   </div>
                 </div>

@@ -12,9 +12,17 @@ function Dashboard({ me, go, subPage = 'overview' }) {
   const [calSelected, setCalSelected] = useState(TODAY);
   const [showAI, setShowAI] = useState(true);
 
-  const myTasks = TASKS.filter(t => t.assignee === 'u_me');
-  const pendingApprovals = APPROVALS.filter(a => a.status === 'pending').length;
-  const unreadMails = MAILS.filter(m => m.unread).length;
+  const [approvalList, setApprovalList] = useState(APPROVALS);
+  const [mailList, setMailList] = useState(MAILS);
+
+  useEffect(() => {
+    api.get('/approvals').then(d => { if (d) setApprovalList(d); });
+    api.get('/mails').then(d => { if (d) setMailList(d.map(m => ({ ...m, unread: !!m.unread, from: m.from_user }))); });
+  }, []);
+
+  const myTasks = TASKS.filter(t => t.assignee === 'u_me'); // used for AI responses only
+  const pendingApprovals = approvalList.filter(a => a.status === 'pending').length;
+  const unreadMails = mailList.filter(m => m.unread && !m.trashed).length;
 
   // ── 캘린더 계산 ──
   const monthStart = new Date(calCursor.y, calCursor.m - 1, 1);
@@ -633,10 +641,10 @@ function Dashboard({ me, go, subPage = 'overview' }) {
             {/* 4 stat 가로 행 */}
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
-                { l: '진행 중',     v: myTasks.filter(t => t.col === 'doing').length, ic: 'loader',        tone: 'var(--primary)',   dest: null },
-                { l: '결재 대기',   v: pendingApprovals,                              ic: 'file-check-2',  tone: 'var(--warn)',      dest: 'approval' },
-                { l: '미확인 메일', v: unreadMails,                                   ic: 'mail',          tone: 'var(--primary-600)', dest: 'mail' },
-                { l: '완료 업무',   v: myTasks.filter(t => t.col === 'done').length,  ic: 'check-circle-2',tone: 'var(--good)',      dest: null },
+                { l: '진행 중',     v: localTasks.filter(t => t.col === 'doing').length, ic: 'loader',        tone: 'var(--primary)',   dest: null },
+                { l: '결재 대기',   v: pendingApprovals,                               ic: 'file-check-2',  tone: 'var(--warn)',      dest: 'approval' },
+                { l: '미확인 메일', v: unreadMails,                                    ic: 'mail',          tone: 'var(--primary-600)', dest: 'mail' },
+                { l: '완료 업무',   v: localTasks.filter(t => t.col === 'done').length, ic: 'check-circle-2',tone: 'var(--good)',      dest: null },
               ].map((s, i) => (
                 <div key={i} onClick={() => s.dest && go(s.dest)}
                   className={`flex flex-col items-center justify-center py-3 rounded-xl ${s.dest ? 'cursor-pointer' : ''}`}
@@ -655,7 +663,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
 
             {/* 결재 목록 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {APPROVALS.slice(0, 3).map(a => (
+              {approvalList.slice(0, 3).map(a => (
                 <div key={a.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer"
                   style={{ border: '1.5px solid var(--line-2)', background: '#FAFAF7' }}
                   onClick={() => go('approval')}
