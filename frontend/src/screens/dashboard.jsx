@@ -12,9 +12,17 @@ function Dashboard({ me, go, subPage = 'overview' }) {
   const [calSelected, setCalSelected] = useState(TODAY);
   const [showAI, setShowAI] = useState(true);
 
-  const myTasks = TASKS.filter(t => t.assignee === 'u_me');
-  const pendingApprovals = APPROVALS.filter(a => a.status === 'pending').length;
-  const unreadMails = MAILS.filter(m => m.unread).length;
+  const [approvalList, setApprovalList] = useState(APPROVALS);
+  const [mailList, setMailList] = useState(MAILS);
+
+  useEffect(() => {
+    api.get('/approvals').then(d => { if (d) setApprovalList(d); });
+    api.get('/mails').then(d => { if (d) setMailList(d.map(m => ({ ...m, unread: !!m.unread, from: m.from_user }))); });
+  }, []);
+
+  const myTasks = TASKS.filter(t => t.assignee === 'u_me'); // used for AI responses only
+  const pendingApprovals = approvalList.filter(a => a.status === 'pending').length;
+  const unreadMails = mailList.filter(m => m.unread && !m.trashed).length;
 
   // ── 캘린더 계산 ──
   const monthStart = new Date(calCursor.y, calCursor.m - 1, 1);
@@ -119,7 +127,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
     ];
     const tagColors = { '신청서':'var(--primary-100)', '공문':'var(--accent-100)', '설문':'oklch(0.92 0.06 145)', '운영':'var(--line-2)', '예산':'#FEF3C7' };
     return (
-      <div className="fadein" style={{ padding:'24px 32px 60px', maxWidth:1360, margin:'0 auto' }}>
+      <div className="fadein" style={{ padding:'22px 24px 48px', maxWidth:1160, margin:'0 auto' }}>
         {taskToast && (
           <div style={{
             position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',
@@ -276,7 +284,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
   // ── 내 일정 (풀 캘린더) ──
   if (subPage === 'calendar') {
     return (
-      <div className="fadein" style={{ padding:'24px 32px 60px', maxWidth:1360, margin:'0 auto' }}>
+      <div className="fadein" style={{ padding:'22px 24px 48px', maxWidth:1160, margin:'0 auto' }}>
         <div className="flex items-end justify-between mb-5">
           <div>
             <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{color:'var(--ink-4)'}}>Dashboard · Calendar</div>
@@ -328,7 +336,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
   // ── 공지사항 ──
   if (subPage === 'notices') {
     return (
-      <div className="fadein" style={{ padding:'24px 32px 60px', maxWidth:1360, margin:'0 auto' }}>
+      <div className="fadein" style={{ padding:'22px 24px 48px', maxWidth:1160, margin:'0 auto' }}>
         <div className="flex items-end justify-between mb-5">
           <div>
             <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{color:'var(--ink-4)'}}>Dashboard · Notices</div>
@@ -375,7 +383,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
   // ── 빠른 메모 ──
   if (subPage === 'quickmemo') {
     return (
-      <div className="fadein" style={{ padding:'24px 32px 60px', maxWidth:860, margin:'0 auto' }}>
+      <div className="fadein" style={{ padding:'22px 24px 48px', maxWidth:760, margin:'0 auto' }}>
         <div className="flex items-end justify-between mb-5">
           <div>
             <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{color:'var(--ink-4)'}}>Dashboard · Quick Memo</div>
@@ -408,7 +416,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
 
   // ── 기본 overview ──
   return (
-    <div className="fadein" style={{ maxWidth: 1480, margin: '0 auto', padding: '24px 36px 60px' }}>
+    <div className="fadein" style={{ maxWidth: 1240, margin: '0 auto', padding: '22px 24px 48px' }}>
 
       {/* ── 인사말 + 퀵액션 ── */}
       <div className="flex items-start justify-between mb-5">
@@ -489,7 +497,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
       </div>
 
       {/* ── 메인 그리드: 캘린더(좌) + 정보패널(우) ── */}
-      <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 360px' }}>
+      <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 320px' }}>
 
         {/* ── 왼쪽: 캘린더 대형 위젯 ── */}
         <div className="flex flex-col gap-5">
@@ -541,7 +549,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
             </div>
 
             {/* 날짜 셀 */}
-            <div className="grid grid-cols-7" style={{ gridAutoRows: 'minmax(88px, auto)' }}>
+            <div className="grid grid-cols-7" style={{ gridAutoRows: 'minmax(76px, 92px)' }}>
               {calCells.map((dt, i) => {
                 const isSel = dt && calSelected && dt.toDateString() === calSelected.toDateString();
                 const isToday = dt && dt.toDateString() === TODAY.toDateString();
@@ -633,10 +641,10 @@ function Dashboard({ me, go, subPage = 'overview' }) {
             {/* 4 stat 가로 행 */}
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[
-                { l: '진행 중',     v: myTasks.filter(t => t.col === 'doing').length, ic: 'loader',        tone: 'var(--primary)',   dest: null },
-                { l: '결재 대기',   v: pendingApprovals,                              ic: 'file-check-2',  tone: 'var(--warn)',      dest: 'approval' },
-                { l: '미확인 메일', v: unreadMails,                                   ic: 'mail',          tone: 'var(--primary-600)', dest: 'mail' },
-                { l: '완료 업무',   v: myTasks.filter(t => t.col === 'done').length,  ic: 'check-circle-2',tone: 'var(--good)',      dest: null },
+                { l: '진행 중',     v: localTasks.filter(t => t.col === 'doing').length, ic: 'loader',        tone: 'var(--primary)',   dest: null },
+                { l: '결재 대기',   v: pendingApprovals,                               ic: 'file-check-2',  tone: 'var(--warn)',      dest: 'approval' },
+                { l: '미확인 메일', v: unreadMails,                                    ic: 'mail',          tone: 'var(--primary-600)', dest: 'mail' },
+                { l: '완료 업무',   v: localTasks.filter(t => t.col === 'done').length, ic: 'check-circle-2',tone: 'var(--good)',      dest: null },
               ].map((s, i) => (
                 <div key={i} onClick={() => s.dest && go(s.dest)}
                   className={`flex flex-col items-center justify-center py-3 rounded-xl ${s.dest ? 'cursor-pointer' : ''}`}
@@ -655,7 +663,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
 
             {/* 결재 목록 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {APPROVALS.slice(0, 3).map(a => (
+              {approvalList.slice(0, 3).map(a => (
                 <div key={a.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer"
                   style={{ border: '1.5px solid var(--line-2)', background: '#FAFAF7' }}
                   onClick={() => go('approval')}

@@ -29,7 +29,7 @@ function MyPage({ me, go }) {
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 960, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 800, margin:'0 auto', padding:'22px 24px 48px'}}>
       {toast && (
         <div style={{
           position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',
@@ -91,7 +91,7 @@ function Admin({ me, go }) {
   const [toast, setToast] = useState(null);
   const showMsg = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
       {toast && (
         <div style={{
           position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',
