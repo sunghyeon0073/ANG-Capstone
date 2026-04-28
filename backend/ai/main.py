@@ -13,8 +13,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
+OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "ang-ai"
+
+# ✅ 요청 데이터 구조
+class ChatRequest(BaseModel):
+    message: str
 
 @app.post("/ai/chat")
 def ai_chat(req: ChatRequest):
@@ -25,7 +29,8 @@ def ai_chat(req: ChatRequest):
             "model": MODEL_NAME,
             "prompt": req.message,
             "stream": False
-        }
+        },
+        timeout=120
     )
 
     data = response.json()

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { askAI } from '../api';
 
 // 문서작성 — 3패널: [앱 사이드바 sub-nav] | [문서 목록] | [에디터/뷰어]
 
@@ -109,6 +110,7 @@ function AIDocArea({ me, go, baseDoc, onSelectDoc }) {
   const [docType,   setDocType]   = useState('신청서');
   const [toast,     setToast]     = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [aiAnswer,  setAiAnswer]  = useState('');
 
   const showMsg = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
 
@@ -117,15 +119,35 @@ function AIDocArea({ me, go, baseDoc, onSelectDoc }) {
     if (baseDoc) { setSelected(baseDoc); setStep(2); }
   }, [baseDoc?.id]);
 
-  const generate = () => {
+  const generate = async () => {
     setStep(3);
-    setTimeout(() => setStep(4), 1800);
+
+    const prompt = [
+      '다음 조건에 맞춰 업무용 문서 초안을 한국어로 작성해줘.',
+      `문서 종류: ${docType}`,
+      `문서 제목: ${query}`,
+      selected ? `참고 문서 제목: ${selected.title}` : '',
+      selected ? `참고 문서 유형: ${selected.type}` : '',
+      '제목, 개요, 세부 내용, 예산 또는 추진 일정, 기대 효과가 보이도록 작성해줘.',
+      '실제 문서에 바로 붙여넣을 수 있게 본문 중심으로 작성해줘.',
+    ].filter(Boolean).join('\n');
+
+    try {
+      const answer = await askAI(prompt);
+      setAiAnswer(answer || 'AI가 빈 응답을 반환했습니다.');
+      setStep(4);
+    } catch (err) {
+      console.error(err);
+      showMsg('AI 생성 중 오류가 발생했습니다.');
+      setStep(selected ? 2 : 1);
+    }
   };
 
   const reset = () => {
     setStep(1); setSelected(null);
     setQuery('2026년 상반기 행사지원 신청서');
     setDocType('신청서');
+    setAiAnswer('');
     if (onSelectDoc) onSelectDoc(null);
   };
 
@@ -290,41 +312,14 @@ function AIDocArea({ me, go, baseDoc, onSelectDoc }) {
           </div>
           <Card>
             <div style={{ padding: '16px 20px', background: '#fff', border: '1px solid var(--line)', borderRadius: 12, minHeight: 400 }}>
-              <input defaultValue="2026년 상반기 평생교육원 행사지원 신청서"
+              <input defaultValue={query}
                 style={{ width: '100%', fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', outline: 'none', border: 'none', marginBottom: 6, color: 'var(--ink)' }} />
               <div className="mono" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--ink-4)', marginBottom: 18 }}>
                 작성자 {me.name} · {fmtDate(TODAY)} · 기준: {selected?.title}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13.5, lineHeight: 1.75, color: 'var(--ink-2)' }}>
-                <div>
-                  <div className="mono" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--ink-3)', marginBottom: 6 }}>1. 행사 개요</div>
-                  <div contentEditable suppressContentEditableWarning style={{ outline: 'none', padding: '8px', borderRadius: 6, background: '#FAFAF7' }}>
-                    2026년 상반기 평생교육원에서 수강생 및 지역주민 대상 교육 페스티벌을 개최하고자 하며, 이에 필요한 운영 지원금을 신청합니다.
-                  </div>
-                </div>
-                <div>
-                  <div className="mono" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--ink-3)', marginBottom: 6 }}>2. 개최 일시 및 장소</div>
-                  <div contentEditable suppressContentEditableWarning style={{ outline: 'none', padding: '8px', borderRadius: 6, background: '#FAFAF7' }}>
-                    2026년 5월 25일(월) 10:00 – 17:00 / 본원 1층 강당 및 202호
-                  </div>
-                </div>
-                <div>
-                  <div className="mono" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--ink-3)', marginBottom: 6 }}>3. 예산 편성 (원)</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                    <thead><tr style={{ background: '#FBFBF7' }}>
-                      {['항목', '금액', '비고'].map(h => <th key={h} className="text-left mono" style={{ padding: '8px 10px', border: '1px solid var(--line)', color: 'var(--ink-3)', fontSize: 11 }}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>
-                      {[['강사료', '1,800,000', '외부 3인'], ['운영물품', '1,200,000', '배너·다과'], ['홍보비', '700,000', '포스터 제작'], ['예비비', '500,000', '—']].map((r, i) => (
-                        <tr key={i}>{r.map((c, j) => <td key={j} style={{ padding: '8px 10px', border: '1px solid var(--line)', textAlign: j === 1 ? 'right' : 'left' }}>{c}</td>)}</tr>
-                      ))}
-                      <tr style={{ background: 'var(--primary-50)' }}>
-                        <td style={{ padding: '8px 10px', border: '1px solid var(--primary-100)', fontWeight: 700 }}>합계</td>
-                        <td style={{ padding: '8px 10px', border: '1px solid var(--primary-100)', fontWeight: 700, textAlign: 'right' }}>4,200,000</td>
-                        <td style={{ padding: '8px 10px', border: '1px solid var(--primary-100)' }}>—</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <div contentEditable suppressContentEditableWarning style={{ outline: 'none', padding: '12px', borderRadius: 6, background: '#FAFAF7', whiteSpace: 'pre-wrap', minHeight: 280 }}>
+                  {aiAnswer}
                 </div>
               </div>
               <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px dashed var(--line)' }}>
