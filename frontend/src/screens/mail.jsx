@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api } from '../api';
 
 // Mail — 받은메일함 / 보낸메일함 / 즐겨찾기 / 휴지통
 function Mail({ me, go, subPage }) {
@@ -8,6 +9,16 @@ function Mail({ me, go, subPage }) {
   useEffect(() => { if (subPage) setFolder(subPage); }, [subPage]);
 
   const [mails, setMails] = useState(MAILS);
+
+  useEffect(() => {
+    api.get('/mails').then(data => {
+      if (data) setMails(data.map(m => ({ ...m, unread: !!m.unread, starred: !!m.starred, hasAttach: !!m.has_attach, from: m.from_user })));
+    });
+    api.get('/mails/sent').then(data => {
+      if (data) setSentMails(data.map(m => ({ ...m, hasAttach: !!m.has_attach, to: m.to_user })));
+    });
+  }, []);
+
   const [sentMails, setSentMails] = useState([
     { id:'s1', to:'차무식 팀장', subject:'주간 업무 보고 (4월 3주차)', preview:'이번 주 업무 진행상황 보고드립니다. 신청서 초안 작성 완료, 외부강사 명단 확인 중입니다.', time:'09:30', unread:false, hasAttach:false },
     { id:'s2', to:'최선호 원장', subject:'행사지원 서류 제출 안내', preview:'4월 행사 지원 서류 첨부하여 제출드립니다. 확인 부탁드립니다.', time:'어제', unread:false, hasAttach:true },
@@ -47,16 +58,17 @@ function Mail({ me, go, subPage }) {
 
   const sendMail = () => {
     if (!composeData.to.trim() || !composeData.subject.trim()) return;
-    setSentMails(prev => [{
-      id: 's_' + Date.now(),
-      to: composeData.to,
+    const id = 's_' + Date.now();
+    const now = new Date().toTimeString().slice(0, 5);
+    const item = {
+      id, to: composeData.to,
       subject: composeData.subject,
       preview: composeData.body.trim().slice(0, 60) || '(내용 없음)',
-      time: new Date().toTimeString().slice(0, 5),
-      unread: false,
-      hasAttach: false,
-    }, ...prev]);
+      time: now, unread: false, hasAttach: false,
+    };
+    setSentMails(prev => [item, ...prev]);
     setSent(true);
+    api.post('/mails/sent', { id, to_user: composeData.to, subject: composeData.subject, preview: item.preview, time: now, has_attach: 0 });
   };
 
   const reply = () => {
@@ -78,13 +90,17 @@ function Mail({ me, go, subPage }) {
   };
 
   const toggleStar = (id) => {
-    setMails(prev => prev.map(m => m.id === id ? { ...m, starred: !m.starred } : m));
+    const mail = mails.find(m => m.id === id);
+    const newStarred = mail ? !mail.starred : true;
+    setMails(prev => prev.map(m => m.id === id ? { ...m, starred: newStarred } : m));
+    api.patch('/mails/' + id, { starred: newStarred ? 1 : 0 });
   };
 
   const trashMail = (id) => {
     setTrashedIds(prev => new Set([...prev, id]));
     if (openId === id) setOpenId(null);
     showMsg('메일을 휴지통으로 이동했습니다.');
+    api.patch('/mails/' + id, { trashed: 1 });
   };
 
   const restoreMail = (id) => {

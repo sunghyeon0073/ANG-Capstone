@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api } from '../api';
 
 // Approval — 전자결재
 function Approval({ me, go, subPage }) {
@@ -8,6 +9,10 @@ function Approval({ me, go, subPage }) {
   useEffect(() => { if (subPage) setTab(subPage); }, [subPage]);
   const [list, setList] = useState(APPROVALS);
   const [modal, setModal] = useState(null);
+
+  useEffect(() => {
+    api.get('/approvals').then(data => { if (data) setList(data); });
+  }, []);
   const [reqOpen, setReqOpen] = useState(false);
   const [newReq, setNewReq] = useState({ title:'', amount:'', content:'' });
   const [rejectModal, setRejectModal] = useState(null); // item being rejected
@@ -27,20 +32,26 @@ function Approval({ me, go, subPage }) {
   const filtered = tab==='mine' ? list.filter(a=>a.requester==='u_me') : list.filter(a=>a.status===tab);
 
   const approve = (id) => {
-    setList(list.map(a => a.id===id ? {...a, status:'approved', decided: fmtDate(TODAY)} : a));
+    const decided = fmtDate(TODAY);
+    setList(prev => prev.map(a => a.id===id ? {...a, status:'approved', decided} : a));
     setModal(null);
     showMsg('승인 처리되었습니다.');
     setTab('approved');
+    api.patch('/approvals/' + id, { status: 'approved', decided });
   };
 
   const doReject = () => {
     if (!rejectReason.trim()) return;
-    setList(prev => prev.map(a => a.id===rejectModal.id ? {...a, status:'rejected', decided: fmtDate(TODAY), reason: rejectReason} : a));
+    const decided = fmtDate(TODAY);
+    const reason = rejectReason;
+    const id = rejectModal.id;
+    setList(prev => prev.map(a => a.id===id ? {...a, status:'rejected', decided, reason} : a));
     setRejectModal(null);
     setModal(null);
     setRejectReason('');
     showMsg('반려 처리되었습니다.');
     setTab('rejected');
+    api.patch('/approvals/' + id, { status: 'rejected', decided, reason });
   };
 
   return (
@@ -157,6 +168,7 @@ function Approval({ me, go, subPage }) {
               setReqOpen(false);
               setTab('mine');
               showMsg('결재가 상신되었습니다.');
+              api.post('/approvals', item);
             }}>상신</Btn>
           </div>
         </div>

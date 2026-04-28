@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api } from '../api';
 
 // Chat — 1:1 + group (fullHeight, 2-panel)
 function Chat({ me, go, subPage = 'group' }) {
@@ -8,6 +9,12 @@ function Chat({ me, go, subPage = 'group' }) {
   const [text, setText] = useState('');
   const [messages, setMessages] = useState([]);
   const [chatList, setChatList] = useState(CHATS);
+
+  useEffect(() => {
+    api.get('/chats').then(data => {
+      if (data) setChatList(data.map(c => ({ ...c, group: !!c.group_chat, members: typeof c.members === 'string' ? JSON.parse(c.members) : c.members })));
+    });
+  }, []);
   const [chatSearch, setChatSearch] = useState('');
   const [toast, setToast] = useState(null);
   const [newChatOpen, setNewChatOpen] = useState(false);
@@ -37,12 +44,19 @@ function Chat({ me, go, subPage = 'group' }) {
   // Load messages when active chat changes
   useEffect(() => {
     if (!activeId) { setMessages([]); return; }
-    const base = CHAT_MESSAGES[activeId] || [
-      { from: 'u_lead', text: '안녕하세요!', time: '10:00' },
-      { from: 'u_me', text: '네, 확인했습니다.', time: '10:02' },
-    ];
-    setMessages(base);
+    api.get(`/chats/${activeId}/messages`).then(data => {
+      if (data && data.length > 0) {
+        setMessages(data.map(m => ({ from: m.from_user, text: m.text, time: m.time })));
+      } else {
+        const base = CHAT_MESSAGES[activeId] || [
+          { from: 'u_lead', text: '안녕하세요!', time: '10:00' },
+          { from: 'u_me', text: '네, 확인했습니다.', time: '10:02' },
+        ];
+        setMessages(base);
+      }
+    });
     setChatList(prev => prev.map(c => c.id === activeId ? { ...c, unread: 0 } : c));
+    api.patch(`/chats/${activeId}/read`, {});
     setShowSearch(false);
   }, [activeId]);
 
@@ -57,27 +71,32 @@ function Chat({ me, go, subPage = 'group' }) {
     const newMsg = { from: 'u_me', text, time: now };
     setMessages(prev => [...prev, newMsg]);
     setChatList(prev => prev.map(c => c.id === activeId ? { ...c, last: text, time: now } : c));
+    api.post(`/chats/${activeId}/messages`, { from_user: 'u_me', text, time: now });
     setText('');
   };
 
   const createChat = () => {
     if (!newChatName.trim()) return;
+    const now = new Date().toTimeString().slice(0, 5);
+    const id = 'c_' + Date.now();
+    const members = ['u_me', ...newChatMembers];
     const newChat = {
-      id: 'c_' + Date.now(),
-      name: newChatName,
-      group: subPage === 'group',
-      members: ['u_me', ...newChatMembers],
+      id, name: newChatName,
+      group: subPage === 'group', group_chat: subPage === 'group' ? 1 : 0,
+      members,
       last: '채팅방이 생성되었습니다.',
-      time: new Date().toTimeString().slice(0, 5),
-      unread: 0,
+      time: now, unread: 0,
     };
     setChatList(prev => [newChat, ...prev]);
-    setActiveId(newChat.id);
-    setMessages([{ from: 'u_me', text: '안녕하세요!', time: new Date().toTimeString().slice(0, 5) }]);
+    setActiveId(id);
+    const firstMsg = { from: 'u_me', text: '안녕하세요!', time: now };
+    setMessages([firstMsg]);
     setNewChatOpen(false);
     setNewChatName('');
     setNewChatMembers([]);
     showMsg('채팅방이 생성되었습니다.');
+    api.post('/chats', { id, name: newChatName, group_chat: subPage === 'group', members })
+      .then(() => api.post(`/chats/${id}/messages`, { from_user: 'u_me', text: '안녕하세요!', time: now }));
   };
 
   const visibleMessages = showSearch && searchMsgQ

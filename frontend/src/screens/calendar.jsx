@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api, parseEvent } from '../api';
 
 // Calendar
 function CalendarScreen({ me, go }) {
@@ -13,6 +14,10 @@ function CalendarScreen({ me, go }) {
   const [modalEvent, setModalEvent] = useState(null);
   const [events, setEvents] = useState(EVENTS);
   const [addOpen, setAddOpen] = useState(false);
+
+  useEffect(() => {
+    api.get('/events').then(data => { if (data) setEvents(data.map(parseEvent)); });
+  }, []);
   const [newEvent, setNewEvent] = useState({ title:'', time:'10:00', shared: false });
   const [showToast, setShowToast] = useState(null);
 
@@ -187,10 +192,14 @@ function CalendarScreen({ me, go }) {
                     <div className="mono text-[10px]" style={{color:'var(--ink-4)'}}>{s.src}</div>
                   </div>
                   <Btn size="sm" variant="ai" icon="plus" onClick={()=>{
-                    const [mon, day] = s.d.split('.').map(Number);
-                    const dt = new Date(2026, mon-1, day);
-                    setEvents(prev => [...prev, { id:'ai_'+Date.now(), title: s.t, start: dt, time:'09:00', shared:true, color:'var(--accent)', owner:'u_me', ai:true, aiReason: s.src }]);
+                    const parts = s.d.split('.').map(Number);
+                    const dt = new Date(2026, parts[0]-1, parts[1]);
+                    const eid = 'ai_'+Date.now();
+                    const newE = { id:eid, title: s.t, start: dt, time:'09:00', shared:true, color:'var(--accent)', owner:'u_me', ai:true, aiReason: s.src };
+                    setEvents(prev => [...prev, newE]);
                     showMsg('AI 추천 일정이 추가되었습니다.');
+                    const sd = `2026-${String(parts[0]).padStart(2,'0')}-${String(parts[1]).padStart(2,'0')}`;
+                    api.post('/events', { id:eid, title: s.t, start_date: sd, time:'09:00', shared:1, color:'var(--accent)', owner:'u_me', ai:1, ai_reason: s.src });
                   }}>추가</Btn>
                 </div>
               ))}
@@ -237,13 +246,16 @@ function CalendarScreen({ me, go }) {
               if (!newEvent.title.trim()) return;
               const dateParts = (newEvent.date || `${selected.getFullYear()}-${String(selected.getMonth()+1).padStart(2,'0')}-${String(selected.getDate()).padStart(2,'0')}`).split('-').map(Number);
               const dt = new Date(dateParts[0], dateParts[1]-1, dateParts[2]);
-              setEvents(prev => [...prev, {
-                id: 'new_'+Date.now(), title: newEvent.title, start: dt,
+              const id = 'new_'+Date.now();
+              const newE = {
+                id, title: newEvent.title, start: dt,
                 time: newEvent.time, shared: newEvent.shared,
                 color: newEvent.shared ? 'var(--primary)' : 'var(--ink-2)', owner:'u_me'
-              }]);
+              };
+              setEvents(prev => [...prev, newE]);
               setAddOpen(false);
               showMsg('일정이 추가되었습니다.');
+              api.post('/events', { ...newE, start_date: `${dateParts[0]}-${String(dateParts[1]).padStart(2,'0')}-${String(dateParts[2]).padStart(2,'0')}` });
             }}>추가</Btn>
           </div>
         </div>
@@ -271,9 +283,11 @@ function CalendarScreen({ me, go }) {
               <Btn variant="outline" icon="bell">알림 설정</Btn>
               <div className="flex-1" />
               <Btn variant="danger" icon="trash-2" onClick={()=>{
-                setEvents(prev => prev.filter(e => e.id !== modalEvent.id));
-                setModalEvent(null);
-                showMsg('일정이 삭제되었습니다.');
+                const delId = modalEvent.id;
+              setEvents(prev => prev.filter(e => e.id !== delId));
+              setModalEvent(null);
+              showMsg('일정이 삭제되었습니다.');
+              api.delete('/events/' + delId);
               }}>삭제</Btn>
             </div>
           </div>

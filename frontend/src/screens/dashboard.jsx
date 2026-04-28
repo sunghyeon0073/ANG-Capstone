@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api } from '../api';
 
 // Dashboard — 캘린더 중심 레이아웃 + subPage 사이드바
 function Dashboard({ me, go, subPage = 'overview' }) {
@@ -65,6 +66,10 @@ function Dashboard({ me, go, subPage = 'overview' }) {
 
   // ── 할 일 칸반 ──
   const [localTasks, setLocalTasks] = useState(TASKS.filter(t => t.assignee === 'u_me'));
+
+  useEffect(() => {
+    api.get('/tasks?assignee=u_me').then(data => { if (data) setLocalTasks(data); });
+  }, []);
   const [taskModal, setTaskModal] = useState(null);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [newTask, setNewTask] = useState({ title:'', tag:'신청서', due:'', priority:'normal' });
@@ -77,6 +82,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
     setTaskModal(null);
     const labels = { todo:'예정', doing:'진행 중', done:'완료' };
     showTaskMsg(`"${(localTasks.find(t=>t.id===id)||{}).title}" → ${labels[col]}`);
+    api.patch('/tasks/' + id, { col });
   };
 
   const deleteTask = (id) => {
@@ -84,6 +90,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
     setLocalTasks(prev => prev.filter(t => t.id !== id));
     setTaskModal(null);
     showTaskMsg(`"${t?.title}" 삭제되었습니다.`);
+    api.delete('/tasks/' + id);
   };
 
   const addTask = () => {
@@ -101,6 +108,7 @@ function Dashboard({ me, go, subPage = 'overview' }) {
     setNewTaskOpen(false);
     setNewTask({ title:'', tag:'신청서', due:'', priority:'normal' });
     showTaskMsg(`"${t.title}" 업무가 추가되었습니다.`);
+    api.post('/tasks', t);
   };
 
   if (subPage === 'tasks') {
