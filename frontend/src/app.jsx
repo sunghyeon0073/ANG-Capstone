@@ -12,6 +12,8 @@ import Mail from './screens/mail';
 import Chat from './screens/chat';
 import Org from './screens/org';
 import { MyPage, Admin } from './screens/admin';
+import LoginPage from './screens/login';
+import SignupPage from './screens/signup';
 
 // ── 페이지별 사이드바 서브메뉴 ──────────────────────────────────────────────
 const SIDEBAR_SUBS = {
@@ -76,6 +78,28 @@ function useToast() {
 
 // ── Shell ───────────────────────────────────────────────────────────────────
 function Shell() {
+  const [authPage, setAuthPage] = useState(() => localStorage.getItem('ang_user') ? null : 'login');
+  const [loggedInUser, setLoggedInUser] = useState(() => {
+    const saved = localStorage.getItem('ang_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const handleLoginSuccess = (user) => {
+    localStorage.setItem('ang_user', JSON.stringify(user));
+    setLoggedInUser(user);
+    setAuthPage(null);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('ang_user');
+    localStorage.removeItem('ang_route');
+    setLoggedInUser(null);
+    setAuthPage('login');
+  };
+
+  if (authPage === 'login') return <LoginPage onLoginSuccess={handleLoginSuccess} onGoToSignup={() => setAuthPage('signup')} />;
+  if (authPage === 'signup') return <SignupPage onSignupSuccess={() => setAuthPage('login')} onGoToLogin={() => setAuthPage('login')} />;
+
   const [route,       setRoute]       = useState(() => localStorage.getItem('ang_route') || 'dashboard');
   const [subPages,    setSubPages]    = useState({});
   const [notifOpen,   setNotifOpen]   = useState(false);
@@ -398,7 +422,7 @@ function Shell() {
           </div>
           <div className="p-2">
             {[['user', '마이페이지', 'mypage'], ['settings', '환경 설정', 'mypage'], ['log-out', '로그아웃', null]].map(([ic, label, dest], i) => (
-              <button key={i} onClick={() => { if (dest) go(dest); setProfileOpen(false); }}
+              <button key={i} onClick={() => { if (label === '로그아웃') { handleLogout(); return; } if (dest) go(dest); setProfileOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium text-left"
                 style={{ color: label === '로그아웃' ? 'var(--danger)' : 'var(--ink-2)' }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--line-2)'}
