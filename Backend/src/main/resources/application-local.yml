@@ -1,0 +1,7 @@
+# 로컬 개발용 — Git에 커밋하지 마세요 (.gitignore 처리됨)
+DB_URL: jdbc:mysql://localhost:23306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
+DB_USERNAME: system
+DB_PASSWORD: 1234
+JWT_SECRET: ang-capstone-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
+ADMIN_INIT_PASSWORD: Admin@1234
+FILE_UPLOAD_DIR: uploads

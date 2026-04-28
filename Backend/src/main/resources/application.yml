@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: capstoneBackend
+
+  profiles:
+    active: local   # 배포 시 prod 로 변경
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:23306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:system}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+    open-in-view: false
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration: 1800000    # 30분 (ms)
+  refresh-token-expiration: 604800000 # 7일 (ms)
+
+admin:
+  init:
+    password: ${ADMIN_INIT_PASSWORD}
+
+file:
+  upload-dir: ${FILE_UPLOAD_DIR:uploads}
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.springframework.security: debug

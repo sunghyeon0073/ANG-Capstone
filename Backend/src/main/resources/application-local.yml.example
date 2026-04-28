@@ -1,0 +1,8 @@
+# 이 파일을 복사해서 application-local.yml 로 이름 변경 후 실제 값을 채우세요.
+# application-local.yml 은 Git에 커밋되지 않습니다.
+DB_URL: jdbc:mysql://localhost:23306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
+DB_USERNAME: system
+DB_PASSWORD: your_db_password_here
+JWT_SECRET: your-jwt-secret-key-at-least-256-bits-long
+ADMIN_INIT_PASSWORD: Admin@1234
+FILE_UPLOAD_DIR: uploads
