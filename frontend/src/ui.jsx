@@ -142,17 +142,29 @@ export function AIBadge({ source, inline=false }) {
 export function Modal({ open, onClose, children, width=560, title }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center fadein" style={{ background:'rgba(17,20,19,0.35)', backdropFilter:'blur(4px)' }} onClick={onClose}>
-      <div className="slide-up" style={{ width, maxWidth:'92vw', maxHeight:'88vh', background:'#fff', borderRadius:24, border:'1px solid var(--line)', overflow:'hidden', boxShadow:'0 30px 80px rgba(15,23,42,0.22)' }}
+    <div className="fixed inset-0 z-50 flex items-center justify-center fadein"
+      style={{ background:'rgba(17,20,19,0.35)', backdropFilter:'blur(4px)', padding:'16px' }}
+      onClick={onClose}>
+      <div className="slide-up"
+        style={{
+          width, maxWidth:'calc(100vw - 32px)',
+          maxHeight:'calc(100vh - 32px)',
+          background:'#fff', borderRadius:24,
+          border:'1px solid var(--line)',
+          boxShadow:'0 30px 80px rgba(15,23,42,0.22)',
+          display:'flex', flexDirection:'column',
+          overflow:'hidden',
+        }}
         onClick={e=>e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between px-7 py-5 border-b" style={{borderColor:'var(--line-2)'}}>
+          <div className="flex items-center justify-between px-6 py-4 border-b"
+            style={{borderColor:'var(--line-2)', flexShrink:0}}>
             <div className="font-black text-[16px] tracking-tight">{title}</div>
-            <button onClick={onClose} style={{color:'var(--ink-3)'}}><Icon name="x" size={18} /></button>
+            <button onClick={onClose} style={{color:'var(--ink-3)', padding:4}}><Icon name="x" size={18} /></button>
           </div>
         )}
-        <div className="col-scroll" style={{maxHeight:'calc(88vh - 60px)', overflowY:'auto'}}>
+        <div className="col-scroll" style={{flex:1, overflowY:'auto', minHeight:0}}>
           {children}
         </div>
       </div>
@@ -422,7 +434,7 @@ export function DocPreviewModal({ doc, open, onClose, onUseAsTemplate }) {
   const author = userById(doc.author);
   return (
     <Modal open={open} onClose={onClose} width={760} title="">
-      <div style={{ display:'flex', flexDirection:'column', maxHeight:'85vh' }}>
+      <div style={{ display:'flex', flexDirection:'column' }}>
         <div style={{ padding:'20px 28px 16px', borderBottom:'1.5px solid var(--line-2)', background:'#FAFAF9' }}>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
             <FileTypeIcon ext={doc.ext} size={20} />
