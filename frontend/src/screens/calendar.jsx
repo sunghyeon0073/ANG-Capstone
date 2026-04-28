@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api, parseEvent } from '../api';
 
 // Calendar
 function CalendarScreen({ me, go }) {
@@ -13,6 +14,16 @@ function CalendarScreen({ me, go }) {
   const [modalEvent, setModalEvent] = useState(null);
   const [events, setEvents] = useState(EVENTS);
   const [addOpen, setAddOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editEvent, setEditEvent] = useState(null);
+  const [alarmOpen, setAlarmOpen] = useState(false);
+  const [alarmEvent, setAlarmEvent] = useState(null);
+  const [alarmMin, setAlarmMin] = useState('10');
+
+  useEffect(() => {
+    api.get('/events').then(data => { if (data) setEvents(data.map(parseEvent)); });
+  }, []);
   const [newEvent, setNewEvent] = useState({ title:'', time:'10:00', shared: false });
   const [showToast, setShowToast] = useState(null);
 
@@ -45,7 +56,7 @@ function CalendarScreen({ me, go }) {
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
       <div className="flex items-end justify-between mb-5">
         <div>
           <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{color:'var(--ink-4)'}}>Calender-01 / 02 · Schedule</div>
@@ -61,7 +72,7 @@ function CalendarScreen({ me, go }) {
               </button>
             ))}
           </div>
-          <Btn variant="outline" icon="sparkles">AI 일정 추천</Btn>
+          <Btn variant="outline" icon="sparkles" onClick={() => setAiOpen(true)}>AI 일정 추천</Btn>
           <Btn variant="primary" icon="plus" onClick={()=>{ setNewEvent({title:'', time:'10:00', shared:false}); setAddOpen(true); }}>새 일정</Btn>
         </div>
       </div>
@@ -187,10 +198,14 @@ function CalendarScreen({ me, go }) {
                     <div className="mono text-[10px]" style={{color:'var(--ink-4)'}}>{s.src}</div>
                   </div>
                   <Btn size="sm" variant="ai" icon="plus" onClick={()=>{
-                    const [mon, day] = s.d.split('.').map(Number);
-                    const dt = new Date(2026, mon-1, day);
-                    setEvents(prev => [...prev, { id:'ai_'+Date.now(), title: s.t, start: dt, time:'09:00', shared:true, color:'var(--accent)', owner:'u_me', ai:true, aiReason: s.src }]);
+                    const parts = s.d.split('.').map(Number);
+                    const dt = new Date(2026, parts[0]-1, parts[1]);
+                    const eid = 'ai_'+Date.now();
+                    const newE = { id:eid, title: s.t, start: dt, time:'09:00', shared:true, color:'var(--accent)', owner:'u_me', ai:true, aiReason: s.src };
+                    setEvents(prev => [...prev, newE]);
                     showMsg('AI 추천 일정이 추가되었습니다.');
+                    const sd = `2026-${String(parts[0]).padStart(2,'0')}-${String(parts[1]).padStart(2,'0')}`;
+                    api.post('/events', { id:eid, title: s.t, start_date: sd, time:'09:00', shared:1, color:'var(--accent)', owner:'u_me', ai:1, ai_reason: s.src });
                   }}>추가</Btn>
                 </div>
               ))}
@@ -237,13 +252,16 @@ function CalendarScreen({ me, go }) {
               if (!newEvent.title.trim()) return;
               const dateParts = (newEvent.date || `${selected.getFullYear()}-${String(selected.getMonth()+1).padStart(2,'0')}-${String(selected.getDate()).padStart(2,'0')}`).split('-').map(Number);
               const dt = new Date(dateParts[0], dateParts[1]-1, dateParts[2]);
-              setEvents(prev => [...prev, {
-                id: 'new_'+Date.now(), title: newEvent.title, start: dt,
+              const id = 'new_'+Date.now();
+              const newE = {
+                id, title: newEvent.title, start: dt,
                 time: newEvent.time, shared: newEvent.shared,
                 color: newEvent.shared ? 'var(--primary)' : 'var(--ink-2)', owner:'u_me'
-              }]);
+              };
+              setEvents(prev => [...prev, newE]);
               setAddOpen(false);
               showMsg('일정이 추가되었습니다.');
+              api.post('/events', { ...newE, start_date: `${dateParts[0]}-${String(dateParts[1]).padStart(2,'0')}-${String(dateParts[2]).padStart(2,'0')}` });
             }}>추가</Btn>
           </div>
         </div>
@@ -267,14 +285,132 @@ function CalendarScreen({ me, go }) {
               {modalEvent.desc && <><div style={{color:'var(--ink-3)'}}>메모</div><div>{modalEvent.desc}</div></>}
             </div>
             <div className="flex items-center gap-2 pt-4" style={{borderTop:'1px solid var(--line-2)'}}>
-              <Btn variant="outline" icon="edit-3">수정</Btn>
-              <Btn variant="outline" icon="bell">알림 설정</Btn>
+              <Btn variant="outline" icon="edit-3" onClick={() => { setEditEvent({...modalEvent, titleEdit: modalEvent.title, timeEdit: modalEvent.time}); setEditOpen(true); }}>수정</Btn>
+              <Btn variant="outline" icon="bell" onClick={() => { setAlarmEvent(modalEvent); setAlarmMin('10'); setAlarmOpen(true); }}>알림 설정</Btn>
               <div className="flex-1" />
               <Btn variant="danger" icon="trash-2" onClick={()=>{
-                setEvents(prev => prev.filter(e => e.id !== modalEvent.id));
-                setModalEvent(null);
-                showMsg('일정이 삭제되었습니다.');
+                const delId = modalEvent.id;
+              setEvents(prev => prev.filter(e => e.id !== delId));
+              setModalEvent(null);
+              showMsg('일정이 삭제되었습니다.');
+              api.delete('/events/' + delId);
               }}>삭제</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* AI 일정 추천 모달 */}
+      <Modal open={aiOpen} onClose={() => setAiOpen(false)} title="AI 일정 추천" width={520}>
+        <div className="p-6">
+          <div className="flex items-center gap-2 mb-4 p-3 rounded-xl" style={{background:'var(--accent-50)', border:'1px solid var(--accent-100)'}}>
+            <Icon name="sparkles" size={16} style={{color:'oklch(0.48 0.13 75)'}}/>
+            <span className="text-[12.5px]" style={{color:'oklch(0.35 0.13 75)'}}>과거 4년간 업무 패턴을 분석하여 반복 일정을 추천합니다.</span>
+          </div>
+          <div className="space-y-3">
+            {[
+              { t:'하반기 결산 준비 착수', d:'2026-10-28', src:'매년 10월 말 착수 (2022–2025)', conf:96 },
+              { t:'외부강사 계약 갱신',   d:'2026-06-15', src:'매년 6월 중 갱신 (2023–2025)', conf:88 },
+              { t:'수강생 설문조사 발송', d:'2026-11-10', src:'매년 11월 초 발송 (2022–2025)', conf:91 },
+              { t:'워크숍 장소 답사',     d:'2026-08-20', src:'매년 8월 말 답사 (2023–2025)', conf:78 },
+            ].map((s,i) => (
+              <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{border:'1px solid var(--line-2)', background:'#fff'}}>
+                <div className="flex-1">
+                  <div className="text-[13.5px] font-semibold">{s.t}</div>
+                  <div className="mono text-[11px] mt-0.5" style={{color:'var(--ink-3)'}}>{s.d} · {s.src}</div>
+                </div>
+                <div className="mono text-[11px] font-bold" style={{color:'var(--good)'}}>{s.conf}%</div>
+                <Btn size="sm" variant="ai" icon="plus" onClick={() => {
+                  const parts = s.d.split('-').map(Number);
+                  const dt = new Date(parts[0], parts[1]-1, parts[2]);
+                  const eid = 'ai_'+Date.now();
+                  setEvents(prev => [...prev, { id:eid, title:s.t, start:dt, time:'09:00', shared:true, color:'var(--accent)', owner:'u_me', ai:true, aiReason:s.src }]);
+                  showMsg(`"${s.t}" 일정이 추가되었습니다.`);
+                  api.post('/events', { id:eid, title:s.t, start_date:s.d, time:'09:00', shared:1, color:'var(--accent)', owner:'u_me', ai:1, ai_reason:s.src });
+                }}>추가</Btn>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end mt-5">
+            <Btn variant="ghost" onClick={() => setAiOpen(false)}>닫기</Btn>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 일정 수정 모달 */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="일정 수정" width={480}>
+        {editEvent && (
+          <div className="p-6 space-y-4">
+            <div>
+              <div className="mono text-[11px] uppercase tracking-wider mb-1.5" style={{color:'var(--ink-3)'}}>일정 제목</div>
+              <input className="w-full outline-none px-3 py-2.5 rounded-xl text-[13.5px]"
+                style={{border:'1px solid var(--line)'}}
+                value={editEvent.titleEdit}
+                onChange={e => setEditEvent(ev => ({...ev, titleEdit: e.target.value}))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="mono text-[11px] uppercase tracking-wider mb-1.5" style={{color:'var(--ink-3)'}}>날짜</div>
+                <input type="date" className="w-full outline-none px-3 py-2.5 rounded-xl text-[13px]"
+                  style={{border:'1px solid var(--line)'}}
+                  defaultValue={editEvent.start ? `${editEvent.start.getFullYear()}-${String(editEvent.start.getMonth()+1).padStart(2,'0')}-${String(editEvent.start.getDate()).padStart(2,'0')}` : ''}
+                  onChange={e => setEditEvent(ev => ({...ev, dateEdit: e.target.value}))} />
+              </div>
+              <div>
+                <div className="mono text-[11px] uppercase tracking-wider mb-1.5" style={{color:'var(--ink-3)'}}>시간</div>
+                <input type="time" className="w-full outline-none px-3 py-2.5 rounded-xl text-[13px]"
+                  style={{border:'1px solid var(--line)'}}
+                  value={editEvent.timeEdit}
+                  onChange={e => setEditEvent(ev => ({...ev, timeEdit: e.target.value}))} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <div className="flex-1"/>
+              <Btn variant="ghost" onClick={() => setEditOpen(false)}>취소</Btn>
+              <Btn variant="primary" icon="save" onClick={() => {
+                const newTitle = editEvent.titleEdit;
+                const newTime = editEvent.timeEdit;
+                const newDateStr = editEvent.dateEdit;
+                setEvents(prev => prev.map(e => e.id === editEvent.id
+                  ? { ...e, title: newTitle, time: newTime, ...(newDateStr ? { start: new Date(newDateStr) } : {}) }
+                  : e
+                ));
+                setModalEvent(null);
+                setEditOpen(false);
+                showMsg('일정이 수정되었습니다.');
+              }}>저장</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* 알림 설정 모달 */}
+      <Modal open={alarmOpen} onClose={() => setAlarmOpen(false)} title="알림 설정" width={400}>
+        {alarmEvent && (
+          <div className="p-6 space-y-4">
+            <div className="p-3 rounded-xl" style={{background:'#FBFBF7', border:'1px solid var(--line-2)'}}>
+              <div className="text-[13.5px] font-semibold">{alarmEvent.title}</div>
+              <div className="mono text-[11px] mt-0.5" style={{color:'var(--ink-3)'}}>{fmtDate(alarmEvent.start)} {alarmEvent.time}</div>
+            </div>
+            <div>
+              <div className="mono text-[11px] uppercase tracking-wider mb-2" style={{color:'var(--ink-3)'}}>알림 시간</div>
+              <div className="flex gap-2 flex-wrap">
+                {['5','10','15','30','60'].map(m => (
+                  <button key={m} onClick={() => setAlarmMin(m)}
+                    className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold"
+                    style={{background: alarmMin===m ? 'var(--primary)' : 'var(--line-2)', color: alarmMin===m ? '#fff' : 'var(--ink-2)'}}>
+                    {m}분 전
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <div className="flex-1"/>
+              <Btn variant="ghost" onClick={() => setAlarmOpen(false)}>취소</Btn>
+              <Btn variant="primary" icon="bell" onClick={() => {
+                setAlarmOpen(false);
+                showMsg(`"${alarmEvent.title}" 알림이 ${alarmMin}분 전으로 설정되었습니다.`);
+              }}>설정 완료</Btn>
             </div>
           </div>
         )}

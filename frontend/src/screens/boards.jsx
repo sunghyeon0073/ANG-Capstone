@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api } from '../api';
 
 // Boards — notice + free
 function Boards({ me, go, subPage }) {
@@ -9,6 +10,15 @@ function Boards({ me, go, subPage }) {
   const [q, setQ] = useState('');
   const [boards, setBoards] = useState({ notice: [...BOARDS.notice], free: [...BOARDS.free] });
   const [selected, setSelected] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/boards/posts?type=notice'),
+      api.get('/boards/posts?type=free'),
+    ]).then(([notice, free]) => {
+      if (notice && free) setBoards({ notice, free });
+    });
+  }, []);
   const [composeOpen, setComposeOpen] = useState(false);
   const [newPost, setNewPost] = useState({ title:'', content:'' });
   const [likes, setLikes] = useState({});
@@ -21,10 +31,18 @@ function Boards({ me, go, subPage }) {
       { author:'u_gal', text:'저도 동의합니다 ㅎㅎ', time:'14:30' },
     ],
   });
+
+  const loadComments = (postId) => {
+    api.get(`/boards/posts/${postId}/comments`).then(data => {
+      if (data) setComments(prev => ({ ...prev, [postId]: data.map(c => ({ author: c.author, text: c.text, time: c.time })) }));
+    });
+  };
   const [commentText, setCommentText] = useState('');
   const [toast, setToast] = useState(null);
 
   const showMsg = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+
+  const openPost = (p) => { setSelected(p); loadComments(p.id); };
 
   const list = boards[tab].filter(p => !q || p.title.includes(q));
 
@@ -36,22 +54,21 @@ function Boards({ me, go, subPage }) {
   const addComment = (postId) => {
     if (!commentText.trim()) return;
     const now = new Date().toTimeString().slice(0, 5);
-    setComments(prev => ({
-      ...prev,
-      [postId]: [...(prev[postId] || []), { author: me.id, text: commentText, time: now }],
-    }));
+    const newComment = { author: me.id, text: commentText, time: now };
+    setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), newComment] }));
     setBoards(prev => ({
       ...prev,
-      [tab]: prev[tab].map(p => p.id === postId ? { ...p, comments: (p.comments || 0) + 1 } : p),
+      [tab]: prev[tab].map(p => p.id === postId ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p),
     }));
     if (selected?.id === postId) {
-      setSelected(s => ({ ...s, comments: (s.comments || 0) + 1 }));
+      setSelected(s => ({ ...s, comments_count: (s.comments_count || 0) + 1 }));
     }
     setCommentText('');
+    api.post(`/boards/posts/${postId}/comments`, newComment);
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
       {toast && (
         <div style={{
           position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',
@@ -90,7 +107,7 @@ function Boards({ me, go, subPage }) {
             <div>#</div><div>제목</div><div>작성자</div><div>등록일</div><div className="text-right">조회</div><div className="text-right">좋아요</div>
           </div>
           {list.map((p,i) => (
-            <div key={p.id} onClick={()=>setSelected(p)} className="grid items-center px-5 py-3.5 hover:bg-[--line-2] cursor-pointer" style={{
+            <div key={p.id} onClick={()=>openPost(p)} className="grid items-center px-5 py-3.5 hover:bg-[--line-2] cursor-pointer" style={{
               gridTemplateColumns:'40px 1fr 140px 120px 80px 60px', borderBottom:'1px solid var(--line-2)'
             }}>
               <div className="mono text-[11.5px]" style={{color:'var(--ink-4)'}}>
@@ -99,7 +116,7 @@ function Boards({ me, go, subPage }) {
               <div className="text-[13.5px]" style={{fontWeight: p.pinned ? 700 : 500}}>
                 {p.pinned && <span className="mono text-[10px] mr-2 px-1.5 py-0.5 rounded" style={{background:'oklch(0.97 0.03 25)', color:'oklch(0.45 0.14 25)'}}>필독</span>}
                 {p.title}
-                {p.comments > 0 && <span className="mono text-[11px] ml-2" style={{color:'var(--primary-700)'}}>[{p.comments}]</span>}
+                {(p.comments_count||p.comments) > 0 && <span className="mono text-[11px] ml-2" style={{color:'var(--primary-700)'}}>[{p.comments_count||p.comments}]</span>}
               </div>
               <div className="flex items-center gap-1.5"><Avatar user={userById(p.author)} size={18}/><span className="text-[12px]">{userById(p.author).name}</span></div>
               <div className="mono text-[11.5px]" style={{color:'var(--ink-3)'}}>{p.date}</div>
@@ -243,17 +260,19 @@ function Boards({ me, go, subPage }) {
               if (!newPost.title.trim()) return;
               const post = {
                 id: 'p_'+Date.now(),
+                type: tab,
                 title: newPost.title,
                 content: newPost.content,
                 author: me.id,
                 date: fmtDate(TODAY),
                 views: 0,
-                comments: 0,
+                comments_count: 0,
               };
               setBoards(prev => ({ ...prev, [tab]: [post, ...prev[tab]] }));
               setComposeOpen(false);
               setSelected(post);
               showMsg('게시글이 등록되었습니다.');
+              api.post('/boards/posts', post);
             }}>등록</Btn>
           </div>
         </div>

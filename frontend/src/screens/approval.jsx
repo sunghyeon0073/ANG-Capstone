@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
 import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+import { api } from '../api';
 
 // Approval — 전자결재
 function Approval({ me, go, subPage }) {
@@ -8,6 +9,10 @@ function Approval({ me, go, subPage }) {
   useEffect(() => { if (subPage) setTab(subPage); }, [subPage]);
   const [list, setList] = useState(APPROVALS);
   const [modal, setModal] = useState(null);
+
+  useEffect(() => {
+    api.get('/approvals').then(data => { if (data) setList(data); });
+  }, []);
   const [reqOpen, setReqOpen] = useState(false);
   const [newReq, setNewReq] = useState({ title:'', amount:'', content:'' });
   const [rejectModal, setRejectModal] = useState(null); // item being rejected
@@ -27,24 +32,30 @@ function Approval({ me, go, subPage }) {
   const filtered = tab==='mine' ? list.filter(a=>a.requester==='u_me') : list.filter(a=>a.status===tab);
 
   const approve = (id) => {
-    setList(list.map(a => a.id===id ? {...a, status:'approved', decided: fmtDate(TODAY)} : a));
+    const decided = fmtDate(TODAY);
+    setList(prev => prev.map(a => a.id===id ? {...a, status:'approved', decided} : a));
     setModal(null);
     showMsg('승인 처리되었습니다.');
     setTab('approved');
+    api.patch('/approvals/' + id, { status: 'approved', decided });
   };
 
   const doReject = () => {
     if (!rejectReason.trim()) return;
-    setList(prev => prev.map(a => a.id===rejectModal.id ? {...a, status:'rejected', decided: fmtDate(TODAY), reason: rejectReason} : a));
+    const decided = fmtDate(TODAY);
+    const reason = rejectReason;
+    const id = rejectModal.id;
+    setList(prev => prev.map(a => a.id===id ? {...a, status:'rejected', decided, reason} : a));
     setRejectModal(null);
     setModal(null);
     setRejectReason('');
     showMsg('반려 처리되었습니다.');
     setTab('rejected');
+    api.patch('/approvals/' + id, { status: 'rejected', decided, reason });
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
 
       {toast && (
         <div style={{
@@ -76,13 +87,14 @@ function Approval({ me, go, subPage }) {
             <span className="mono" style={{fontSize:11.5, color:'var(--ink-4)'}}>· {filtered.length}건</span>
           </div>
         </div>
-        <div>
+        <div style={{overflowX:'auto'}}>
+          <div style={{minWidth: 700}}>
           {filtered.map(a => (
             <div key={a.id} onClick={()=>setModal(a)}
               className="grid items-center px-5 py-4 hover:bg-[--line-2] cursor-pointer"
-              style={{gridTemplateColumns:'1fr 140px 120px 120px 100px 120px', borderBottom:'1px solid var(--line-2)'}}>
+              style={{gridTemplateColumns:'1fr 120px 110px 110px 96px 108px', borderBottom:'1px solid var(--line-2)'}}>
               <div>
-                <div className="text-[13.5px] font-medium">{a.title}</div>
+                <div className="text-[13px] font-medium">{a.title}</div>
                 <div className="mono text-[10.5px] mt-0.5" style={{color:'var(--ink-4)'}}>ID {a.id.toUpperCase()}</div>
               </div>
               <div className="flex items-center gap-1.5"><Avatar user={userById(a.requester)} size={18}/><span className="text-[12px]">{userById(a.requester).name}</span></div>
@@ -95,6 +107,7 @@ function Approval({ me, go, subPage }) {
             </div>
           ))}
           {filtered.length===0 && <Empty icon="file-check" title="항목이 없습니다" />}
+          </div>
         </div>
       </Card>
 
@@ -157,6 +170,7 @@ function Approval({ me, go, subPage }) {
               setReqOpen(false);
               setTab('mine');
               showMsg('결재가 상신되었습니다.');
+              api.post('/approvals', item);
             }}>상신</Btn>
           </div>
         </div>
