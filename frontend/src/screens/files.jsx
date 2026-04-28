@@ -8,6 +8,17 @@ function Files({ me, go, subPage }) {
   useEffect(() => { if (subPage) setTab(subPage); }, [subPage]);
   const [ocrOpen, setOcrOpen] = useState(false);
   const [ocrStep, setOcrStep] = useState(0);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadStep, setUploadStep] = useState(0); // 0=select 1=uploading 2=done
+  const [uploadFile, setUploadFile] = useState(null);
+  const [toast, setToast] = useState(null);
+  const showMsg = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+
+  const startUpload = (filename) => {
+    setUploadFile(filename);
+    setUploadStep(1);
+    setTimeout(() => setUploadStep(2), 1800);
+  };
   const [previewDoc, setPreviewDoc] = useState(null);
   const [searchQ, setSearchQ] = useState('');
   const [sortBy, setSortBy] = useState('recent');
@@ -39,8 +50,8 @@ function Files({ me, go, subPage }) {
         </div>
         <div className="flex gap-2">
           <Btn variant="outline" icon="scan-text" onClick={()=>{setOcrOpen(true); setOcrStep(0);}}>OCR 변환</Btn>
-          <Btn variant="outline" icon="download">내보내기</Btn>
-          <Btn variant="primary" icon="upload">파일 업로드</Btn>
+          <Btn variant="outline" icon="download" onClick={() => showMsg('선택된 파일을 내보냈습니다.')}>내보내기</Btn>
+          <Btn variant="primary" icon="upload" onClick={() => { setUploadStep(0); setUploadFile(null); setUploadOpen(true); }}>파일 업로드</Btn>
         </div>
       </div>
 
@@ -128,6 +139,62 @@ function Files({ me, go, subPage }) {
         open={!!previewDoc}
         onClose={()=>setPreviewDoc(null)}
       />
+
+      {toast && (
+        <div style={{
+          position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',
+          background:'var(--ink)', color:'#fff', padding:'10px 22px', borderRadius:12,
+          fontSize:13, fontWeight:600, zIndex:9999, boxShadow:'0 4px 20px rgba(0,0,0,0.18)',
+          pointerEvents:'none',
+        }}>{toast}</div>
+      )}
+
+      {/* 파일 업로드 모달 */}
+      <Modal open={uploadOpen} onClose={() => setUploadOpen(false)} title="파일 업로드" width={520}>
+        <div className="p-6">
+          {uploadStep === 0 && (
+            <div>
+              <div className="rounded-xl flex flex-col items-center justify-center py-12 mb-4"
+                style={{border:'2px dashed var(--line)', background:'#FBFBF7', cursor:'pointer'}}
+                onClick={() => startUpload('업무_보고서_2026_04.hwp')}>
+                <Icon name="upload-cloud" size={36} style={{color:'var(--ink-4)'}} />
+                <div className="mt-3 text-[14px] font-semibold" style={{color:'var(--ink-2)'}}>클릭하거나 파일을 끌어다 놓으세요</div>
+                <div className="mt-1 text-[12px]" style={{color:'var(--ink-4)'}}>HWP, DOCX, PDF, PNG, JPG (최대 50MB)</div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1"/>
+                <Btn variant="ghost" onClick={() => setUploadOpen(false)}>취소</Btn>
+                <Btn variant="primary" icon="upload" onClick={() => startUpload('업무_보고서_2026_04.hwp')}>파일 선택</Btn>
+              </div>
+            </div>
+          )}
+          {uploadStep === 1 && (
+            <div className="py-4">
+              <div className="flex items-center gap-3 mb-4 p-3 rounded-xl" style={{background:'#FBFBF7', border:'1px solid var(--line-2)'}}>
+                <FileTypeIcon ext="hwp" size={24} />
+                <div className="flex-1">
+                  <div className="text-[13.5px] font-semibold">{uploadFile}</div>
+                  <div className="mono text-[11px]" style={{color:'var(--ink-3)'}}>업로드 중...</div>
+                </div>
+              </div>
+              <div style={{height:6, borderRadius:3, background:'var(--line-2)', overflow:'hidden'}}>
+                <div style={{height:'100%', borderRadius:3, background:'var(--primary)', width:'65%', transition:'width 0.3s'}}/>
+              </div>
+              <div className="mono text-[11px] mt-2 text-center" style={{color:'var(--ink-3)'}}>파일 처리 중입니다…</div>
+            </div>
+          )}
+          {uploadStep === 2 && (
+            <div className="py-4 text-center">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{background:'#ECFDF5'}}>
+                <Icon name="check-circle-2" size={28} style={{color:'var(--good)'}} />
+              </div>
+              <div style={{fontSize:15, fontWeight:800, marginBottom:6}}>업로드 완료</div>
+              <div style={{fontSize:13, color:'var(--ink-3)', marginBottom:20}}>{uploadFile} 이(가) 파일함에 저장되었습니다.</div>
+              <Btn variant="primary" icon="folder-open" onClick={() => { setUploadOpen(false); showMsg('파일이 업로드되었습니다.'); }}>파일함에서 확인</Btn>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={ocrOpen} onClose={()=>setOcrOpen(false)} title="OCR 변환" width={640}>
         <div className="p-6">

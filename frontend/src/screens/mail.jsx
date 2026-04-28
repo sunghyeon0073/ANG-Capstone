@@ -12,7 +12,10 @@ function Mail({ me, go, subPage }) {
 
   useEffect(() => {
     api.get('/mails').then(data => {
-      if (data) setMails(data.map(m => ({ ...m, unread: !!m.unread, starred: !!m.starred, hasAttach: !!m.has_attach, from: m.from_user })));
+      if (data) {
+        setTrashedIds(new Set(data.filter(m => m.trashed).map(m => m.id)));
+        setMails(data.map(m => ({ ...m, unread: !!m.unread, starred: !!m.starred, hasAttach: !!m.has_attach, from: m.from_user })));
+      }
     });
     api.get('/mails/sent').then(data => {
       if (data) setSentMails(data.map(m => ({ ...m, hasAttach: !!m.has_attach, to: m.to_user })));
@@ -46,7 +49,11 @@ function Mail({ me, go, subPage }) {
   const openMail = (id) => {
     setOpenId(id);
     if (folder !== 'sent') {
-      setMails(prev => prev.map(m => m.id === id ? { ...m, unread: false } : m));
+      const mail = mails.find(m => m.id === id);
+      if (mail?.unread) {
+        setMails(prev => prev.map(m => m.id === id ? { ...m, unread: false } : m));
+        api.patch('/mails/' + id, { unread: 0 });
+      }
     }
   };
 
@@ -106,6 +113,7 @@ function Mail({ me, go, subPage }) {
   const restoreMail = (id) => {
     setTrashedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
     showMsg('메일을 받은메일함으로 복원했습니다.');
+    api.patch('/mails/' + id, { trashed: 0 });
   };
 
   const unreadCount = mails.filter(m => m.unread && !trashedIds.has(m.id)).length;
