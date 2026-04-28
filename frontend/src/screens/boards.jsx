@@ -68,7 +68,7 @@ function Boards({ me, go, subPage }) {
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
       {toast && (
         <div style={{
           position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',

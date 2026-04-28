@@ -56,7 +56,7 @@ function CalendarScreen({ me, go }) {
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
       <div className="flex items-end justify-between mb-5">
         <div>
           <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{color:'var(--ink-4)'}}>Calender-01 / 02 · Schedule</div>

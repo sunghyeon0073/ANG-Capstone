@@ -42,7 +42,7 @@ function Files({ me, go, subPage }) {
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
       <div className="flex items-end justify-between mb-5">
         <div>
           <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{color:'var(--ink-4)'}}>File-01 · Archive</div>
@@ -77,9 +77,10 @@ function Files({ me, go, subPage }) {
           <span>{files.length}개 항목 · {tab==='shared' ? '같은 부서 전원 접근 가능' : '본인만 접근 가능'}</span>
           {searchQ && <span style={{color:'var(--primary-600)',fontWeight:700}}>"{searchQ}" 검색 결과</span>}
         </div>
-        <div style={{borderTop:'1px solid var(--line-2)'}}>
+        <div style={{borderTop:'1px solid var(--line-2)', overflowX:'auto'}}>
+          <div style={{minWidth: 680}}>
           <div className="grid px-5 py-2.5 mono text-[10.5px] uppercase tracking-wider" style={{
-            gridTemplateColumns:'40px 1fr 120px 100px 120px 80px 80px',
+            gridTemplateColumns:'40px 1fr 100px 96px 108px 72px 64px',
             color:'var(--ink-3)', borderBottom:'1px solid var(--line-2)', background:'#FBFBF7'
           }}>
             <div></div><div>이름</div><div>유형</div><div>작성자</div><div>수정일</div><div className="text-right">크기</div><div></div>
@@ -90,9 +91,9 @@ function Files({ me, go, subPage }) {
           {files.map(f => (
             <div key={f.id}
               onClick={()=>setPreviewDoc(f)}
-              className="grid items-center px-5 py-3.5 cursor-pointer transition-all"
+              className="grid items-center px-5 py-3 cursor-pointer transition-all"
               style={{
-                gridTemplateColumns:'40px 1fr 120px 110px 120px 80px 80px',
+                gridTemplateColumns:'40px 1fr 100px 96px 108px 72px 64px',
                 borderBottom:'1px solid var(--line-2)',
               }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--primary-50)'}
@@ -130,6 +131,7 @@ function Files({ me, go, subPage }) {
               </div>
             </div>
           ))}
+          </div>
         </div>
       </Card>
 

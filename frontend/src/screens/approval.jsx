@@ -55,7 +55,7 @@ function Approval({ me, go, subPage }) {
   };
 
   return (
-    <div className="fadein" style={{maxWidth: 1360, margin:'0 auto', padding:'26px 36px 60px'}}>
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
 
       {toast && (
         <div style={{
@@ -87,13 +87,14 @@ function Approval({ me, go, subPage }) {
             <span className="mono" style={{fontSize:11.5, color:'var(--ink-4)'}}>· {filtered.length}건</span>
           </div>
         </div>
-        <div>
+        <div style={{overflowX:'auto'}}>
+          <div style={{minWidth: 700}}>
           {filtered.map(a => (
             <div key={a.id} onClick={()=>setModal(a)}
               className="grid items-center px-5 py-4 hover:bg-[--line-2] cursor-pointer"
-              style={{gridTemplateColumns:'1fr 140px 120px 120px 100px 120px', borderBottom:'1px solid var(--line-2)'}}>
+              style={{gridTemplateColumns:'1fr 120px 110px 110px 96px 108px', borderBottom:'1px solid var(--line-2)'}}>
               <div>
-                <div className="text-[13.5px] font-medium">{a.title}</div>
+                <div className="text-[13px] font-medium">{a.title}</div>
                 <div className="mono text-[10.5px] mt-0.5" style={{color:'var(--ink-4)'}}>ID {a.id.toUpperCase()}</div>
               </div>
               <div className="flex items-center gap-1.5"><Avatar user={userById(a.requester)} size={18}/><span className="text-[12px]">{userById(a.requester).name}</span></div>
@@ -106,6 +107,7 @@ function Approval({ me, go, subPage }) {
             </div>
           ))}
           {filtered.length===0 && <Empty icon="file-check" title="항목이 없습니다" />}
+          </div>
         </div>
       </Card>
 

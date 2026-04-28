@@ -119,16 +119,16 @@ function Mail({ me, go, subPage }) {
   const unreadCount = mails.filter(m => m.unread && !trashedIds.has(m.id)).length;
 
   return (
-    <div className="fadein" style={{ maxWidth: 1360, margin: '0 auto', padding: '26px 36px 60px' }}>
-      <div className="flex items-end justify-between mb-5">
+    <div className="fadein" style={{ maxWidth: 1160, margin: '0 auto', padding: '22px 24px 48px' }}>
+      <div className="flex items-end justify-between mb-4">
         <div>
           <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{ color: 'var(--ink-4)' }}>Mail-01 · Inbox</div>
-          <h1 className="text-[24px] font-bold tracking-tight">메일함</h1>
+          <h1 className="text-[22px] font-bold tracking-tight">메일함</h1>
         </div>
         <Btn variant="primary" icon="pen-square" onClick={() => startCompose()}>메일 작성</Btn>
       </div>
 
-      <Card pad={false} style={{ height: 640, overflow: 'hidden' }}>
+      <Card pad={false} style={{ height: 'calc(100vh - 210px)', minHeight: 500, overflow: 'hidden' }}>
         <div className="grid h-full" style={{ gridTemplateColumns: '360px 1fr' }}>
 
           {/* ── 메일 목록 ── */}
