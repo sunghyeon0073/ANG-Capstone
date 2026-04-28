@@ -20,19 +20,37 @@ export const api = {
   delete: (path)        => req('DELETE', path),
 };
 
-export async function askAI(message) {
-  const res = await fetch('/ai/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-  });
+const AI_ENDPOINTS = [
+  '/ai/chat',
+  'http://127.0.0.1:8001/ai/chat',
+  'http://127.0.0.1:8000/ai/chat',
+];
 
-  if (!res.ok) {
-    throw new Error('AI 요청에 실패했습니다.');
+export async function askAI(message) {
+  let lastError = null;
+
+  for (const endpoint of AI_ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(`AI 요청 실패 (${res.status}) ${detail}`);
+      }
+
+      const data = await res.json();
+      return data.answer;
+    } catch (err) {
+      lastError = err;
+      console.warn(`AI endpoint failed: ${endpoint}`, err);
+    }
   }
 
-  const data = await res.json();
-  return data.answer;
+  throw lastError || new Error('AI 서버에 연결할 수 없습니다.');
 }
 
 // 이벤트 날짜 문자열 → Date 변환
