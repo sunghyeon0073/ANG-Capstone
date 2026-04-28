@@ -5,7 +5,9 @@
       "Bash(mkdir -p /c/Users/YJU/Desktop/ANG/frontend/src/screens)",
       "Bash(mkdir -p /c/Users/YJU/Desktop/ANG/backend)",
       "Bash(npm install *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)"
     ]
   }
 }
