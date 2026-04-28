@@ -21,7 +21,7 @@ export const api = {
 };
 
 export async function askAI(message) {
-  const res = await fetch('http://localhost:8000/ai/chat', {
+  const res = await fetch('/ai/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
