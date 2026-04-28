@@ -1,23 +1,45 @@
 import React, { useState } from 'react';
-import { Card, Btn, Input, SectionLabel, Icon } from '../ui';
+import { Card, Btn, Input, SectionLabel } from '../ui';
 import { USERS } from '../data';
 
 function LoginPage({ onLoginSuccess, onGoToSignup }) {
   const [empId, setEmpId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!empId.trim() || !password.trim()) {
       setError('사번과 비밀번호를 입력해주세요.');
       return;
     }
-    const user = USERS.find(u => u.emp === empId.trim());
-    if (user) {
-      setError('');
-      onLoginSuccess(user);
-    } else {
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emp_id: empId.trim(), password }),
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        onLoginSuccess({ ...data.user, id: data.user.emp_id });
+        return;
+      } else {
+        setError(data.message);
+      }
+    } catch {
+      // 백엔드 없을 때 mock 데이터로 fallback
+      const user = USERS.find(u => u.emp === empId.trim());
+      if (user) {
+        onLoginSuccess(user);
+        return;
+      }
       setError('사번 또는 비밀번호가 올바르지 않습니다.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -44,15 +66,16 @@ function LoginPage({ onLoginSuccess, onGoToSignup }) {
             {error && (
               <div className="text-[12px] font-semibold" style={{ color: 'var(--danger)' }}>{error}</div>
             )}
-            <Btn variant="primary" size="lg" className="w-full" style={{ width: '100%', justifyContent: 'center' }} onClick={handleLogin}>
-              접속하기
+            <Btn variant="primary" size="lg" style={{ width: '100%', justifyContent: 'center' }}
+              onClick={handleLogin} disabled={loading}>
+              {loading ? '로그인 중...' : '접속하기'}
             </Btn>
-            <Btn variant="subtle" className="w-full" style={{ width: '100%', justifyContent: 'center' }} onClick={onGoToSignup}>
+            <Btn variant="subtle" style={{ width: '100%', justifyContent: 'center' }} onClick={onGoToSignup}>
               신규 계정 등록
             </Btn>
           </div>
           <div className="mono text-[10.5px] mt-5 text-center" style={{ color: 'var(--ink-4)' }}>
-            테스트 사번: 2024-0143 (이상열) · 비밀번호: 아무거나
+            테스트 사번: 2024-0143 · 비밀번호: 아무거나
           </div>
         </Card>
       </div>

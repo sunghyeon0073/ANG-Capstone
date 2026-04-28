@@ -101,6 +101,20 @@ db.exec(`
     tag TEXT,
     priority TEXT DEFAULT 'mid'
   );
+
+  CREATE TABLE IF NOT EXISTS auth_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    emp_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    password TEXT NOT NULL,
+    email TEXT,
+    birth TEXT,
+    dept_code TEXT,
+    dept TEXT DEFAULT '미배정',
+    rank TEXT DEFAULT '사원',
+    status TEXT DEFAULT 'pending',
+    created_at TEXT NOT NULL
+  );
 `);
 
 // ── 시드 데이터 (테이블 비어있을 때만 삽입) ──

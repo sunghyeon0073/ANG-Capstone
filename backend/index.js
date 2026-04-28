@@ -5,7 +5,7 @@ import db from './db.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'] }));
 app.use(express.json());
 
 // ── 결재 (Approvals) ──────────────────────────────────────────────────────────
@@ -155,6 +155,46 @@ app.patch('/api/tasks/:id', (req, res) => {
 
 app.delete('/api/tasks/:id', (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id=?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ── 인증 (Auth) ──────────────────────────────────────────────────────────────
+
+app.post('/api/auth/login', (req, res) => {
+  const { emp_id, password } = req.body;
+  if (!emp_id || !password) return res.status(400).json({ ok: false, message: '사번과 비밀번호를 입력해주세요.' });
+
+  const user = db.prepare('SELECT * FROM auth_users WHERE emp_id=?').get(emp_id);
+  if (!user) return res.status(401).json({ ok: false, message: '사번 또는 비밀번호가 올바르지 않습니다.' });
+  if (user.password !== password) return res.status(401).json({ ok: false, message: '사번 또는 비밀번호가 올바르지 않습니다.' });
+  if (user.status === 'pending') return res.status(403).json({ ok: false, message: '관리자 승인 대기 중입니다.' });
+
+  const { password: _, ...safeUser } = user;
+  res.json({ ok: true, user: safeUser });
+});
+
+app.post('/api/auth/signup', (req, res) => {
+  const { emp_id, name, password, email, birth, dept_code } = req.body;
+  if (!emp_id || !name || !password) return res.status(400).json({ ok: false, message: '필수 항목을 입력해주세요.' });
+
+  const exists = db.prepare('SELECT id FROM auth_users WHERE emp_id=?').get(emp_id);
+  if (exists) return res.status(409).json({ ok: false, message: '이미 등록된 사번입니다.' });
+
+  db.prepare(`INSERT INTO auth_users (emp_id, name, password, email, birth, dept_code, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`)
+    .run(emp_id, name, password, email || '', birth || '', dept_code || '', new Date().toISOString());
+
+  res.json({ ok: true, message: '가입 승인 요청이 완료되었습니다.' });
+});
+
+app.get('/api/auth/users', (req, res) => {
+  const users = db.prepare('SELECT id, emp_id, name, email, dept, rank, status, created_at FROM auth_users ORDER BY created_at DESC').all();
+  res.json(users);
+});
+
+app.patch('/api/auth/users/:id', (req, res) => {
+  const { status } = req.body;
+  db.prepare('UPDATE auth_users SET status=? WHERE id=?').run(status, req.params.id);
   res.json({ ok: true });
 });
 

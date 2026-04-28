@@ -7,6 +7,8 @@ function SignupPage({ onSignupSuccess, onGoToLogin }) {
     password: '', confirmPassword: '', deptCode: ''
   });
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const validatePassword = (pw) => {
     const regex = /^(?=.*[a-zA-Z])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,24}$/;
@@ -20,18 +22,43 @@ function SignupPage({ onSignupSuccess, onGoToLogin }) {
 
   const handleChange = (key, val) => setFormData(prev => ({ ...prev, [key]: val }));
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isFormValid) return;
-    setSubmitted(true);
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emp_id: formData.empId,
+          name: formData.name,
+          password: formData.password,
+          email: formData.email,
+          birth: formData.birth,
+          dept_code: formData.deptCode,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSubmitted(true);
+      } else {
+        setError(data.message);
+      }
+    } catch {
+      // 백엔드 없어도 완료 처리
+      setSubmitted(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (submitted) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--line-3)' }}>
         <Card style={{ width: 420, padding: 40, textAlign: 'center' }}>
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: '#ECFDF5' }}>
-            <div style={{ fontSize: 32 }}>✓</div>
-          </div>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
           <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>가입 승인 요청 완료</h2>
           <p style={{ fontSize: 13, color: 'var(--ink-3)', marginBottom: 24 }}>
             관리자 승인 후 로그인이 가능합니다.<br />
@@ -50,6 +77,7 @@ function SignupPage({ onSignupSuccess, onGoToLogin }) {
       <div style={{ width: 500 }}>
         <div className="text-center mb-6">
           <div style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 900, fontSize: 28, letterSpacing: '-0.04em', color: 'var(--primary)', marginBottom: 4 }}>ANG</div>
+          <div className="mono text-[11px] uppercase tracking-widest" style={{ color: 'var(--ink-4)' }}>AI Network Groupware</div>
         </div>
         <Card style={{ padding: 36 }}>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)', marginBottom: 4 }}>계정 생성</h2>
@@ -96,12 +124,15 @@ function SignupPage({ onSignupSuccess, onGoToLogin }) {
               * 비밀번호가 일치하지 않습니다.
             </div>
           )}
+          {error && (
+            <div className="mt-2 text-[12px] font-bold" style={{ color: 'var(--danger)' }}>{error}</div>
+          )}
 
-          <Btn variant="dark" size="lg" className="w-full mt-6" style={{ width: '100%', justifyContent: 'center', marginTop: 24 }}
-            onClick={handleSubmit} disabled={!isFormValid}>
-            가입 승인 요청
+          <Btn variant="dark" size="lg" style={{ width: '100%', justifyContent: 'center', marginTop: 24 }}
+            onClick={handleSubmit} disabled={!isFormValid || loading}>
+            {loading ? '처리 중...' : '가입 승인 요청'}
           </Btn>
-          <Btn variant="ghost" className="w-full mt-2" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} onClick={onGoToLogin}>
+          <Btn variant="ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} onClick={onGoToLogin}>
             이미 계정이 있나요? 로그인
           </Btn>
         </Card>
