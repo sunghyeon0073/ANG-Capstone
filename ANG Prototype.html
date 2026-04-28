@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ANG · AI Network Group</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+  // Tweakable defaults
+  window.ANG_TWEAKS = /*EDITMODE-BEGIN*/{
+    "primaryHue": 200,
+    "density": "comfortable",
+    "role": "member",
+    "showOrgMemory": true,
+    "orgName": "평생교육원 학사팀"
+  }/*EDITMODE-END*/;
+</script>
+
+<style>
+  :root {
+    --primary-h: 200;
+    /* 더 진하고 선명한 파란색 계열 — 가시성 향상 */
+    --primary:     oklch(0.50 0.14 var(--primary-h));
+    --primary-600: oklch(0.43 0.15 var(--primary-h));
+    --primary-700: oklch(0.36 0.14 var(--primary-h));
+    --primary-50:  oklch(0.96 0.025 var(--primary-h));
+    --primary-100: oklch(0.90 0.055 var(--primary-h));
+    /* 황금/주황 AI 액센트 — 더 선명하게 */
+    --accent:     oklch(0.60 0.18 60);
+    --accent-50:  oklch(0.97 0.04 60);
+    --accent-100: oklch(0.92 0.08 60);
+    /* 배경 — 순백보다 살짝 따뜻한 크림 */
+    --bg:   #F4F4EF;
+    --card: #FFFFFF;
+    /* 텍스트 — 대비비 최대화 */
+    --ink:   #0B0F0E;
+    --ink-2: #1C2220;
+    --ink-3: #3E4846;
+    --ink-4: #6E7876;
+    /* 선 */
+    --line:  #D4D4CE;
+    --line-2:#E6E6E0;
+    --line-3:#F0F0EB;
+    /* 상태 색상 */
+    --good:   oklch(0.48 0.16 155);
+    --warn:   oklch(0.55 0.18 58);
+    --danger: oklch(0.50 0.22 25);
+    /* 사이드바 */
+    --sidebar-bg: oklch(0.26 0.05 var(--primary-h));
+  }
+
+  html, body {
+    margin:0; padding:0;
+    background: var(--bg); color: var(--ink);
+    font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'ss01','cv01';
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  * { box-sizing: border-box; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'zero'; }
+  button { font-family: inherit; cursor: pointer; }
+  input, textarea, select { font-family: inherit; color: var(--ink); }
+  ::selection { background: var(--primary-100); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: #c8c8c2; border-radius: 4px; }
+  .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+  @keyframes fadein { from {opacity:0; transform: translateY(8px)} to {opacity:1; transform: none} }
+  .fadein { animation: fadein .28s ease-out both }
+  @keyframes slide-up { from {opacity:0; transform: translateY(16px)} to {opacity:1; transform: none} }
+  .slide-up { animation: slide-up .32s cubic-bezier(.2,.8,.2,1) both }
+  @keyframes pulse-dot { 0%,100% {opacity:1} 50% {opacity:.3} }
+  .pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite }
+  @keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+  .shimmer {
+    background: linear-gradient(90deg, #eaeae4 0%, #f4f4ee 50%, #eaeae4 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s linear infinite;
+  }
+
+  /* ── 타이포그래피 — 가시성 강화 ── */
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.025em; color: var(--ink); }
+  h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  h3 { font-size: 16px; font-weight: 700; }
+  .label-xs {
+    font-size: 11px; font-weight: 800;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  /* 본문 기본 가시성 */
+  p, div { line-height: 1.65; }
+
+  /* chat bubble */
+  .bubble {
+    max-width: 76%; padding: 11px 16px;
+    border-radius: 16px; font-size: 14px; line-height: 1.55;
+  }
+
+  /* scrolling columns */
+  .col-scroll { overflow-y: auto; }
+  .col-scroll::-webkit-scrollbar { width: 6px }
+  .col-scroll::-webkit-scrollbar-thumb { background: #c8c8c2; border-radius: 3px }
+  .col-scroll::-webkit-scrollbar-track { background: transparent }
+
+  /* focus ring */
+  .ring-focus:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px oklch(0.50 0.14 var(--primary-h) / 0.18);
+    border-color: var(--primary);
+  }
+
+  [data-density="compact"] .pad-y { padding-top: 12px; padding-bottom: 12px; }
+  [data-density="comfortable"] .pad-y { padding-top: 18px; padding-bottom: 18px; }
+
+  .link { color: var(--primary-600); cursor: pointer; font-weight: 600; }
+  .link:hover { text-decoration: underline; }
+
+  .kbd {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    background: #ebebE5; border: 1px solid #d4d4ce;
+    border-bottom-width: 2px; border-radius: 4px;
+    padding: 1px 5px; color: var(--ink-3);
+  }
+
+  /* ── 사이드바 전용 스타일 ── */
+  .sidebar-nav-btn {
+    width: 100%; display: flex; align-items: center;
+    padding: 10px 12px; border-radius: 14px;
+    transition: background .15s, color .15s, transform .12s;
+    font-size: 13.5px; font-weight: 700; gap: 12px;
+    color: rgba(255,255,255,0.72);
+    background: transparent; border: none;
+  }
+  .sidebar-nav-btn.active {
+    background: #fff;
+    color: var(--primary-700);
+    font-weight: 900;
+    box-shadow: 0 6px 18px -4px rgba(0,0,0,0.22);
+    transform: scale(1.02);
+  }
+  .sidebar-nav-btn:not(.active):hover {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+  }
+
+  /* ── 브라우저 탭 ── */
+  .tab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 16px; border-radius: 8px 8px 0 0;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: all .15s; white-space: nowrap;
+    border: 1px solid transparent; border-bottom: none;
+    margin-bottom: -1px; color: var(--ink-3);
+    background: transparent;
+  }
+  .tab.is-active {
+    background: var(--bg); color: var(--ink);
+    border-color: var(--line); font-weight: 800;
+  }
+  .tab.is-inactive:hover { background: var(--line-2); color: var(--ink-2); }
+
+  /* ── 캘린더 대시보드 위젯 전용 ── */
+  .cal-day-cell {
+    min-height: 64px; padding: 6px; cursor: pointer;
+    transition: background .12s;
+    border-right: 1px solid var(--line-2);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .cal-day-cell:hover { background: var(--primary-50); }
+  .cal-day-cell.selected { background: var(--primary-50); }
+  .cal-day-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+  }
+  .cal-day-num.today {
+    background: var(--primary); color: #fff;
+  }
+  .cal-day-num.sun { color: var(--danger); }
+  .cal-day-num.sat { color: var(--primary-600); }
+  .cal-event-chip {
+    font-size: 11px; padding: 2px 7px; border-radius: 6px;
+    font-weight: 600; truncate: true; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  /* ── 검색 드롭다운 ── */
+  .search-dropdown {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+    background: #fff; border: 1.5px solid var(--line);
+    border-radius: 16px; z-index: 100;
+    box-shadow: 0 24px 56px rgba(11,15,14,0.16);
+    overflow: hidden;
+  }
+
+  /* ── Toast ── */
+  @keyframes toast-in { from { opacity:0; transform: translateX(-50%) translateY(12px) } to { opacity:1; transform: translateX(-50%) translateY(0) } }
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 13px 24px;
+    border-radius: 16px; font-size: 13.5px; font-weight: 700;
+    z-index: 9999; animation: toast-in .22s ease-out both;
+    box-shadow: 0 10px 30px rgba(11,15,14,0.25);
+    display: flex; align-items: center; gap: 9px;
+  }
+
+  /* ── 카드 hover lift ── */
+  .card-lift {
+    transition: box-shadow .2s, transform .2s;
+  }
+  .card-lift:hover {
+    box-shadow: 0 16px 40px -10px rgba(11,15,14,0.14) !important;
+    transform: translateY(-1px);
+  }
+
+  /* ── stat badge ── */
+  .stat-card {
+    background: #fff;
+    border: 1.5px solid var(--line);
+    border-radius: 20px;
+    padding: 18px 22px;
+    box-shadow: 0 2px 8px rgba(11,15,14,0.05);
+  }
+
+  /* Browser-style tabs */
+  .tab {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 8px 8px 0 0;
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    transition: all .15s; white-space: nowrap;
+    border: 1px solid transparent; border-bottom: none;
+    margin-bottom: -1px; color: var(--ink-3); background: transparent;
+  }
+  .tab.is-active {
+    background: var(--bg); color: var(--ink);
+    border-color: var(--line); font-weight: 800;
+  }
+  .tab.is-inactive:hover { background: var(--line-2); color: var(--ink-2); }
+
+  /* Search dropdown */
+  .search-dropdown {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 14px; z-index: 100;
+    box-shadow: 0 20px 48px rgba(15,23,42,0.14);
+    overflow: hidden;
+  }
+
+  /* Toast notification */
+  @keyframes toast-in { from { opacity:0; transform: translateY(12px) } to { opacity:1; transform: none } }
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 12px 22px;
+    border-radius: 14px; font-size: 13px; font-weight: 600;
+    z-index: 9999; animation: toast-in .25s ease-out both;
+    box-shadow: 0 8px 24px rgba(15,23,42,0.22);
+    display: flex; align-items: center; gap: 8px;
+  }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- helpers/components -->
+  <script type="text/babel" src="src/data.jsx"></script>
+  <script type="text/babel" src="src/ui.jsx"></script>
+  <script type="text/babel" src="src/screens/dashboard.jsx"></script>
+  <script type="text/babel" src="src/screens/ai_docs.jsx"></script>
+  <script type="text/babel" src="src/screens/calendar.jsx"></script>
+  <script type="text/babel" src="src/screens/files.jsx"></script>
+  <script type="text/babel" src="src/screens/approval.jsx"></script>
+  <script type="text/babel" src="src/screens/boards.jsx"></script>
+  <script type="text/babel" src="src/screens/org.jsx"></script>
+  <script type="text/babel" src="src/screens/chat.jsx"></script>
+  <script type="text/babel" src="src/screens/mail.jsx"></script>
+  <script type="text/babel" src="src/screens/admin.jsx"></script>
+  <script type="text/babel" src="src/app.jsx"></script>
+</body>
+</html>
