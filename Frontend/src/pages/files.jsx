@@ -1,0 +1,257 @@
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { USERS, DEPTS, DOCS, TASKS, APPROVALS, BOARDS, CHATS, CHAT_MESSAGES, MAILS, NOTIFICATIONS, TODAY, EVENTS, userById, fmtDate, d } from '../data';
+import { Icon, Avatar, Pill, Btn, Card, SectionLabel, Input, AIBadge, Modal, Empty, FileTypeIcon, DocPreviewModal, DocPreviewContent } from '../ui';
+
+// Files — personal / shared, OCR upload
+function Files({ me, go, subPage }) {
+  const [tab, setTab] = useState(subPage || 'shared');
+  useEffect(() => { if (subPage) setTab(subPage); }, [subPage]);
+  const [ocrOpen, setOcrOpen] = useState(false);
+  const [ocrStep, setOcrStep] = useState(0);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadStep, setUploadStep] = useState(0); // 0=select 1=uploading 2=done
+  const [uploadFile, setUploadFile] = useState(null);
+  const [toast, setToast] = useState(null);
+  const showMsg = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+
+  const startUpload = (filename) => {
+    setUploadFile(filename);
+    setUploadStep(1);
+    setTimeout(() => setUploadStep(2), 1800);
+  };
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [searchQ, setSearchQ] = useState('');
+  const [sortBy, setSortBy] = useState('recent');
+
+  const allFiles = tab === 'shared'
+    ? DOCS
+    : DOCS.filter(d => d.author === 'u_me' || d.id === 'doc_8');
+
+  const files = allFiles
+    .filter(f => !searchQ || f.title.toLowerCase().includes(searchQ.toLowerCase()) || f.tags.some(t=>t.includes(searchQ)))
+    .sort((a, b) => {
+      if (sortBy === 'name') return a.title.localeCompare(b.title);
+      if (sortBy === 'size') return parseFloat(b.size) - parseFloat(a.size);
+      return new Date(b.updated) - new Date(a.updated); // recent
+    });
+
+  const runOCR = () => {
+    setOcrStep(1);
+    setTimeout(()=>setOcrStep(2), 900);
+    setTimeout(()=>setOcrStep(3), 2000);
+  };
+
+  return (
+    <div className="fadein" style={{maxWidth: 1160, margin:'0 auto', padding:'22px 24px 48px'}}>
+      <div className="flex items-end justify-between mb-5">
+        <div>
+          <div className="mono text-[11px] uppercase tracking-[0.18em] mb-1" style={{color:'var(--ink-4)'}}>File-01 · Archive</div>
+          <h1 className="text-[24px] font-bold tracking-tight">파일함</h1>
+        </div>
+        <div className="flex gap-2">
+          <Btn variant="outline" icon="scan-text" onClick={()=>{setOcrOpen(true); setOcrStep(0);}}>OCR 변환</Btn>
+          <Btn variant="outline" icon="download" onClick={() => showMsg('선택된 파일을 내보냈습니다.')}>내보내기</Btn>
+          <Btn variant="primary" icon="upload" onClick={() => { setUploadStep(0); setUploadFile(null); setUploadOpen(true); }}>파일 업로드</Btn>
+        </div>
+      </div>
+
+      <Card pad={false}>
+        <div className="flex items-center justify-between px-5 pt-4">
+          <div className="flex items-center gap-2">
+            <Icon name={tab === 'shared' ? 'folder-open' : 'user'} size={14} style={{ color: 'var(--primary)' }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+              {tab === 'shared' ? '부서 공유 파일함' : '개인 파일함'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input icon="search" placeholder="파일 검색" value={searchQ} onChange={setSearchQ} style={{width:220}} />
+            <select className="text-[12px] outline-none" value={sortBy} onChange={e=>setSortBy(e.target.value)}
+              style={{padding:'7px 10px', border:'1px solid var(--line)', borderRadius:8, background:'#fff'}}>
+              <option value="recent">최근 순</option>
+              <option value="name">이름 순</option>
+              <option value="size">크기 순</option>
+            </select>
+          </div>
+        </div>
+        <div className="px-5 pt-3 pb-4 mono text-[11px] flex items-center gap-3" style={{color:'var(--ink-3)'}}>
+          <span>{files.length}개 항목 · {tab==='shared' ? '같은 부서 전원 접근 가능' : '본인만 접근 가능'}</span>
+          {searchQ && <span style={{color:'var(--primary-600)',fontWeight:700}}>"{searchQ}" 검색 결과</span>}
+        </div>
+        <div style={{borderTop:'1px solid var(--line-2)', overflowX:'auto'}}>
+          <div style={{minWidth: 680}}>
+          <div className="grid px-5 py-2.5 mono text-[10.5px] uppercase tracking-wider" style={{
+            gridTemplateColumns:'40px 1fr 100px 96px 108px 72px 64px',
+            color:'var(--ink-3)', borderBottom:'1px solid var(--line-2)', background:'#FBFBF7'
+          }}>
+            <div></div><div>이름</div><div>유형</div><div>작성자</div><div>수정일</div><div className="text-right">크기</div><div></div>
+          </div>
+          {files.length === 0 && (
+            <Empty icon="search" title="검색 결과가 없습니다" sub={`"${searchQ}"와 일치하는 파일이 없습니다.`} />
+          )}
+          {files.map(f => (
+            <div key={f.id}
+              onClick={()=>setPreviewDoc(f)}
+              className="grid items-center px-5 py-3 cursor-pointer transition-all"
+              style={{
+                gridTemplateColumns:'40px 1fr 100px 96px 108px 72px 64px',
+                borderBottom:'1px solid var(--line-2)',
+              }}
+              onMouseEnter={e=>e.currentTarget.style.background='var(--primary-50)'}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <FileTypeIcon ext={f.ext} size={18} />
+              <div>
+                <div className="text-[14px] font-semibold truncate" style={{color:'var(--ink)'}}>{f.title}</div>
+                <div className="flex gap-1 mt-1">{f.tags.map(t=><Pill key={t}>{t}</Pill>)}</div>
+              </div>
+              <Pill tone="primary">{f.type}</Pill>
+              <div className="flex items-center gap-1.5">
+                <Avatar user={userById(f.author)} size={20} />
+                <span className="text-[12.5px]" style={{color:'var(--ink-2)'}}>{userById(f.author).name}</span>
+              </div>
+              <div className="mono text-[12px]" style={{color:'var(--ink-3)'}}>{f.updated}</div>
+              <div className="mono text-[12px] text-right" style={{color:'var(--ink-3)'}}>{f.size}</div>
+              <div className="flex items-center justify-end gap-1" onClick={e=>e.stopPropagation()}>
+                <button
+                  onClick={e=>{ e.stopPropagation(); setPreviewDoc(f); }}
+                  className="p-1.5 rounded-lg transition-all"
+                  style={{color:'var(--ink-4)'}}
+                  title="미리보기"
+                  onMouseEnter={e=>{ e.currentTarget.style.background='var(--primary-100)'; e.currentTarget.style.color='var(--primary-700)'; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.background='transparent'; e.currentTarget.style.color='var(--ink-4)'; }}>
+                  <Icon name="eye" size={15}/>
+                </button>
+                <button
+                  className="p-1.5 rounded-lg transition-all"
+                  style={{color:'var(--ink-4)'}}
+                  title="더 보기"
+                  onMouseEnter={e=>{ e.currentTarget.style.background='var(--line-2)'; e.currentTarget.style.color='var(--ink-2)'; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.background='transparent'; e.currentTarget.style.color='var(--ink-4)'; }}>
+                  <Icon name="more-horizontal" size={15}/>
+                </button>
+              </div>
+            </div>
+          ))}
+          </div>
+        </div>
+      </Card>
+
+      {/* 파일 미리보기 모달 */}
+      <DocPreviewModal
+        doc={previewDoc}
+        open={!!previewDoc}
+        onClose={()=>setPreviewDoc(null)}
+      />
+
+      {toast && (
+        <div style={{
+          position:'fixed', bottom:28, left:'50%', transform:'translateX(-50%)',
+          background:'var(--ink)', color:'#fff', padding:'10px 22px', borderRadius:12,
+          fontSize:13, fontWeight:600, zIndex:9999, boxShadow:'0 4px 20px rgba(0,0,0,0.18)',
+          pointerEvents:'none',
+        }}>{toast}</div>
+      )}
+
+      {/* 파일 업로드 모달 */}
+      <Modal open={uploadOpen} onClose={() => setUploadOpen(false)} title="파일 업로드" width={520}>
+        <div className="p-6">
+          {uploadStep === 0 && (
+            <div>
+              <div className="rounded-xl flex flex-col items-center justify-center py-12 mb-4"
+                style={{border:'2px dashed var(--line)', background:'#FBFBF7', cursor:'pointer'}}
+                onClick={() => startUpload('업무_보고서_2026_04.hwp')}>
+                <Icon name="upload-cloud" size={36} style={{color:'var(--ink-4)'}} />
+                <div className="mt-3 text-[14px] font-semibold" style={{color:'var(--ink-2)'}}>클릭하거나 파일을 끌어다 놓으세요</div>
+                <div className="mt-1 text-[12px]" style={{color:'var(--ink-4)'}}>HWP, DOCX, PDF, PNG, JPG (최대 50MB)</div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1"/>
+                <Btn variant="ghost" onClick={() => setUploadOpen(false)}>취소</Btn>
+                <Btn variant="primary" icon="upload" onClick={() => startUpload('업무_보고서_2026_04.hwp')}>파일 선택</Btn>
+              </div>
+            </div>
+          )}
+          {uploadStep === 1 && (
+            <div className="py-4">
+              <div className="flex items-center gap-3 mb-4 p-3 rounded-xl" style={{background:'#FBFBF7', border:'1px solid var(--line-2)'}}>
+                <FileTypeIcon ext="hwp" size={24} />
+                <div className="flex-1">
+                  <div className="text-[13.5px] font-semibold">{uploadFile}</div>
+                  <div className="mono text-[11px]" style={{color:'var(--ink-3)'}}>업로드 중...</div>
+                </div>
+              </div>
+              <div style={{height:6, borderRadius:3, background:'var(--line-2)', overflow:'hidden'}}>
+                <div style={{height:'100%', borderRadius:3, background:'var(--primary)', width:'65%', transition:'width 0.3s'}}/>
+              </div>
+              <div className="mono text-[11px] mt-2 text-center" style={{color:'var(--ink-3)'}}>파일 처리 중입니다…</div>
+            </div>
+          )}
+          {uploadStep === 2 && (
+            <div className="py-4 text-center">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{background:'#ECFDF5'}}>
+                <Icon name="check-circle-2" size={28} style={{color:'var(--good)'}} />
+              </div>
+              <div style={{fontSize:15, fontWeight:800, marginBottom:6}}>업로드 완료</div>
+              <div style={{fontSize:13, color:'var(--ink-3)', marginBottom:20}}>{uploadFile} 이(가) 파일함에 저장되었습니다.</div>
+              <Btn variant="primary" icon="folder-open" onClick={() => { setUploadOpen(false); showMsg('파일이 업로드되었습니다.'); }}>파일함에서 확인</Btn>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={ocrOpen} onClose={()=>setOcrOpen(false)} title="OCR 변환" width={640}>
+        <div className="p-6">
+          {ocrStep===0 && (
+            <div>
+              <div className="text-[13.5px] leading-relaxed mb-4" style={{color:'var(--ink-2)'}}>
+                스캔 문서나 수기 신청서를 업로드하세요. 로컬 AI가 자동으로 텍스트를 추출합니다.
+              </div>
+              <div className="rounded-xl flex flex-col items-center justify-center py-12"
+                style={{border:'2px dashed var(--line)', background:'#FBFBF7'}}>
+                <Icon name="image-plus" size={32} style={{color:'var(--ink-4)'}} />
+                <div className="mt-3 text-[13px] font-medium">PDF, PNG, JPG 파일을 끌어놓으세요</div>
+                <Btn variant="outline" icon="upload" className="mt-4" onClick={runOCR}>파일 선택</Btn>
+              </div>
+            </div>
+          )}
+          {ocrStep>0 && (
+            <div className="slide-up">
+              <div className="flex items-center gap-3 mb-4 p-3 rounded-lg" style={{background:'#FBFBF7', border:'1px solid var(--line-2)'}}>
+                <FileTypeIcon ext="png" size={22} />
+                <div className="flex-1">
+                  <div className="text-[13px] font-medium">수기_출석부_04월.png</div>
+                  <div className="mono text-[11px]" style={{color:'var(--ink-3)'}}>2.4 MB · 업로드 완료</div>
+                </div>
+                {ocrStep===3 && <Pill tone="good">완료</Pill>}
+              </div>
+              <div className="mono text-[11px] space-y-1 mb-4" style={{color:'var(--ink-3)'}}>
+                <div>{ocrStep>=1?'✓':'●'} 이미지 전처리 · 이진화 및 노이즈 제거</div>
+                <div>{ocrStep>=2?'✓':'●'} Tesseract OCR 텍스트 추출</div>
+                <div>{ocrStep>=3?'✓':'●'} 구조 분석 및 표 복원</div>
+              </div>
+              {ocrStep===3 && (
+                <div className="p-4 rounded-lg" style={{background:'#fff', border:'1px solid var(--line)'}}>
+                  <div className="mono text-[10.5px] uppercase tracking-wider mb-2" style={{color:'var(--ink-3)'}}>추출된 텍스트 (검토 후 저장)</div>
+                  <div className="text-[12.5px] leading-relaxed space-y-1" style={{color:'var(--ink)'}}>
+                    <div>[학사운영팀 출석부 - 2026년 4월]</div>
+                    <div>이상열 · 출근 09:02 / 퇴근 18:11</div>
+                    <div>김명자 · 출근 08:55 / 퇴근 18:20</div>
+                    <div>박서진 · 출근 09:10 / 퇴근 18:05</div>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2 mt-5">
+                <Btn variant="ghost" onClick={()=>setOcrOpen(false)}>취소</Btn>
+                <div className="flex-1" />
+                {ocrStep<3 && <Btn variant="outline" disabled icon="loader">처리 중...</Btn>}
+                {ocrStep===3 && <><Btn variant="outline" icon="edit-3">수정</Btn><Btn variant="primary" icon="save">저장</Btn></>}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+
+export default Files;
