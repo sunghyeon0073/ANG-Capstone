@@ -6,13 +6,43 @@
 
 ## 기술 스택
 
-| 영역 | 기술 |
-|------|------|
-| Backend | Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) |
-| Frontend | Vite 8, React 19 |
-| AI | Python 3.12, FastAPI, Ollama |
-| DB | MariaDB 12.0.2 |
-| 패키지 | `com.ang.Backend` |
+### Runtime
+| | 버전 |
+|--|------|
+| Node.js | 22.19.0 |
+| Java | 21 |
+| Python | 3.12.4 |
+
+### Frontend
+| 라이브러리 | 버전 |
+|-----------|------|
+| React | 19.2.5 |
+| React Router DOM | 7.14.2 |
+| Zustand | 5.0.12 |
+| Vite | 8.0.10 |
+| ESLint | 10.2.1 |
+
+### Backend
+| 라이브러리 | 버전 |
+|-----------|------|
+| Spring Boot | 3.4.0 |
+| JJWT | 0.12.6 |
+| Lombok | Spring Boot 관리 |
+| MariaDB Java Client | Spring Boot 관리 |
+
+### AI
+| 라이브러리 | 버전 |
+|-----------|------|
+| FastAPI | 0.115.12 |
+| Uvicorn | 0.34.3 |
+| Ollama | 0.4.8 |
+| Pydantic | 2.11.4 |
+| python-dotenv | 1.1.0 |
+
+### DB
+| | 버전 |
+|--|------|
+| MariaDB | 12.0.2 |
 
 ---
 
