@@ -1,0 +1,27 @@
+package com.ang.Backend;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+
+@SpringBootApplication
+public class SpringBootDeveloperApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SpringBootDeveloperApplication.class, args);
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onReady() {
+        System.out.println("\n" +
+            "========================================\n" +
+            "                                        \n" +
+            "   Backend server  켜졌어 !!            \n" +
+            "                                        \n" +
+            "   http://localhost:8080                \n" +
+            "                                        \n" +
+            "========================================\n"
+        );
+    }
+}

@@ -1,0 +1,49 @@
+### Gradle ###
+.gradle/
+build/
+Backend/.gradle/
+Backend/build/
+!Backend/gradle/wrapper/gradle-wrapper.jar
+!Backend/gradle/wrapper/gradle-wrapper.properties
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+### VS Code ###
+.vscode/
+
+### OS ###
+.DS_Store
+Thumbs.db
+*.stackdump
+
+### Spring Boot - 민감 정보 ###
+Backend/src/main/resources/application-local.yml
+Backend/src/main/resources/application-prod.yml
+*.env
+.env
+
+### 업로드 파일 ###
+Backend/uploads/
+
+### 로그 ###
+logs/
+*.log
+
+### 컴파일 결과물 ###
+*.class
+
+### Frontend ###
+Frontend/node_modules/
+
+### AI ###
+AI/__pycache__/
+AI/.env
+AI/venv/
+
+### Claude ###
+.claude/

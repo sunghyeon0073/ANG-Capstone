@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: Ang
+
+  profiles:
+    active: local   # 배포 시 prod 로 변경
+
+  datasource:
+    url: ${DB_URL:jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.mariadb.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MariaDBDialect
+    open-in-view: false
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration: 1800000    # 30분 (ms)
+  refresh-token-expiration: 604800000 # 7일 (ms)
+
+admin:
+  init:
+    password: ${ADMIN_INIT_PASSWORD}
+
+file:
+  upload-dir: ${FILE_UPLOAD_DIR:uploads}
+
+ollama:
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${OLLAMA_MODEL:llama3.2}
+  timeout: 120
+
+server:
+  port: 9090
+  servlet:
+    context-path: /api
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.springframework.security: debug
