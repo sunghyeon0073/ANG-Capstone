@@ -15,7 +15,7 @@ import { MyPage, Admin } from './pages/admin';
 import LoginPage from './pages/login';
 import SignupPage from './pages/signup';
 
-// ── 페이지별 사이드바 서브메뉴 ──────────────────────────────────────────────
+// ─ 페이지별 사이드바 서브메뉴 ──────────────────────────────────────────────
 const SIDEBAR_SUBS = {
   dashboard: [
     { id: 'overview',  label: '업무 현황',  icon: 'layout-dashboard' },
