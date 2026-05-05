@@ -1,8 +1,10 @@
-package com.ang.Backend.domain.user.controller;
+package com.ang.Backend.domain.user.Controller;
 
+import com.ang.Backend.common.exception.CustomException;
+import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
-import com.ang.Backend.domain.user.dto.ScopeDto;
-import com.ang.Backend.domain.user.dto.UserDto;
+import com.ang.Backend.domain.user.DTO.ScopeDto;
+import com.ang.Backend.domain.user.DTO.UserDto;
 import com.ang.Backend.domain.user.entity.Scope;
 import com.ang.Backend.domain.user.repository.ScopeRepository;
 import com.ang.Backend.domain.user.repository.UserMembershipRepository;
@@ -34,7 +36,7 @@ public class ScopeController {
     @GetMapping("/{id}/members")
     public ResponseEntity<ApiResponse<List<UserDto>>> getScopeMembers(@PathVariable Integer id) {
         Scope scope = scopeRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("부서를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
         List<UserDto> members = userMembershipRepository.findByScope(scope).stream()
                 .map(m -> userService.getUser(m.getUser().getUserId()))
                 .collect(Collectors.toList());

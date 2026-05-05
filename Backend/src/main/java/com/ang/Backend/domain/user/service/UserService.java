@@ -1,8 +1,10 @@
 package com.ang.Backend.domain.user.service;
 
 import com.ang.Backend.common.enums.UserStatus;
-import com.ang.Backend.domain.user.dto.UserDto;
-import com.ang.Backend.domain.user.dto.UserUpdateRequest;
+import com.ang.Backend.common.exception.CustomException;
+import com.ang.Backend.common.exception.ErrorCode;
+import com.ang.Backend.domain.user.DTO.UserDto;
+import com.ang.Backend.domain.user.DTO.UserUpdateRequest;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.entity.UserMembership;
 import com.ang.Backend.domain.user.entity.UserRole;
@@ -34,14 +36,14 @@ public class UserService {
 
     public UserDto getUser(Integer userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         return toDto(user);
     }
 
     @Transactional
     public UserDto updateUser(Integer userId, UserUpdateRequest req) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         if (req.getName() != null) user.setName(req.getName());
         if (req.getEmail() != null) user.setEmail(req.getEmail());
         if (req.getPhone() != null) user.setPhone(req.getPhone());
@@ -53,7 +55,7 @@ public class UserService {
     @Transactional
     public void anonymize(Integer userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         String anonymizedName = anonymizeName(user.getName());
         user.setName(anonymizedName);
         user.setEmail(null);
@@ -67,7 +69,7 @@ public class UserService {
     @Transactional
     public void approveUser(Integer userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
     }

@@ -1,8 +1,10 @@
-package com.ang.Backend.domain.user.controller;
+package com.ang.Backend.domain.user.Controller;
 
+import com.ang.Backend.common.exception.CustomException;
+import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
-import com.ang.Backend.domain.user.dto.RoleUpdateRequest;
-import com.ang.Backend.domain.user.dto.UserDto;
+import com.ang.Backend.domain.user.DTO.RoleUpdateRequest;
+import com.ang.Backend.domain.user.DTO.UserDto;
 import com.ang.Backend.domain.user.entity.Role;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.entity.UserRole;
@@ -12,6 +14,7 @@ import com.ang.Backend.domain.user.repository.UserRoleRepository;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -42,22 +45,23 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok("승인 완료되었습니다."));
     }
 
+    @Transactional
     @PatchMapping("/users/{id}/role")
     public ResponseEntity<ApiResponse<Void>> updateUserRole(@PathVariable Integer id,
                                                              @RequestBody RoleUpdateRequest req) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         Role role = roleRepository.findByRoleLevel(req.getRoleLevel())
                 .orElseGet(() -> roleRepository.save(
                         Role.builder().name(getRoleName(req.getRoleLevel())).roleLevel(req.getRoleLevel()).build()));
 
         List<UserRole> existing = userRoleRepository.findByUser(user);
-        userRoleRepository.deleteAll(existing);
-
-        if (!existing.isEmpty()) {
-            userRoleRepository.save(new UserRole(user, existing.get(0).getScope(), role));
+        if (existing.isEmpty()) {
+            throw new CustomException(ErrorCode.ROLE_NOT_FOUND);
         }
+        userRoleRepository.deleteAll(existing);
+        userRoleRepository.save(new UserRole(user, existing.get(0).getScope(), role));
         return ResponseEntity.ok(ApiResponse.ok("권한이 변경되었습니다."));
     }
 

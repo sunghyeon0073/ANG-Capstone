@@ -1,8 +1,8 @@
-package com.ang.Backend.domain.user.controller;
+package com.ang.Backend.domain.user.Controller;
 
 import com.ang.Backend.common.response.ApiResponse;
-import com.ang.Backend.domain.user.dto.UserDto;
-import com.ang.Backend.domain.user.dto.UserUpdateRequest;
+import com.ang.Backend.domain.user.DTO.UserDto;
+import com.ang.Backend.domain.user.DTO.UserUpdateRequest;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
