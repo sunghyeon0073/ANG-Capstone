@@ -1,9 +1,9 @@
-package com.ang.Backend.domain.user.repository;
+package com.ang.Backend.domain.role.repository;
 
-import com.ang.Backend.domain.user.entity.Scope;
+import com.ang.Backend.domain.role.entity.UserRole;
+import com.ang.Backend.domain.role.entity.id.UserRoleId;
+import com.ang.Backend.domain.scope.entity.Scope;
 import com.ang.Backend.domain.user.entity.User;
-import com.ang.Backend.domain.user.entity.UserRole;
-import com.ang.Backend.domain.user.entity.id.UserRoleId;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

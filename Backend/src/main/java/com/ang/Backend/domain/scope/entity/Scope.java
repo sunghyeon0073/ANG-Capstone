@@ -1,4 +1,4 @@
-package com.ang.Backend.domain.user.entity;
+package com.ang.Backend.domain.scope.entity;
 
 import com.ang.Backend.common.enums.ScopeType;
 import jakarta.persistence.*;

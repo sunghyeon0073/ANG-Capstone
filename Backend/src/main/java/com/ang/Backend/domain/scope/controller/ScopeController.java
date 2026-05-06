@@ -1,13 +1,13 @@
-package com.ang.Backend.domain.user.Controller;
+package com.ang.Backend.domain.scope.controller;
 
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
-import com.ang.Backend.domain.user.DTO.ScopeDto;
-import com.ang.Backend.domain.user.DTO.UserDto;
-import com.ang.Backend.domain.user.entity.Scope;
-import com.ang.Backend.domain.user.repository.ScopeRepository;
-import com.ang.Backend.domain.user.repository.UserMembershipRepository;
+import com.ang.Backend.domain.scope.dto.ScopeDto;
+import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.repository.ScopeRepository;
+import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
+import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

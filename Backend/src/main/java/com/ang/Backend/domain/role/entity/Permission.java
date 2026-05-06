@@ -1,4 +1,4 @@
-package com.ang.Backend.domain.user.entity;
+package com.ang.Backend.domain.role.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

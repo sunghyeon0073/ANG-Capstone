@@ -1,6 +1,6 @@
-package com.ang.Backend.domain.user.repository;
+package com.ang.Backend.domain.role.repository;
 
-import com.ang.Backend.domain.user.entity.Role;
+import com.ang.Backend.domain.role.entity.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

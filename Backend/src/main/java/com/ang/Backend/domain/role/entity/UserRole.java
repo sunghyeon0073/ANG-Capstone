@@ -1,6 +1,8 @@
-package com.ang.Backend.domain.user.entity;
+package com.ang.Backend.domain.role.entity;
 
-import com.ang.Backend.domain.user.entity.id.UserRoleId;
+import com.ang.Backend.domain.role.entity.id.UserRoleId;
+import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 

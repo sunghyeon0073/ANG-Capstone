@@ -1,4 +1,4 @@
-package com.ang.Backend.domain.user.DTO;
+package com.ang.Backend.domain.user.dto;
 
 import com.ang.Backend.common.enums.UserStatus;
 import com.ang.Backend.domain.user.entity.User;

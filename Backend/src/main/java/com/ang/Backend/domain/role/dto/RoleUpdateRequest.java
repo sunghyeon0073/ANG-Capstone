@@ -1,4 +1,4 @@
-package com.ang.Backend.domain.user.DTO;
+package com.ang.Backend.domain.role.dto;
 
 import lombok.Getter;
 

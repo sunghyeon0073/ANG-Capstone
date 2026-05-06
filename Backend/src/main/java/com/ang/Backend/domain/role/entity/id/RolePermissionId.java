@@ -1,4 +1,4 @@
-package com.ang.Backend.domain.user.entity.id;
+package com.ang.Backend.domain.role.entity.id;
 
 import java.io.Serializable;
 import java.util.Objects;

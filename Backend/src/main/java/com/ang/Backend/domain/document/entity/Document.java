@@ -1,6 +1,6 @@
 package com.ang.Backend.domain.document.entity;
 
-import com.ang.Backend.domain.user.entity.Scope;
+import com.ang.Backend.domain.scope.entity.Scope;
 import com.ang.Backend.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;

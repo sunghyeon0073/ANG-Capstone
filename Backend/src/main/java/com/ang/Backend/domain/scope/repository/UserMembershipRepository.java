@@ -1,8 +1,8 @@
-package com.ang.Backend.domain.user.repository;
+package com.ang.Backend.domain.scope.repository;
 
-import com.ang.Backend.domain.user.entity.Scope;
+import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.user.entity.User;
-import com.ang.Backend.domain.user.entity.UserMembership;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

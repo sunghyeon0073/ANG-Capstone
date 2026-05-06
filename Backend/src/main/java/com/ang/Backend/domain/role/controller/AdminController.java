@@ -1,16 +1,16 @@
-package com.ang.Backend.domain.user.Controller;
+package com.ang.Backend.domain.role.controller;
 
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
-import com.ang.Backend.domain.user.DTO.RoleUpdateRequest;
-import com.ang.Backend.domain.user.DTO.UserDto;
-import com.ang.Backend.domain.user.entity.Role;
+import com.ang.Backend.domain.role.dto.RoleUpdateRequest;
+import com.ang.Backend.domain.role.entity.Role;
+import com.ang.Backend.domain.role.entity.UserRole;
+import com.ang.Backend.domain.role.repository.RoleRepository;
+import com.ang.Backend.domain.role.repository.UserRoleRepository;
+import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.entity.User;
-import com.ang.Backend.domain.user.entity.UserRole;
-import com.ang.Backend.domain.user.repository.RoleRepository;
 import com.ang.Backend.domain.user.repository.UserRepository;
-import com.ang.Backend.domain.user.repository.UserRoleRepository;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

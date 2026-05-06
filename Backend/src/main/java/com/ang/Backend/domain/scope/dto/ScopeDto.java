@@ -1,7 +1,7 @@
-package com.ang.Backend.domain.user.DTO;
+package com.ang.Backend.domain.scope.dto;
 
 import com.ang.Backend.common.enums.ScopeType;
-import com.ang.Backend.domain.user.entity.Scope;
+import com.ang.Backend.domain.scope.entity.Scope;
 import lombok.Builder;
 import lombok.Getter;
 
