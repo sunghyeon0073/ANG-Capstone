@@ -5,6 +5,7 @@ on:
     branches:
       - dev-server
       - dev
+      - test-server
 
 jobs:
   deploy:
