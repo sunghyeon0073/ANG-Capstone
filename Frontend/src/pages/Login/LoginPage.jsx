@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import useAppStore from '../../store'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
+  const [empNo, setEmpNo] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,7 +18,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ empNo, password }),
       })
       const json = await res.json()
       if (!json.success) {
@@ -42,12 +42,12 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>이메일</label>
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>학번</label>
             <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="email@ang.lab"
+              type="text"
+              value={empNo}
+              onChange={e => setEmpNo(e.target.value)}
+              placeholder="학번을 입력하세요"
               required
               style={{ width: '100%', marginTop: 6, padding: '10px 12px', border: '1.5px solid #ddd', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }}
             />
