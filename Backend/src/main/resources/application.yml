@@ -3,12 +3,12 @@ spring:
     name: Ang
 
   profiles:
-    active: local   # 일단 로컬 해놨음 배포할떼 프로드 변경하면될드ㅡㅅ?
+    active: local   #todo 일단 로컬 해놨음 배포할떼 프로드 변경하면될드ㅡㅅ?
 
   datasource:
     url: ${DB_URL:jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD}
+    password: ${DB_PASSWORD:Ang_admin}
     driver-class-name: org.mariadb.jdbc.Driver
 
   jpa:
@@ -26,11 +26,11 @@ spring:
       enabled: true
       max-file-size: 50MB
       max-request-size: 100MB
-
-jwt:
-  secret: ${JWT_SECRET}
-  access-token-expiration: 1800000    # 30분 (ms)
-  refresh-token-expiration: 604800000 # 7일 (ms)
+#
+#jwt:
+#  secret: ${JWT_SECRET}
+#  access-token-expiration: 1800000    # 30분 (ms)
+#  refresh-token-expiration: 604800000 # 7일 (ms)
 
 admin:
   init:
