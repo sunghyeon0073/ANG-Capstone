@@ -6,43 +6,13 @@
 
 ## 기술 스택
 
-### Runtime
-| | 버전 |
-|--|------|
-| Node.js | 22.19.0 |
-| Java | 21 |
-| Python | 3.12.4 |
-
-### Frontend
-| 라이브러리 | 버전 |
-|-----------|------|
-| React | 19.2.5 |
-| React Router DOM | 7.14.2 |
-| Zustand | 5.0.12 |
-| Vite | 8.0.10 |
-| ESLint | 10.2.1 |
-
-### Backend
-| 라이브러리 | 버전 |
-|-----------|------|
-| Spring Boot | 3.4.0 |
-| JJWT | 0.12.6 |
-| Lombok | Spring Boot 관리 |
-| MariaDB Java Client | Spring Boot 관리 |
-
-### AI
-| 라이브러리 | 버전 |
-|-----------|------|
-| FastAPI | 0.115.12 |
-| Uvicorn | 0.34.3 |
-| Ollama | 0.4.8 |
-| Pydantic | 2.11.4 |
-| python-dotenv | 1.1.0 |
-
-### DB
-| | 버전 |
-|--|------|
-| MariaDB | 12.0.2 |
+| 영역 | 기술 |
+|------|------|
+| Backend | Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) |
+| Frontend | Vite 8, React 19 |
+| AI | Python 3.12, FastAPI, Ollama |
+| DB | MariaDB 12.0.2 |
+| 패키지 | `com.ang.Backend` |
 
 ---
 
@@ -100,7 +70,7 @@ uvicorn main:app --reload --port 8888
 ```
 사용자
   ↓ 브라우저에서 클릭
-Frontend (5500)
+Frontend (5173)
   ↓ /api 요청 → Vite 프록시
 Backend (9090)
   ↓ AI 기능 필요할 때
@@ -145,111 +115,6 @@ Backend/src/main/java/com/ang/Backend/
 
 ---
 
-## 프론트엔드 구조
-
-```
-Frontend/src/
-├── assets/          ← 이미지, 폰트 등 정적 파일
-├── components/
-│   └── common/      ← 여러 페이지에서 재사용하는 UI (Button, Modal 등)
-├── hooks/           ← 커스텀 훅 (useXxx.js)
-├── pages/           ← 라우트별 페이지 컴포넌트
-│   ├── Home/
-│   │   └── Home.jsx
-│   └── NotFound/
-│       └── NotFound.jsx
-├── router/
-│   └── index.jsx    ← 페이지 경로(URL) 설정
-├── services/
-│   └── api.js       ← 백엔드 API 호출 함수
-├── store/
-│   └── index.js     ← 전역 상태 (Zustand)
-├── styles/
-│   └── global.css   ← 전체 공통 스타일
-├── utils/           ← 날짜 포맷, 유효성 검사 등 공통 함수
-├── App.jsx
-└── main.jsx
-```
-
-### 페이지 추가 방법
-
-**1. 페이지 파일 생성** `src/pages/Board/Board.jsx`
-
-```jsx
-function Board() {
-  return <div>게시판 페이지</div>
-}
-
-export default Board
-```
-
-**2. 라우터에 경로 등록** `src/router/index.jsx`
-
-```jsx
-import Board from '../pages/Board/Board'
-
-const router = createBrowserRouter([
-  { path: '/',      element: <Home /> },
-  { path: '/board', element: <Board /> },  // 추가
-  { path: '*',      element: <NotFound /> },
-])
-```
-
----
-
-### 전역 상태 사용 방법 (Zustand)
-
-**상태 추가** `src/store/index.js`
-
-```js
-const useAppStore = create((set) => ({
-  user: null,
-  setUser: (user) => set({ user }),
-  clearUser: () => set({ user: null }),
-
-  // 상태 추가 예시
-  count: 0,
-  increment: () => set((state) => ({ count: state.count + 1 })),
-}))
-```
-
-**컴포넌트에서 사용**
-
-```jsx
-import useAppStore from '../../store'
-
-function MyComponent() {
-  const { user, setUser } = useAppStore()
-
-  return <div>{user ? user.name : '로그인 필요'}</div>
-}
-```
-
----
-
-### API 호출 방법
-
-`src/services/api.js`의 `api` 객체를 사용합니다.  
-모든 요청은 Vite 프록시를 통해 백엔드(9090)로 전달됩니다.
-
-```js
-import { api } from '../../services/api'
-
-// GET
-const data = await api.get('/health')
-
-// POST
-const result = await api.post('/users/login', { email, password })
-
-// PUT
-await api.put('/users/1', { name: '홍길동' })
-
-// DELETE
-await api.delete('/users/1')
-```
-
----
-
 ## 로컬 환경 설정
 
 ### 백엔드 환경변수
@@ -264,7 +129,7 @@ DB_PASSWORD: 비밀번호
 JWT_SECRET: 256비트-이상의-시크릿-키
 ADMIN_INIT_PASSWORD: 초기관리자비밀번호
 OLLAMA_BASE_URL: http://localhost:11434
-OLLAMA_MODEL: qwen3:8b
+OLLAMA_MODEL: qwen3:14b
 ```
 
 ### AI 환경변수
@@ -272,7 +137,7 @@ OLLAMA_MODEL: qwen3:8b
 `AI/.env.example` 파일을 복사해서 `.env` 로 이름 변경 후 값을 채워주세요.
 
 ```
-OLLAMA_MODEL=qwen3:8b
+OLLAMA_MODEL=qwen3:14b
 OLLAMA_HOST=http://localhost:11434
 ```
 
