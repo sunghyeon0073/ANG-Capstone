@@ -129,7 +129,7 @@ DB_PASSWORD: 비밀번호
 JWT_SECRET: 256비트-이상의-시크릿-키
 ADMIN_INIT_PASSWORD: 초기관리자비밀번호
 OLLAMA_BASE_URL: http://localhost:11434
-OLLAMA_MODEL: llama3.2
+OLLAMA_MODEL: qwen3:14b
 ```
 
 ### AI 환경변수
@@ -137,7 +137,7 @@ OLLAMA_MODEL: llama3.2
 `AI/.env.example` 파일을 복사해서 `.env` 로 이름 변경 후 값을 채워주세요.
 
 ```
-OLLAMA_MODEL=llama3.2
+OLLAMA_MODEL=qwen3:14b
 OLLAMA_HOST=http://localhost:11434
 ```
 
