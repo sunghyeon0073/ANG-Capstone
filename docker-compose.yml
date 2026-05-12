@@ -26,7 +26,7 @@ services:
       JWT_SECRET: change-this-secret-value-at-least-32-bytes-long
       ADMIN_INIT_PASSWORD: admin1234
       OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: llama3.2
+      OLLAMA_MODEL: qwen3:14b
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -53,6 +53,7 @@ services:
       - "8888:8888"
     environment:
       OLLAMA_MODEL: qwen3:14b
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_HOST: http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
