@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import TopNavBar from './TopNavBar'
 import Sidebar from './Sidebar'
 import Home from './pages/Home'
@@ -62,17 +63,32 @@ const getFirstSubPage = (page) => {
   return items[0]?.id || page
 }
 
-export default function Dashboard({ user, onLogout }) {
+export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState('home')
   const [selectedSubPage, setSelectedSubPage] = useState(getFirstSubPage('home'))
+  const [user, setUser] = useState(null)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user')
+    if (storedUser) {
+      setUser(JSON.parse(storedUser))
+    } else {
+      navigate('/')
+    }
+  }, [navigate])
 
   const handlePageChange = (page) => {
     setCurrentPage(page)
     setSelectedSubPage(getFirstSubPage(page))
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('user')
+    navigate('/')
+  }
+
   const renderPage = () => {
-    // 홈 페이지의 서브페이지 처리
     if (currentPage === 'home' && selectedSubPage === 'home-memo') {
       return <Memo />
     }
@@ -103,11 +119,15 @@ export default function Dashboard({ user, onLogout }) {
     }
   }
 
+  if (!user) {
+    return null
+  }
+
   return (
     <div className="dashboard">
       <TopNavBar
         user={user}
-        onLogout={onLogout}
+        onLogout={handleLogout}
         currentPage={currentPage}
         onPageChange={handlePageChange}
       />

@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
-export default function SignUp({ onLoginClick }) {
+export default function SignUp() {
   const [formData, setFormData] = useState({
     name: '',
     employeeId: '',
@@ -10,6 +11,7 @@ export default function SignUp({ onLoginClick }) {
     password: '',
     passwordConfirm: ''
   })
+  const navigate = useNavigate()
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -26,7 +28,12 @@ export default function SignUp({ onLoginClick }) {
       return
     }
     console.log('회원가입:', formData)
-    // 회원가입 로직
+    // TODO: 나중에 백엔드 API로 교체
+    navigate('/login')
+  }
+
+  const handleLoginClick = () => {
+    navigate('/login')
   }
 
   return (
@@ -139,7 +146,7 @@ export default function SignUp({ onLoginClick }) {
 
         <div className="auth-footer">
           <p>이미 회원이신가요?</p>
-          <button className="btn btn-secondary" onClick={onLoginClick}>
+          <button className="btn btn-secondary" onClick={handleLoginClick}>
             로그인
           </button>
         </div>
