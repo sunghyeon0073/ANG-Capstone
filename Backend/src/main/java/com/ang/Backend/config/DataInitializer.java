@@ -1,39 +1,69 @@
 package com.ang.Backend.config;
 
-import com.ang.Backend.domain.user.DAO.MemberRepository;
-import com.ang.Backend.domain.user.entity.Member;
+import com.ang.Backend.common.enums.ScopeType;
+import com.ang.Backend.domain.role.entity.Role;
+import com.ang.Backend.domain.role.repository.RoleRepository;
+import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
-@Component
+@Slf4j
+@Configuration
 @RequiredArgsConstructor
-public class DataInitializer implements ApplicationRunner {
+public class DataInitializer {
 
-    private final MemberRepository memberRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final RoleRepository roleRepository;
+    private final ScopeRepository scopeRepository;
 
-    @Override
-    public void run(ApplicationArguments args) {
-        init("admin001", "김철수", "kim@ang.lab",  "팀장", "김철수");
-        init("admin002", "이영희", "lee@ang.lab",  "팀원", "이영희");
-        init("admin003", "박민준", "park@ang.lab", "팀원", "박민준");
-        init("2401028",  "김성현", "2401028@ang.lab", "팀원", "2401028");
-        init("1901153",  "성수찬", "1901153@ang.lab", "팀원", "1901153");
-        init("2001330",  "김재우", "2001330@ang.lab", "팀원", "2001330");
-        init("2301078",  "이상열", "2301078@ang.lab", "팀원", "2301078");
-        init("2201073",  "임건수", "2201073@ang.lab", "팀원", "2201073");
-        init("2201313",  "김광민", "2201313@ang.lab", "팀원", "2201313");
+    @Bean
+    public CommandLineRunner initData() {
+        return args -> {
+            initRoles();
+            initScopes();
+        };
     }
 
-    private void init(String empNo, String name, String email, String role, String rawPw) {
-        if (memberRepository.existsByEmpNo(empNo)) return;
+    private void initRoles() {
+        insertRoleIfAbsent(0,   "일반",      "일반 사용자 (팀원, 실무자)");
+        insertRoleIfAbsent(50,  "관리자",     "부서 관리자 (팀장)");
+        insertRoleIfAbsent(100, "최고관리자", "시스템 전체 운영자");
+    }
 
-        Member member = memberRepository.findByEmail(email)
-                .orElse(Member.builder().name(name).email(email).role(role).password("").build());
-        member.updateCredentials(empNo, passwordEncoder.encode(rawPw));
-        memberRepository.save(member);
+    private void initScopes() {
+        insertScopeIfAbsent("COMPANY01", "ANG",        ScopeType.COMPANY,    null);
+        insertScopeIfAbsent("DEPT01",    "뭐시기팀",     ScopeType.DEPARTMENT, "COMPANY01");
+        insertScopeIfAbsent("DEPT02",    "뭐시기2팀",     ScopeType.DEPARTMENT, "COMPANY01");
+        insertScopeIfAbsent("DEPT03",    "뭐시기3팀",   ScopeType.DEPARTMENT, "COMPANY01");
+    }
+
+    private void insertRoleIfAbsent(int level, String name, String description) {
+        if (roleRepository.findByRoleLevel(level).isEmpty()) {
+            roleRepository.save(Role.builder()
+                    .name(name)
+                    .roleLevel(level)
+                    .description(description)
+                    .build());
+            log.info("[DataInitializer] 역할 생성: {} (level={})", name, level);
+        }
+    }
+
+    private void insertScopeIfAbsent(String code, String name, ScopeType type, String parentCode) {
+        if (scopeRepository.existsByScopeCode(code)) return;
+
+        Scope parent = parentCode != null
+                ? scopeRepository.findByScopeCode(parentCode).orElse(null)
+                : null;
+
+        scopeRepository.save(Scope.builder()
+                .scopeCode(code)
+                .name(name)
+                .scopeType(type)
+                .parentScope(parent)
+                .build());
+        log.info("[DataInitializer] 부서 생성: {} ({})", name, code);
     }
 }
