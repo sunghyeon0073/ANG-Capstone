@@ -25,12 +25,16 @@ services:
       DB_PASSWORD: ang1234
       JWT_SECRET: change-this-secret-value-at-least-32-bytes-long
       ADMIN_INIT_PASSWORD: admin1234
+      FILE_UPLOAD_DIR: /app/uploads
+      AI_BASE_URL: http://ai:8888
       OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: llama3.2
+      OLLAMA_MODEL: qwen3:8b
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       - db
+    volumes:
+      - ./uploads:/app/uploads
 
   frontend:
     build:
@@ -52,10 +56,13 @@ services:
     ports:
       - "8888:8888"
     environment:
-      OLLAMA_MODEL: qwen3:14b
+      OLLAMA_MODEL: qwen3:8b
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_HOST: http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./uploads:/app/uploads
 
 volumes:
   mariadb_data:

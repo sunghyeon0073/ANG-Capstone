@@ -241,80 +241,6 @@ Frontend/src/
 └── index.css
 ```
 
-### 페이지 추가 방법
-
-**1. 페이지 파일 생성** `src/components/pages/Board.jsx`
-
-```jsx
-function Board() {
-  return <div>게시판 페이지</div>
-}
-
-export default Board
-```
-
-**2. 라우터에 경로 등록** `src/router/router.jsx`
-
-```jsx
-import Board from '../components/pages/Board'
-
-const router = createBrowserRouter([
-  { path: '/',          element: <Login /> },
-  { path: '/login',     element: <Login /> },
-  { path: '/signup',    element: <SignUp /> },
-  { path: '/dashboard', element: <Dashboard /> },
-])
-```
-
----
-
-### 전역 상태 사용 방법 (Zustand)
-
-**상태 추가** `src/store/store.js`
-
-```js
-const useAppStore = create((set) => ({
-  user: JSON.parse(localStorage.getItem('ang_user') || 'null'),
-  setUser: (user) => {
-    localStorage.setItem('ang_user', JSON.stringify(user))
-    set({ user })
-  },
-  clearUser: () => {
-    localStorage.removeItem('ang_user')
-    set({ user: null })
-  },
-}))
-```
-
-**컴포넌트에서 사용**
-
-```jsx
-import useAppStore from '../store/store'
-
-function MyComponent() {
-  const { user, setUser } = useAppStore()
-
-  return <div>{user ? user.name : '로그인 필요'}</div>
-}
-```
-
----
-
-### API 호출 방법
-
-`src/api/authApi.js` 또는 `src/api/axios.js`를 사용합니다.
-
-```js
-import api from '../api/axios'
-import { login, signUp } from '../api/authApi'
-
-// 로그인
-const response = await login({ empNo: 'EMP001', password: '1234' })
-
-// 직접 호출
-const data = await api.get('/api/health')
-```
-
 ---
 
 ## API 목록
@@ -323,8 +249,8 @@ const data = await api.get('/api/health')
 |--------|------|------|
 | GET | `/api/health` | 백엔드 서버 상태 확인 |
 | POST | `/api/auth/login` | 로그인 |
-| POST | `/api/auth/signup` | 회원가입 |
-| GET | `/api/member/me` | 내 정보 조회 |
+| POST | `/api/auth/register` | 회원가입 |
+| GET | `/api/user/me` | 내 정보 조회 |
 | POST | `/chat` | AI 채팅 (AI 서버) |
 | GET | `/health` | AI 서버 상태 확인 |
 
