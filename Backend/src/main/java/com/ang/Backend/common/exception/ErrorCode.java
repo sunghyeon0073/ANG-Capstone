@@ -21,6 +21,7 @@ public enum ErrorCode {
 
     // 회원
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+    MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "회원을 찾을 수 없습니다."),
     DUPLICATE_EMP_NO(HttpStatus.CONFLICT, "이미 사용 중인 사번입니다."),
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     USER_PENDING(HttpStatus.FORBIDDEN, "관리자 승인 대기 중입니다."),
