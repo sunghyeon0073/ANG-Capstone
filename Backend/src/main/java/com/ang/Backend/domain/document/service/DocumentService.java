@@ -1,65 +1,64 @@
 package com.ang.Backend.domain.document.service;
 
-import com.ang.Backend.common.exception.CustomException;
-import com.ang.Backend.common.exception.ErrorCode;
-import com.ang.Backend.domain.document.DTO.DocumentParseResponse;
+import com.ang.Backend.domain.document.dto.DocumentDto;
+import com.ang.Backend.domain.document.entity.DocumentEntity;
+import com.ang.Backend.domain.document.repository.DocumentRepository;
+import com.ang.Backend.domain.file.service.FileService;
+import com.ang.Backend.domain.user.entity.User;
+import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
+import com.ang.Backend.domain.scope.entity.UserMembership;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class DocumentService {
+    private final DocumentRepository documentRepository;
+    private final FileService fileService;
+    private final UserMembershipRepository userMembershipRepository;
 
-    private static final String CONTAINER_UPLOAD_DIR = "/app/uploads";
+    @Transactional
+    public Long create(String title, MultipartFile file, User user) throws Exception {
+        var storedFile = fileService.storeFile(file);
 
-    private final RestTemplate restTemplate;
-
-    @Value("${file.upload-dir}")
-    private String uploadDir;
-
-    @Value("${ai.base-url}")
-    private String aiBaseUrl;
-
-    public DocumentParseResponse saveAndParse(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new CustomException(ErrorCode.INVALID_INPUT);
+        com.ang.Backend.domain.scope.entity.Scope userScope = null;
+        if (user != null) {
+            userScope = userMembershipRepository.findByUser(user).stream()
+                    .findFirst()
+                    .map(UserMembership::getScope)
+                    .orElse(null);
         }
 
-        String originalName = StringUtils.cleanPath(file.getOriginalFilename() == null ? "document" : file.getOriginalFilename());
-        String savedName = UUID.randomUUID() + "_" + originalName;
+        DocumentEntity doc = DocumentEntity.builder()
+                .title(title)
+                .file(storedFile)
+                .owner(user)
+                .scope(userScope)
+                .originalContent("")
+                .build();
 
-        try {
-            Path dir = Paths.get(uploadDir);
-            Files.createDirectories(dir);
+        return documentRepository.save(doc).getDocId();
+    }
 
-            Path savePath = dir.resolve(savedName).normalize();
-            file.transferTo(savePath.toFile());
-        } catch (IOException e) {
-            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
+    @Transactional
+    public void update(Long id, DocumentDto.UpdateRequest dto) {
+        DocumentEntity doc = documentRepository.findById(id).orElseThrow();
+        doc.updateContent(dto.getTitle(), dto.getContent());
+    }
+
+    // [이 메서드가 누락되어 에러 발생]
+    @Transactional
+    public void delete(Long id) {
+        DocumentEntity doc = documentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
+
+        // 연결된 실제 파일도 삭제
+        if (doc.getFile() != null) {
+            fileService.deletePhysicalFile(doc.getFile());
         }
-
-        String containerFilePath = CONTAINER_UPLOAD_DIR + "/" + savedName;
-        Map<String, String> body = new HashMap<>();
-        body.put("file_path", containerFilePath);
-
-        String aiResponse = restTemplate.postForObject(
-                aiBaseUrl + "/parse-document",
-                body,
-                String.class
-        );
-
-        return new DocumentParseResponse(savedName, containerFilePath, aiResponse);
+        documentRepository.delete(doc);
     }
 }
