@@ -40,7 +40,7 @@ file:
 
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  model: ${OLLAMA_MODEL:llama3.2}
+  model: ${OLLAMA_MODEL:qwen3:14b}
   timeout: 120
 
 server:
