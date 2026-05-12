@@ -38,9 +38,12 @@ admin:
 file:
   upload-dir: ${FILE_UPLOAD_DIR:uploads}
 
+ai:
+  base-url: ${AI_BASE_URL:http://localhost:8888}
+
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  model: ${OLLAMA_MODEL:qwen3:14b}
+  model: ${OLLAMA_MODEL:qwen3:8b}
   timeout: 120
 
 server:

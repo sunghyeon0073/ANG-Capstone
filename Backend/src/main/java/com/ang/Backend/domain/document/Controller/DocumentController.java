@@ -17,7 +17,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
 
-    @PostMapping("/parse")
+    @PostMapping({"/upload", "/parse"})
     public ApiResponse<DocumentParseResponse> parseDocument(@RequestParam("file") MultipartFile file) {
         return ApiResponse.ok("Document parsed successfully.", documentService.saveAndParse(file));
     }
