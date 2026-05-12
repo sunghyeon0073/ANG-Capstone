@@ -14,14 +14,7 @@ public class SpringBootDeveloperApplication {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onReady() {
-        System.out.println("\n" +
-            "========================================\n" +
-            "                                        \n" +
-            "   Backend server  켜졌어 !!            \n" +
-            "                                        \n" +
-            "   http://localhost:8080                \n" +
-            "                                        \n" +
-            "========================================\n"
+        System.out.println(
         );
     }
 }

@@ -27,6 +27,7 @@ public enum ErrorCode {
     USER_ANONYMIZED(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
     INVALID_SCOPE_CODE(HttpStatus.BAD_REQUEST, "유효하지 않은 부서 코드입니다."),
     PASSWORD_POLICY_VIOLATION(HttpStatus.BAD_REQUEST, "비밀번호 정책을 위반했습니다. (6자 이상 24자 이하, 영문+특수문자 조합)"),
+    PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호와 비밀번호 확인이 일치하지 않습니다."),
 
     // 부서/스코프
     SCOPE_NOT_FOUND(HttpStatus.NOT_FOUND, "부서/조직을 찾을 수 없습니다."),
