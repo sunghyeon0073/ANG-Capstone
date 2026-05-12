@@ -3,7 +3,7 @@ spring:
     name: Ang
 
   profiles:
-    active: local   # 일단 로컬 해놨음 배포할떼 프로드 변경하면될드ㅡㅅ?
+    active: local   # 배포 시 prod 로 변경
 
   datasource:
     url: ${DB_URL:jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}

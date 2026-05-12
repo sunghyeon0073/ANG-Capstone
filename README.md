@@ -9,16 +9,17 @@
 ### Runtime
 | | 버전 |
 |--|------|
-| Node.js | 22.19.0 |
+| Node.js | 22+ |
 | Java | 21 |
-| Python | 3.12.4 |
+| Python | 3.12+ |
 
 ### Frontend
 | 라이브러리 | 버전 |
 |-----------|------|
 | React | 19.2.5 |
-| React Router DOM | 7.14.2 |
-| Zustand | 5.0.12 |
+| React Router DOM | 7.15.0 |
+| Axios | 1.16.0 |
+| React Icons | 5.6.0 |
 | Vite | 8.0.10 |
 | ESLint | 10.2.1 |
 
@@ -42,7 +43,7 @@
 ### DB
 | | 버전 |
 |--|------|
-| MariaDB | 12.0.2 |
+| MariaDB | 12.x |
 
 ---
 
@@ -58,23 +59,84 @@ Ang/
 
 ---
 
+## 로컬 환경 설정
+
+### 1. MariaDB 설치 및 설정
+
+#### Windows 서비스로 설치 (권장)
+
+```powershell
+winget install MariaDB.Server
+```
+
+설치 후 서비스 등록 및 시작:
+
+```powershell
+& "C:\Program Files\MariaDB 12.2\bin\mysqld.exe" --install MariaDB
+Start-Service -Name "MariaDB"
+```
+
+DB 생성:
+
+```powershell
+& "C:\Program Files\MariaDB 12.2\bin\mysql.exe" -u root -p -e "CREATE DATABASE IF NOT EXISTS ang_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+#### MariaDB 서비스 상태 확인
+
+```powershell
+Get-Service -Name "MariaDB"
+```
+
+`Status`가 `Running`이면 완료.
+
+---
+
+### 2. 백엔드 환경변수 설정
+
+`Backend/src/main/resources/application-local.yml` 파일을 생성하고 아래 내용을 채워주세요.  
+이 파일은 `.gitignore`에 등록되어 있어 GitHub에 올라가지 않습니다.
+
+```yaml
+DB_URL: jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
+DB_USERNAME: root
+DB_PASSWORD: 비밀번호
+JWT_SECRET: 256비트-이상의-시크릿-키
+ADMIN_INIT_PASSWORD: 초기관리자비밀번호
+FILE_UPLOAD_DIR: uploads
+OLLAMA_BASE_URL: http://localhost:11434
+OLLAMA_MODEL: llama3.2
+```
+
+### 3. AI 환경변수 설정
+
+`AI/.env.example` 파일을 복사해서 `.env`로 이름 변경 후 값을 채워주세요.
+
+```
+OLLAMA_MODEL=llama3.2
+OLLAMA_HOST=http://localhost:11434
+```
+
+---
+
 ## 서버 실행 방법
 
-> CMD 창을 **3개** 열어서 각각 실행하세요.
+> CMD/PowerShell 창을 **3개** 열어서 각각 실행하세요.
 
 ### 1. 백엔드
 
-```cmd
-cd C:\JDEV\Ang\Backend
-gradlew.bat bootRun
+```powershell
+cd Backend
+.\gradlew.bat bootRun
 ```
 
 `Started SpringBootDeveloperApplication` 로그가 뜨면 완료
 
 ### 2. 프론트엔드
 
-```cmd
-cd C:\JDEV\Ang\Frontend
+```powershell
+cd Frontend
+npm install
 npm run dev
 ```
 
@@ -82,8 +144,8 @@ npm run dev
 
 ### 3. AI 서버
 
-```cmd
-cd C:\JDEV\Ang\AI
+```powershell
+cd AI
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8888
 ```
@@ -92,17 +154,14 @@ uvicorn main:app --reload --port 8888
 
 ---
 
-## 연동 테스트
-
-백엔드 + 프론트엔드 실행 후 `http://localhost:5500` 접속  
-**연결 테스트** 버튼을 누르면 백엔드 응답이 화면에 표시됩니다.
+## 서비스 흐름
 
 ```
-사용자
-  ↓ 브라우저에서 클릭
+사용자 브라우저
+  ↓
 Frontend (5500)
-  ↓ /api 요청 → Vite 프록시
-Backend (9090)
+  ↓ API 요청
+Backend (9090/api)
   ↓ AI 기능 필요할 때
 AI 서버 (8888)
   ↓
@@ -120,11 +179,12 @@ Backend/src/main/java/com/ang/Backend/
 │   ├── exception/      ← 에러 처리
 │   └── response/       ← 응답 형식 통일
 ├── config/             ← 설정 파일들
-│   ├── SecurityConfig  ← 보안 설정 (추후 활성화 예정)
-│   └── OllamaConfig    ← AI 연결 설정
-├── security/           ← JWT 로그인/토큰 (추후 활성화 예정)
+│   ├── SecurityConfig  ← 보안 설정
+│   ├── OllamaConfig    ← AI 연결 설정
+│   └── DataInitializer ← 초기 데이터 설정
+├── security/           ← JWT 로그인/토큰
 └── domain/             ← ⭐ 기능 개발은 여기에
-    └── user/           ← 예시 구조
+    └── user/
         ├── Controller/ ← ① 요청 받는 곳 (API 입구)
         ├── DTO/        ← ② 데이터 형식 정의
         ├── service/    ← ③ 실제 기능 로직
@@ -149,132 +209,50 @@ Backend/src/main/java/com/ang/Backend/
 
 ```
 Frontend/src/
-├── assets/          ← 이미지, 폰트 등 정적 파일
+├── api/
+│   ├── axios.js        ← Axios 인스턴스 (baseURL, 인터셉터)
+│   └── authApi.js      ← 로그인/회원가입 API 함수
 ├── components/
-│   └── common/      ← 여러 페이지에서 재사용하는 UI (Button, Modal 등)
-├── hooks/           ← 커스텀 훅 (useXxx.js)
-├── pages/           ← 라우트별 페이지 컴포넌트
-│   ├── Home/
-│   │   └── Home.jsx
-│   └── NotFound/
-│       └── NotFound.jsx
+│   ├── Dashboard.jsx   ← 대시보드 레이아웃
+│   ├── Login.jsx       ← 로그인 페이지
+│   ├── SignUp.jsx      ← 회원가입 페이지
+│   ├── Sidebar.jsx     ← 사이드바
+│   ├── TopNavBar.jsx   ← 상단 네비게이션
+│   └── pages/          ← 대시보드 내부 페이지
+│       ├── Home.jsx
+│       ├── Chat.jsx
+│       ├── Memo.jsx
+│       ├── Board.jsx
+│       ├── Calendar.jsx
+│       ├── Mail.jsx
+│       ├── DocumentWriter.jsx
+│       ├── ESignature.jsx
+│       ├── FileStorage.jsx
+│       ├── MyPage.jsx
+│       └── Organization.jsx
 ├── router/
-│   └── index.jsx    ← 페이지 경로(URL) 설정
-├── services/
-│   └── api.js       ← 백엔드 API 호출 함수
+│   └── router.jsx      ← 페이지 경로(URL) 설정
 ├── store/
-│   └── index.js     ← 전역 상태 (Zustand)
-├── styles/
-│   └── global.css   ← 전체 공통 스타일
-├── utils/           ← 날짜 포맷, 유효성 검사 등 공통 함수
+│   └── store.js        ← 전역 상태 (Zustand)
+├── hooks/              ← 커스텀 훅
+├── utils/              ← 공통 유틸 함수
 ├── App.jsx
-└── main.jsx
-```
-
-### 페이지 추가 방법
-
-**1. 페이지 파일 생성** `src/pages/Board/Board.jsx`
-
-```jsx
-function Board() {
-  return <div>게시판 페이지</div>
-}
-
-export default Board
-```
-
-**2. 라우터에 경로 등록** `src/router/index.jsx`
-
-```jsx
-import Board from '../pages/Board/Board'
-
-const router = createBrowserRouter([
-  { path: '/',      element: <Home /> },
-  { path: '/board', element: <Board /> },  // 추가
-  { path: '*',      element: <NotFound /> },
-])
+├── main.jsx
+└── index.css
 ```
 
 ---
 
-### 전역 상태 사용 방법 (Zustand)
+## API 목록
 
-**상태 추가** `src/store/index.js`
-
-```js
-const useAppStore = create((set) => ({
-  user: null,
-  setUser: (user) => set({ user }),
-  clearUser: () => set({ user: null }),
-
-  // 상태 추가 예시
-  count: 0,
-  increment: () => set((state) => ({ count: state.count + 1 })),
-}))
-```
-
-**컴포넌트에서 사용**
-
-```jsx
-import useAppStore from '../../store'
-
-function MyComponent() {
-  const { user, setUser } = useAppStore()
-
-  return <div>{user ? user.name : '로그인 필요'}</div>
-}
-```
-
----
-
-### API 호출 방법
-
-`src/services/api.js`의 `api` 객체를 사용합니다.  
-모든 요청은 Vite 프록시를 통해 백엔드(9090)로 전달됩니다.
-
-```js
-import { api } from '../../services/api'
-
-// GET
-const data = await api.get('/health')
-
-// POST
-const result = await api.post('/users/login', { email, password })
-
-// PUT
-await api.put('/users/1', { name: '홍길동' })
-
-// DELETE
-await api.delete('/users/1')
-```
-
----
-
-## 로컬 환경 설정
-
-### 백엔드 환경변수
-
-`Backend/src/main/resources/application-local.yml.example` 파일을 복사해서  
-`application-local.yml` 로 이름 변경 후 값을 채워주세요.
-
-```yaml
-DB_URL: jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul
-DB_USERNAME: root
-DB_PASSWORD: 비밀번호
-JWT_SECRET: 256비트-이상의-시크릿-키
-ADMIN_INIT_PASSWORD: 초기관리자비밀번호
-OLLAMA_BASE_URL: http://localhost:11434
-OLLAMA_MODEL: llama3.2
-```
-
-### AI 환경변수
-
-`AI/.env.example` 파일을 복사해서 `.env` 로 이름 변경 후 값을 채워주세요.
-
-```
-OLLAMA_MODEL=llama3.2
-OLLAMA_HOST=http://localhost:11434
-```
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/api/health` | 백엔드 서버 상태 확인 |
+| POST | `/api/auth/login` | 로그인 |
+| POST | `/api/auth/register` | 회원가입 |
+| GET | `/api/user/me` | 내 정보 조회 |
+| POST | `/chat` | AI 채팅 (AI 서버) |
+| GET | `/health` | AI 서버 상태 확인 |
 
 ---
 
@@ -283,21 +261,21 @@ OLLAMA_HOST=http://localhost:11434
 ### 브랜치 전략
 
 ```
-main        ← 최종 완성본만 올라오는 곳 (건드리지 않음)
-  └── develop   ← 팀원 작업물이 합쳐지는 곳
+main        ← 최종 완성본만 올라오는 곳
+  └── dev       ← 팀원 작업물이 합쳐지는 곳
         └── feature/기능명   ← 각자 기능 개발하는 곳
 ```
 
 ### 작업 순서
 
 ```
-① develop 브랜치에서 내 브랜치 만들기
+① dev 브랜치에서 내 브랜치 만들기
 ② 내 브랜치에서 기능 개발
 ③ GitHub에 push 후 PR(Pull Request) 올리기
-④ 팀원 코드 확인 후 develop에 merge
+④ 팀원 코드 확인 후 dev에 merge
 ⑤ git pull로 최신 코드 내려받기
-⑥ 기능 다 모이면 DB 연동 후 통합 테스트
-⑦ 문제 없으면 main에 merge (최종본)
+⑥ 기능 다 모이면 통합 테스트
+⑦ 문제 없으면 main에 merge
 ```
 
 ### 브랜치 이름 규칙
@@ -310,9 +288,12 @@ design/페이지명     ← UI 작업        예) design/main-page
 
 ### 자주 쓰는 명령어
 
-```cmd
-# develop 브랜치로 이동
-git checkout develop
+```powershell
+# dev 브랜치로 이동
+git checkout dev
+
+# 최신 내용 받아오기
+git pull origin dev
 
 # 내 브랜치 만들기
 git checkout -b feature/기능명
@@ -327,27 +308,6 @@ git push origin feature/기능명
 
 ---
 
-## 로컬 개발 → 통합 테스트 흐름
-
-```
-각자 로컬에서 기능 개발 (DB 걱정 없이 코드만 작성)
-       ↓
-GitHub에 push & PR 올리기
-       ↓
-팀원 코드 확인 후 develop에 merge
-       ↓
-git pull로 최신 코드 내려받기
-       ↓
-기능 다 모이면 MariaDB 연동 후 통합 테스트
-       ↓
-main에 merge (최종본 완성)
-```
-
-> `application-local.yml`은 각자 본인 DB 설정으로 세팅하세요.  
-> 이 파일은 `.gitignore`에 등록되어 있어서 GitHub에 올라가지 않습니다.
-
----
-
 ## ⛔ 금칙사항
 
 ### Git 관련
@@ -356,7 +316,7 @@ main에 merge (최종본 완성)
 |------|------|
 | `main`에 직접 push | 전체 코드가 망가질 수 있음 |
 | `git push --force` | 다른 팀원 작업이 사라질 수 있음 |
-| PR 없이 develop에 직접 merge | 코드 리뷰 없이 합쳐지면 버그 추적 불가 |
+| PR 없이 dev에 직접 merge | 코드 리뷰 없이 합쳐지면 버그 추적 불가 |
 | 팀원 리뷰 없이 본인이 본인 PR merge | 혼자 검토하면 실수를 못 잡음 |
 
 ### 코드 관련
@@ -366,14 +326,4 @@ main에 merge (최종본 완성)
 | `application-local.yml` 커밋 | DB 비밀번호, JWT 시크릿 등 민감 정보 노출 |
 | `.env` 커밋 | AI 서버 환경변수 노출 |
 | 다른 팀원 브랜치에 직접 push | 작업 충돌 발생 |
-| `develop`, `main` 브랜치에서 직접 작업 | 항상 feature 브랜치 만들어서 작업 |
-
----
-
-## API 목록
-
-| 메서드 | 경로 | 설명            |
-|--------|------|---------------|
-| GET | `/api/health` | 백엔드 서버 상태 확인  |
-| POST | `/chat` | AI "채팅 (AI 서버) |
-| GET | `/health` | AI 서버 상태 확인   |
+| `dev`, `main` 브랜치에서 직접 작업 | 항상 feature 브랜치 만들어서 작업 |

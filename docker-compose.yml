@@ -1,6 +1,7 @@
 services:
   db:
     image: mariadb:12.0.2
+    restart: unless-stopped
     container_name: ang-db
     environment:
       MARIADB_DATABASE: ang_db
@@ -14,6 +15,7 @@ services:
     build:
       context: ./Backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     container_name: ang-backend
     ports:
       - "9090:9090"
@@ -23,15 +25,22 @@ services:
       DB_PASSWORD: ang1234
       JWT_SECRET: change-this-secret-value-at-least-32-bytes-long
       ADMIN_INIT_PASSWORD: admin1234
+      FILE_UPLOAD_DIR: /app/uploads
+      AI_BASE_URL: http://ai:8888
       OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: llama3.2
+      OLLAMA_MODEL: qwen3:8b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - db
+    volumes:
+      - ./uploads:/app/uploads
 
   frontend:
     build:
       context: ./Frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     container_name: ang-frontend
     ports:
       - "5500:80"
@@ -42,12 +51,18 @@ services:
     build:
       context: ./AI
       dockerfile: Dockerfile
+    restart: unless-stopped
     container_name: ang-ai
     ports:
       - "8888:8888"
     environment:
-      OLLAMA_MODEL: llama3.2
+      OLLAMA_MODEL: qwen3:8b
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./uploads:/app/uploads
 
 volumes:
   mariadb_data:
