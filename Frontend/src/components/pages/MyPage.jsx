@@ -12,7 +12,7 @@ export default function MyPage({ user }) {
           </div>
           <div className="info-group">
             <label>사번</label>
-            <input type="text" value={user?.employeeId || ''} disabled />
+            <input type="text" value={user?.empNo || ''} disabled />
           </div>
           <div className="info-group">
             <label>부서</label>
