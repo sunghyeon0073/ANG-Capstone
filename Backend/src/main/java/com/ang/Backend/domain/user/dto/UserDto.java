@@ -17,6 +17,7 @@ public class UserDto {
     private String phone;
     private LocalDate birthdate;
     private String profileImageUrl;
+    private String position;
     private UserStatus status;
     private String dept;
     private String role;
@@ -36,6 +37,7 @@ public class UserDto {
                 .phone(user.getPhone())
                 .birthdate(user.getBirthdate())
                 .profileImageUrl(user.getProfileImageUrl())
+                .position(user.getPosition())
                 .status(user.getStatus())
                 .avatar(avatar)
                 .build();
