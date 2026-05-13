@@ -243,16 +243,63 @@ Frontend/src/
 
 ---
 
-## API 목록
+## ✅ 현재 구현 완료된 핵심 로직 (Backend)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/health` | 백엔드 서버 상태 확인 |
-| POST | `/api/auth/login` | 로그인 |
-| POST | `/api/auth/register` | 회원가입 |
-| GET | `/api/user/me` | 내 정보 조회 |
-| POST | `/chat` | AI 채팅 (AI 서버) |
-| GET | `/health` | AI 서버 상태 확인 |
+현재 백엔드 서버(포트 9090)에는 다음과 같은 핵심 코어 기능들이 완벽하게 구현 및 검증되어 있습니다.
+
+1.  **인증 및 계정 (Auth & User)**
+    *   **JWT 기반 인증:** 로그인 시 AccessToken 및 RefreshToken 발급
+    *   **회원가입:** 팀 단위의 `고유 식별 코드(scopeCode)`가 있어야만 가입 가능한 보안 구조 (가입 시 '승인 대기' 상태)
+    *   **권한 분리:** 일반 사용자, 관리자, 최고관리자로 나뉘는 Role-based Access Control (RBAC)
+2.  **조직 및 부서 관리 (Scope)**
+    *   **계층형 조직도:** 회사(COMPANY) - 부서(DEPARTMENT) - 팀(TEAM) 구조 지원
+    *   **부서 생성:** 관리자가 상위 부서를 지정하여 조직을 생성하고, 팀 전용 가입 코드를 직접 부여
+3.  **관리자 기능 (Admin)**
+    *   **가입 승인:** 승인 대기 중인 인원을 조회하고 직급을 부여하여 서비스 이용 권한 부여
+4.  **문서 및 파일 관리 (Document & File)**
+    *   **물리 파일 업로드:** 로컬 디스크(`uploads/`)에 파일을 안전하게 저장하고 DB에 메타데이터 기록
+    *   **문서함 관리:** 내 문서(개인 소유) 및 부서 문서(부서 내 공유) 분리 조회
+    *   **문서/파일 완전 삭제:** DB 기록 삭제 시 하드디스크의 실제 파일도 동시 삭제 처리
+
+---
+
+## 📡 API 연동 명세서 (Frontend 용)
+
+> **Base URL:** `http://localhost:9090/api`
+> **공통 헤더:** 인증이 필요한 API는 `Authorization: Bearer {accessToken}` 필수 포함
+
+### 1. 🔐 인증 및 계정 (Auth)
+
+| 메서드 | 경로 | 인증 | 설명 | 파라미터 / Body |
+|--------|------|------|------|----------------|
+| **POST** | `/auth/register` | ❌ | 회원가입 | `{"name", "empNo", "birthdate", "email", "password", "passwordConfirm", "scopeCode"}` |
+| **POST** | `/auth/login` | ❌ | 로그인 | `{"empNo", "password"}` -> `accessToken`, `user` 반환 |
+| **GET** | `/users/me` | ⭕ | 내 정보 조회 | (현재 토큰 기반으로 내 정보 반환) |
+
+### 2. 🏢 부서 및 조직도 (Scope)
+
+| 메서드 | 경로 | 인증 | 설명 | 파라미터 / Body |
+|--------|------|------|------|----------------|
+| **GET** | `/scopes` | ⭕ | 조직도 전체 조회 | 계층형 부서 트리 반환 |
+| **POST** | `/scopes` | ⭕ | 조직/팀 생성 | `{"name", "type"(COMPANY/DEPARTMENT/TEAM), "scopeCode", "parentId"}` |
+| **GET** | `/scopes/{id}/members` | ⭕ | 부서별 인원 조회 | 특정 부서에 속한 멤버 리스트 반환 |
+
+### 3. 👑 관리자 전용 (Admin)
+
+| 메서드 | 경로 | 인증 | 설명 | 파라미터 / Body |
+|--------|------|------|------|----------------|
+| **GET** | `/admin/users/pending` | ⭕ | 가입 승인 대기자 조회 | |
+| **PATCH** | `/admin/users/{userId}/approve` | ⭕ | 가입 승인 및 직급 부여 | `{"position": "사원"}` |
+
+### 4. 📄 문서 및 파일 (Document)
+
+| 메서드 | 경로 | 인증 | 설명 | 파라미터 / Body |
+|--------|------|------|------|----------------|
+| **POST** | `/documents` | ⭕ | 파일 업로드 & 문서 생성 | **FormData** : `title`(Text), `file`(File), `targetScopeId`(선택) |
+| **GET** | `/documents/my` | ⭕ | 내 문서 리스트 조회 | |
+| **GET** | `/documents/department` | ⭕ | 부서 문서 리스트 조회 | `?keyword=검색어` (Query Param) |
+| **GET** | `/documents/{docId}` | ⭕ | 문서 단건 상세 조회 | |
+| **DELETE** | `/documents/{docId}` | ⭕ | 문서 및 물리 파일 삭제 | |
 
 ---
 
