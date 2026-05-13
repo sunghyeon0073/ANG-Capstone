@@ -2,6 +2,7 @@ package com.ang.Backend.domain.document.controller;
 
 import com.ang.Backend.common.response.ApiResponse;
 import com.ang.Backend.domain.document.dto.DocumentDto;
+import com.ang.Backend.domain.document.dto.DocumentParseResponse;
 import com.ang.Backend.domain.document.dto.DocumentSaveRequest;
 import com.ang.Backend.domain.document.service.DocumentService;
 import jakarta.validation.Valid;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -23,6 +25,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
 
+    
     @GetMapping
     public ResponseEntity<ApiResponse<List<DocumentDto>>> getMyDocuments(
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -47,6 +50,14 @@ public class DocumentController {
                 userDetails.getUsername(), request.getTitle(), request.getContent());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok("OCR 문서가 저장되었습니다.", saved));
+    }
+
+    @PostMapping({"/upload", "/parse"})
+    public ResponseEntity<ApiResponse<DocumentParseResponse>> parseDocument(
+            @RequestParam("file") MultipartFile file) {
+        DocumentParseResponse result = documentService.saveAndParse(file);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("문서가 파싱되었습니다.", result));
     }
 
     @Getter
