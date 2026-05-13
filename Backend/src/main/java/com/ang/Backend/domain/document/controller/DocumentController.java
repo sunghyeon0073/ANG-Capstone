@@ -29,6 +29,12 @@ public class DocumentController {
     private final DocumentService documentService;
     private final UserRepository userRepository;
 
+    @PostMapping("/sync")
+    public ApiResponse<Void> syncFiles() {
+        documentService.manualSync();
+        return ApiResponse.ok(null);
+    }
+
     @PostMapping
     public ApiResponse<Long> create(@RequestParam String title,
                                     @RequestPart MultipartFile file,
@@ -70,9 +76,10 @@ public class DocumentController {
     @GetMapping("/department")
     public ApiResponse<List<DocumentDto.Response>> getDepartmentDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(required = false) Integer scopeId,
             @RequestParam(required = false) String keyword) {
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getDepartmentDocuments(user, keyword));
+        return ApiResponse.ok(documentService.getDepartmentDocuments(user, scopeId, keyword));
     }
 
     @GetMapping("/{id}")

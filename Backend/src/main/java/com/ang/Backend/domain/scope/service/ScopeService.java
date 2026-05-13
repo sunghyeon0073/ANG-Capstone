@@ -5,20 +5,37 @@ import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.scope.dto.ScopeDto;
 import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.repository.ScopeRepository;
+import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
+import com.ang.Backend.domain.user.entity.User;
+import com.ang.Backend.domain.user.repository.UserRepository;
+import com.ang.Backend.domain.role.repository.UserRoleRepository;
+import com.ang.Backend.domain.role.repository.RoleRepository;
+import com.ang.Backend.domain.role.entity.UserRole;
+import com.ang.Backend.domain.role.entity.Role;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ScopeService {
 
     private final ScopeRepository scopeRepository;
+    private final UserMembershipRepository userMembershipRepository;
+    private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final RoleRepository roleRepository;
 
     /**
      * 자신을 포함한 모든 하위 스코프 ID 목록을 재귀적으로 조회합니다.
@@ -41,7 +58,6 @@ public class ScopeService {
     public ScopeDto createScope(com.ang.Backend.domain.scope.dto.ScopeCreateRequest request) {
         Scope parent = null;
         
-        // 1. COMPANY(최상위)가 아닌 하위 부서/팀 생성 시 부모 부서 강제
         if (request.getType() != ScopeType.COMPANY) {
             if (request.getParentId() == null) {
                 throw new CustomException(ErrorCode.PARENT_SCOPE_REQUIRED);
@@ -50,7 +66,6 @@ public class ScopeService {
                     .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
         }
 
-        // 2. 관리자가 직접 입력한 팀 코드 중복 검사
         if (scopeRepository.existsByScopeCode(request.getScopeCode())) {
             throw new CustomException(ErrorCode.DUPLICATE_SCOPE_CODE);
         }
@@ -62,6 +77,72 @@ public class ScopeService {
                 .scopeCode(request.getScopeCode())
                 .build();
 
-        return ScopeDto.from(scopeRepository.save(scope));
+        Scope savedScope = scopeRepository.save(scope);
+        createPhysicalScopeFolder(savedScope.getScopeCode());
+        return ScopeDto.from(savedScope);
+    }
+
+    /**
+     * 특정 부서에 새로운 멤버를 추가합니다. (다중 소속 지원)
+     */
+    @Transactional
+    public void addMemberToScope(Integer scopeId, Integer userId, User requester) {
+        Scope targetScope = scopeRepository.findById(scopeId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
+        
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        // 보안 검증: 최고관리자(100) 또는 해당 부서(또는 상위 부서)의 중간관리자(50)
+        if (!isManagerOfScope(requester, targetScope)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED);
+        }
+
+        if (userMembershipRepository.existsByUserAndScope(targetUser, targetScope)) {
+            throw new CustomException(ErrorCode.ALREADY_MEMBER);
+        }
+
+        userMembershipRepository.save(UserMembership.builder()
+                .user(targetUser)
+                .scope(targetScope)
+                .build());
+
+        Role defaultRole = roleRepository.findByRoleLevel(0)
+                .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
+        
+        userRoleRepository.save(new UserRole(targetUser, targetScope, defaultRole));
+        
+        log.info("User {} added to scope {} by manager {}", targetUser.getEmpNo(), targetScope.getScopeCode(), requester.getEmpNo());
+    }
+
+    private boolean isManagerOfScope(User user, Scope targetScope) {
+        List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
+        if (roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100)) return true;
+
+        return roles.stream()
+                .filter(r -> r.getRole().getRoleLevel() >= 50)
+                .anyMatch(r -> isSameOrParent(r.getScope(), targetScope));
+    }
+
+    private boolean isSameOrParent(Scope potentialParent, Scope target) {
+        if (potentialParent.getScopeId().equals(target.getScopeId())) return true;
+        Scope current = target.getParentScope();
+        while (current != null) {
+            if (current.getScopeId().equals(potentialParent.getScopeId())) return true;
+            current = current.getParentScope();
+        }
+        return false;
+    }
+
+    private void createPhysicalScopeFolder(String scopeCode) {
+        try {
+            Path path = Paths.get("uploads", "Scopes", scopeCode);
+            if (!Files.exists(path)) {
+                Files.createDirectories(path);
+                log.info("Created physical directory for scope: {}", path);
+            }
+        } catch (IOException e) {
+            log.error("Failed to create directory for scope: {}", scopeCode, e);
+        }
     }
 }

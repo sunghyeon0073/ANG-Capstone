@@ -19,6 +19,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 
 @Slf4j
@@ -79,6 +82,7 @@ public class DataInitializer {
                 .position(position)
                 .build();
         userRepository.save(user);
+        createFolder("Users", empNo);
 
         Scope scope = scopeRepository.findByScopeCode(scopeCode).orElseThrow();
         userMembershipRepository.save(UserMembership.builder().user(user).scope(scope).build());
@@ -113,6 +117,18 @@ public class DataInitializer {
                 .scopeType(type)
                 .parentScope(parent)
                 .build());
+        createFolder("Scopes", code);
         log.info("[DataInitializer] 부서 생성: {} ({})", name, code);
+    }
+
+    private void createFolder(String type, String code) {
+        try {
+            Path path = Paths.get("uploads", type, code);
+            if (!Files.exists(path)) {
+                Files.createDirectories(path);
+            }
+        } catch (Exception e) {
+            log.error("Failed to create folder for {}: {}", type, code);
+        }
     }
 }

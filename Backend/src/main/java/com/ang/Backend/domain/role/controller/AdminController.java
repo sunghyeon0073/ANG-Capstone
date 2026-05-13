@@ -66,7 +66,7 @@ public class AdminController {
     @PatchMapping("/users/{id}/approve")
     public ResponseEntity<ApiResponse<Void>> approveUser(@PathVariable Integer id, 
                                                            @RequestBody UserApproveRequest req) {
-        userService.approveUser(id, req.getPosition());
+        userService.approveUser(id, req.getRoleLevel());
         return ResponseEntity.ok(ApiResponse.ok("승인 완료되었습니다."));
     }
 
