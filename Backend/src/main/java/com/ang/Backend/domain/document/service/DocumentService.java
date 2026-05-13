@@ -1,22 +1,25 @@
 package com.ang.Backend.domain.document.service;
 
+import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
 import com.ang.Backend.domain.document.repository.DocumentRepository;
 import com.ang.Backend.domain.file.service.FileService;
-import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
-import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.service.ScopeService;
-import com.ang.Backend.common.enums.DocumentStatus;
+import com.ang.Backend.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,10 +31,14 @@ public class DocumentService {
     private final UserMembershipRepository userMembershipRepository;
     private final ScopeRepository scopeRepository;
     private final ScopeService scopeService;
+    private final RestTemplate restTemplate;
+
+    @Value("${ai.base-url}")
+    private String aiBaseUrl;
 
     @Transactional
     public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
-        var storedFile = fileService.storeFile(file, user); // 유저 정보 전달
+        var storedFile = fileService.storeFile(file, user);
 
         Scope targetScope = null;
         if (targetScopeId != null) {
@@ -51,8 +58,43 @@ public class DocumentService {
         return documentRepository.save(doc).getDocId();
     }
 
+    public List<DocumentDto.Response> getAllDocuments() {
+        return documentRepository.findAll().stream()
+                .map(DocumentDto.Response::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public DocumentDto.Response generateWithAi(String prompt, User user) {
+        if (prompt == null || prompt.isBlank()) {
+            throw new IllegalArgumentException("Prompt is required.");
+        }
+
+        Map<String, String> aiRequest = Map.of("message", prompt);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> aiResponse = restTemplate.postForObject(
+                aiBaseUrl + "/chat",
+                aiRequest,
+                Map.class
+        );
+
+        String answer = aiResponse != null && aiResponse.get("reply") != null
+                ? aiResponse.get("reply").toString()
+                : "";
+
+        DocumentEntity doc = DocumentEntity.builder()
+                .title(makeAiTitle(prompt))
+                .owner(user)
+                .status(DocumentStatus.DRAFT)
+                .originalContent(answer)
+                .aiSummary(answer)
+                .isAiGenerated(true)
+                .build();
+
+        return DocumentDto.Response.fromEntity(documentRepository.save(doc));
+    }
+
     public List<DocumentDto.Response> getMyDocuments(User user) {
-        // 개인 문서함: 내가 주인이면서 부서 공유가 안 된(scope is null) 문서들
         return documentRepository.findByOwner(user).stream()
                 .filter(d -> d.getScope() == null)
                 .map(DocumentDto.Response::fromEntity)
@@ -68,12 +110,11 @@ public class DocumentService {
             throw new RuntimeException("사용자의 부서 정보를 찾을 수 없습니다.");
         }
 
-        // 사용자가 속한 모든 부서와 그 하위 부서의 ID를 통합
         List<Integer> allSubScopeIds = userScopes.stream()
                 .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
                 .distinct()
                 .collect(Collectors.toList());
-        
+
         return documentRepository.searchByScopes(allSubScopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
@@ -99,10 +140,17 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
 
-        // 연결된 실제 파일도 삭제
         if (doc.getFile() != null) {
             fileService.deletePhysicalFile(doc.getFile());
         }
         documentRepository.delete(doc);
+    }
+
+    private String makeAiTitle(String prompt) {
+        String normalized = prompt.strip().replaceAll("\\s+", " ");
+        if (normalized.length() <= 40) {
+            return normalized;
+        }
+        return normalized.substring(0, 40);
     }
 }

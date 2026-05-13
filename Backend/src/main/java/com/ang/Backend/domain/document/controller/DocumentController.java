@@ -8,7 +8,16 @@ import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -21,19 +30,35 @@ public class DocumentController {
     private final UserRepository userRepository;
 
     @PostMapping
-    public ApiResponse<Long> create(@RequestParam String title, 
-                                     @RequestPart MultipartFile file,
-                                     @RequestParam(required = false) String targetScopeId,
-                                     @AuthenticationPrincipal UserDetails userDetails) throws Exception {
+    public ApiResponse<Long> create(@RequestParam String title,
+                                    @RequestPart MultipartFile file,
+                                    @RequestParam(required = false) String targetScopeId,
+                                    @AuthenticationPrincipal UserDetails userDetails) throws Exception {
         User user = null;
         if (userDetails != null && userDetails.getUsername() != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        
-        Integer scopeId = (targetScopeId != null && !targetScopeId.isEmpty()) 
+
+        Integer scopeId = (targetScopeId != null && !targetScopeId.isEmpty())
                 ? Integer.parseInt(targetScopeId) : null;
-                
+
         return ApiResponse.ok(documentService.create(title, file, user, scopeId));
+    }
+
+    @GetMapping
+    public ApiResponse<List<DocumentDto.Response>> getDocuments() {
+        return ApiResponse.ok(documentService.getAllDocuments());
+    }
+
+    @PostMapping("/ai-generate")
+    public ApiResponse<DocumentDto.Response> generateWithAi(
+            @RequestBody DocumentDto.AiGenerateRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = null;
+        if (userDetails != null && userDetails.getUsername() != null) {
+            user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
+        }
+        return ApiResponse.ok(documentService.generateWithAi(request.getPrompt(), user));
     }
 
     @GetMapping("/my")
