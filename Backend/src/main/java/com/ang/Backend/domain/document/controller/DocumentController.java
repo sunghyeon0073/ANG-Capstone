@@ -50,6 +50,17 @@ public class DocumentController {
         return ApiResponse.ok(documentService.getAllDocuments());
     }
 
+    @PostMapping("/ai-generate")
+    public ApiResponse<DocumentDto.Response> generateWithAi(
+            @RequestBody DocumentDto.AiGenerateRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = null;
+        if (userDetails != null && userDetails.getUsername() != null) {
+            user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
+        }
+        return ApiResponse.ok(documentService.generateWithAi(request.getPrompt(), user));
+    }
+
     @GetMapping("/my")
     public ApiResponse<List<DocumentDto.Response>> getMyDocuments(@AuthenticationPrincipal UserDetails userDetails) {
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();

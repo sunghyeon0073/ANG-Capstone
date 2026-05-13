@@ -8,6 +8,11 @@ import java.time.LocalDateTime;
 
 public class DocumentDto {
     @Getter @NoArgsConstructor
+    public static class AiGenerateRequest {
+        private String prompt;
+    }
+
+    @Getter @NoArgsConstructor
     public static class UpdateRequest {
         private String title;
         private String content;

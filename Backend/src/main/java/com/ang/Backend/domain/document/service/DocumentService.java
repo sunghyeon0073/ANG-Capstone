@@ -12,11 +12,14 @@ import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.scope.service.ScopeService;
 import com.ang.Backend.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,6 +31,10 @@ public class DocumentService {
     private final UserMembershipRepository userMembershipRepository;
     private final ScopeRepository scopeRepository;
     private final ScopeService scopeService;
+    private final RestTemplate restTemplate;
+
+    @Value("${ai.base-url}")
+    private String aiBaseUrl;
 
     @Transactional
     public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
@@ -55,6 +62,36 @@ public class DocumentService {
         return documentRepository.findAll().stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public DocumentDto.Response generateWithAi(String prompt, User user) {
+        if (prompt == null || prompt.isBlank()) {
+            throw new IllegalArgumentException("Prompt is required.");
+        }
+
+        Map<String, String> aiRequest = Map.of("message", prompt);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> aiResponse = restTemplate.postForObject(
+                aiBaseUrl + "/chat",
+                aiRequest,
+                Map.class
+        );
+
+        String answer = aiResponse != null && aiResponse.get("reply") != null
+                ? aiResponse.get("reply").toString()
+                : "";
+
+        DocumentEntity doc = DocumentEntity.builder()
+                .title(makeAiTitle(prompt))
+                .owner(user)
+                .status(DocumentStatus.DRAFT)
+                .originalContent(answer)
+                .aiSummary(answer)
+                .isAiGenerated(true)
+                .build();
+
+        return DocumentDto.Response.fromEntity(documentRepository.save(doc));
     }
 
     public List<DocumentDto.Response> getMyDocuments(User user) {
@@ -107,5 +144,13 @@ public class DocumentService {
             fileService.deletePhysicalFile(doc.getFile());
         }
         documentRepository.delete(doc);
+    }
+
+    private String makeAiTitle(String prompt) {
+        String normalized = prompt.strip().replaceAll("\\s+", " ");
+        if (normalized.length() <= 40) {
+            return normalized;
+        }
+        return normalized.substring(0, 40);
     }
 }
