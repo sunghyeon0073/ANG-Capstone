@@ -17,7 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "ang-ai:latest")
 
 
 class ChatRequest(BaseModel):
