@@ -1,16 +1,16 @@
 package com.ang.Backend.domain.document.service;
 
+import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
 import com.ang.Backend.domain.document.repository.DocumentRepository;
 import com.ang.Backend.domain.file.service.FileService;
-import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
-import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.service.ScopeService;
-import com.ang.Backend.common.enums.DocumentStatus;
+import com.ang.Backend.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +31,7 @@ public class DocumentService {
 
     @Transactional
     public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
-        var storedFile = fileService.storeFile(file, user); // 유저 정보 전달
+        var storedFile = fileService.storeFile(file, user);
 
         Scope targetScope = null;
         if (targetScopeId != null) {
@@ -51,8 +51,13 @@ public class DocumentService {
         return documentRepository.save(doc).getDocId();
     }
 
+    public List<DocumentDto.Response> getAllDocuments() {
+        return documentRepository.findAll().stream()
+                .map(DocumentDto.Response::fromEntity)
+                .collect(Collectors.toList());
+    }
+
     public List<DocumentDto.Response> getMyDocuments(User user) {
-        // 개인 문서함: 내가 주인이면서 부서 공유가 안 된(scope is null) 문서들
         return documentRepository.findByOwner(user).stream()
                 .filter(d -> d.getScope() == null)
                 .map(DocumentDto.Response::fromEntity)
@@ -68,12 +73,11 @@ public class DocumentService {
             throw new RuntimeException("사용자의 부서 정보를 찾을 수 없습니다.");
         }
 
-        // 사용자가 속한 모든 부서와 그 하위 부서의 ID를 통합
         List<Integer> allSubScopeIds = userScopes.stream()
                 .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
                 .distinct()
                 .collect(Collectors.toList());
-        
+
         return documentRepository.searchByScopes(allSubScopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
@@ -99,7 +103,6 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
 
-        // 연결된 실제 파일도 삭제
         if (doc.getFile() != null) {
             fileService.deletePhysicalFile(doc.getFile());
         }
