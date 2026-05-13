@@ -94,14 +94,13 @@ public class DocumentService {
         }
 
         String containerFilePath = CONTAINER_UPLOAD_DIR + "/" + savedName;
-
         @SuppressWarnings("unchecked")
         Map<String, String> aiResult = restTemplate.postForObject(
-                aiBaseUrl + "/parse-document",
+                aiBaseUrl + "/analyze-document",
                 Map.of("file_path", containerFilePath),
                 Map.class);
 
-        String aiResponse = (aiResult != null) ? aiResult.getOrDefault("result", "") : "";
+        String aiResponse = (aiResult != null) ? aiResult.getOrDefault("answer", "") : "";
 
         return new DocumentParseResponse(savedName, containerFilePath, aiResponse);
     }
