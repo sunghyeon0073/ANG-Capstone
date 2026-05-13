@@ -10,8 +10,14 @@ export default defineConfig({
   ],
   // 여기에 서버 설정을 추가합니다
   server: {
-    port: 5500,        // 포트 번호를 5500으로 고정
-    strictPort: true,  // 5500 포트가 이미 사용 중이면 다른 포트로 넘기지 않고 에러 발생
-    open: true         // 서버 실행 시 브라우저를 자동으로 띄울지 여부 (선택사항)
+    port: 5500,
+    strictPort: true,
+    open: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:9090',
+        changeOrigin: true,
+      }
+    }
   }
 })

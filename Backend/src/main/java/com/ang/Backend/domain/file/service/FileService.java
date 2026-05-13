@@ -35,7 +35,7 @@ public class FileService {
     private final FileItemRepository fileItemRepository;
     private final UserRepository userRepository;
 
-    @Value("${file.upload.dir:/app/uploads}")
+    @Value("${file.upload-dir:uploads}")
     private String uploadDir;
 
     @PostConstruct
@@ -114,12 +114,12 @@ public class FileService {
     public FileItem storeFile(MultipartFile file, User uploader) throws IOException {
         if (file.isEmpty()) return null;
 
-        File directory = new File(uploadDir);
+        File directory = new File(uploadDir).getAbsoluteFile();
         if (!directory.exists()) directory.mkdirs();
 
         String originalFilename = file.getOriginalFilename();
         String storedFileName = UUID.randomUUID().toString() + "_" + originalFilename;
-        String filePath = uploadDir + File.separator + storedFileName;
+        String filePath = directory.getAbsolutePath() + File.separator + storedFileName;
 
         file.transferTo(new File(filePath));
 
