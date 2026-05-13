@@ -17,7 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "ang-ai:latest")
 
 
 class ChatRequest(BaseModel):
@@ -26,6 +26,11 @@ class ChatRequest(BaseModel):
 
 class ParseRequest(BaseModel):
     file_path: str
+
+
+class AnalyzeRequest(BaseModel):
+    file_path: str
+    prompt: str = "다음 문서를 핵심만 한국어로 요약해줘."
 
 
 @app.get("/health")
@@ -44,8 +49,43 @@ def chat(req: ChatRequest):
 
 @app.post("/parse-document")
 def parse_document(req: ParseRequest):
+    parsed = parse_file(req.file_path)
+
+    if not parsed["success"]:
+        return parsed
+
+    return parsed
+
+
+@app.post("/analyze-document")
+def analyze_document(req: AnalyzeRequest):
+    parsed = parse_file(req.file_path)
+
+    if not parsed["success"]:
+        return parsed
+
+    markdown = parsed["markdown"]
+    response = ollama.chat(
+        model=OLLAMA_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": f"{req.prompt}\n\n--- 문서 내용 ---\n{markdown}"
+            }
+        ]
+    )
+
+    return {
+        "success": True,
+        "model": OLLAMA_MODEL,
+        "markdown": markdown,
+        "answer": response["message"]["content"]
+    }
+
+
+def parse_file(file_path: str):
     result = subprocess.run(
-        ["npx", "--no-install", "kordoc", req.file_path],
+        ["npx", "--no-install", "kordoc", file_path],
         capture_output=True,
         text=True,
         encoding="utf-8",

@@ -11,7 +11,7 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
     { id: 'esignature', label: '전자결재', icon: FiCheckCircle },
     { id: 'calendar', label: '캘린더', icon: FiCalendar },
     { id: 'file', label: '파일함', icon: FiFolder },
-    { id: 'board', label: '게시판', icon: FiMapPin },
+    { id: 'board', label: '게시판', icon: FiFileText },
     { id: 'mail', label: '메일', icon: FiMail },
     { id: 'chat', label: '채팅', icon: FiMessageCircle },
     { id: 'organization', label: '조직도', icon: FiUsers }
@@ -35,6 +35,13 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
     setShowProfileMenu(false)
   }
 
+  const getMainCategory = (page) => {
+    const category = page.split('-')[0]
+    return category === 'organization' ? 'org' : category
+  }
+
+  const currentMainCategory = getMainCategory(currentPage)
+
   return (
     <div className="topnavbar">
       <div className="topnavbar-left">
@@ -45,11 +52,12 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
         <nav className="topnavbar-menu">
           {menuItems.map(item => {
             const IconComponent = item.icon
+            const itemCategory = item.id === 'organization' ? 'org' : item.id
             return (
               <button
                 key={item.id}
                 onClick={() => onPageChange(item.id)}
-                className={`topnavbar-menu-item ${currentPage === item.id ? 'active' : ''}`}
+                className={`topnavbar-menu-item ${currentMainCategory === itemCategory ? 'active' : ''}`}
               >
                 <IconComponent className="topnavbar-icon" />
                 <span className="topnavbar-label">{item.label}</span>
