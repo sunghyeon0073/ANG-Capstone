@@ -12,6 +12,7 @@ import Mail from './pages/Mail'
 import Chat from './pages/Chat'
 import Organization from './pages/Organization'
 import MyPage from './pages/MyPage'
+import Admin from './pages/Admin'
 
 const PAGE_COMPONENTS = {
   home: Home,
@@ -24,7 +25,8 @@ const PAGE_COMPONENTS = {
   chat: Chat,
   org: Organization,
   organization: Organization,
-  mypage: MyPage
+  mypage: MyPage,
+  admin: Admin
 }
 
 const getMainCategory = (page) => {
@@ -68,6 +70,8 @@ export default function Dashboard() {
   }
 
   const renderPage = () => {
+    if (currentPage === 'org-admin') return <Admin />
+
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
 

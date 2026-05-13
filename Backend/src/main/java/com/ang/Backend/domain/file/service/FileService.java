@@ -27,7 +27,7 @@ public class FileService {
     private final FileItemRepository fileItemRepository;
     private final UserRepository userRepository;
 
-    @Value("${file.upload.dir:/app/uploads}")
+    @Value("${file.upload-dir:uploads}")
     private String uploadDir;
 
     @Transactional
