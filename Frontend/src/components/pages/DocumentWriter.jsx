@@ -46,6 +46,9 @@ export default function DocumentWriter() {
 
     try {
       setAiLoading(true)
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: '문서 읽는 중... 잠시만 기다려주세요.' }
+      }))
       const response = await api.post('/documents/ai-generate', {
         prompt: prompt
       })
@@ -55,10 +58,16 @@ export default function DocumentWriter() {
         setDocuments([response.data.data, ...documents])
         setSelectedDoc(response.data.data)
         setPrompt('')
+        window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+          detail: { message: 'AI 문서 초안이 완성됐어요.' }
+        }))
         alert('문서가 생성되었습니다!')
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: 'AI 문서 생성에 실패했어요. 연결 상태를 확인해주세요.' }
+      }))
       alert(err.response?.data?.message || 'AI 문서 생성에 실패했습니다.')
     } finally {
       setAiLoading(false)
