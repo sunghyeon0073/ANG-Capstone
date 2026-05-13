@@ -18,7 +18,7 @@ export default function DocumentWriter() {
   useEffect(() => {
     const filtered = documents.filter(doc =>
       doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.content?.toLowerCase().includes(searchTerm.toLowerCase())
+      doc.originalContent?.toLowerCase().includes(searchTerm.toLowerCase())
     )
     setFilteredDocuments(filtered)
   }, [searchTerm, documents])
@@ -27,7 +27,7 @@ export default function DocumentWriter() {
     try {
       setLoading(true)
       const response = await api.get('/documents')
-      setDocuments(response.data || [])
+      setDocuments(response.data?.data || [])
       setError(null)
     } catch (err) {
       console.error('문서 목록 조회 실패:', err)
@@ -98,8 +98,8 @@ export default function DocumentWriter() {
           ) : (
             filteredDocuments.map((doc) => (
               <div
-                key={doc.id}
-                className={`document-item ${selectedDoc?.id === doc.id ? 'active' : ''}`}
+                key={doc.docId}
+                className={`document-item ${selectedDoc?.docId === doc.docId ? 'active' : ''}`}
                 onClick={() => setSelectedDoc(doc)}
               >
                 <div className="doc-title">{doc.title}</div>
@@ -125,7 +125,7 @@ export default function DocumentWriter() {
                 <span>작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
               </div>
               <div className="doc-body">
-                {selectedDoc.content || '내용이 없습니다.'}
+                {selectedDoc.originalContent || '내용이 없습니다.'}
               </div>
             </div>
           ) : (

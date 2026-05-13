@@ -18,6 +18,8 @@ app.add_middleware(
 )
 
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "ang-ai:latest")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+ollama_client = ollama.Client(host=OLLAMA_BASE_URL)
 
 
 class ChatRequest(BaseModel):
@@ -40,7 +42,7 @@ def health():
 
 @app.post("/chat")
 def chat(req: ChatRequest):
-    response = ollama.chat(
+    response = ollama_client.chat(
         model=OLLAMA_MODEL,
         messages=[{"role": "user", "content": req.message}]
     )
@@ -65,7 +67,7 @@ def analyze_document(req: AnalyzeRequest):
         return parsed
 
     markdown = parsed["markdown"]
-    response = ollama.chat(
+    response = ollama_client.chat(
         model=OLLAMA_MODEL,
         messages=[
             {
