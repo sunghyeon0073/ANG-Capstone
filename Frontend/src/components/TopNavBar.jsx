@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMail, FiMessageCircle, FiUsers, FiBell } from 'react-icons/fi'
+import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
 
 export default function TopNavBar({ user, onLogout, currentPage, onPageChange }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -14,7 +14,8 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
     { id: 'board', label: '게시판', icon: FiFileText },
     { id: 'mail', label: '메일', icon: FiMail },
     { id: 'chat', label: '채팅', icon: FiMessageCircle },
-    { id: 'organization', label: '조직도', icon: FiUsers }
+    { id: 'organization', label: '조직도', icon: FiUsers },
+    ...(user?.roleLevel >= 100 ? [{ id: 'admin', label: '승인', icon: FiShield }] : [])
   ]
 
   const getInitials = (name) => {
@@ -40,7 +41,7 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
     return category === 'organization' ? 'org' : category
   }
 
-  const currentMainCategory = getMainCategory(currentPage)
+  const currentMainCategory = currentPage === 'admin' ? 'admin' : getMainCategory(currentPage)
 
   return (
     <div className="topnavbar">
@@ -64,6 +65,7 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
               </button>
             )
           })}
+
         </nav>
       </div>
 

@@ -19,10 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,6 +32,7 @@ public class ScopeService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
+    private final com.ang.Backend.domain.file.service.FileWatchService fileWatchService;
 
     /**
      * 자신을 포함한 모든 하위 스코프 ID 목록을 재귀적으로 조회합니다.
@@ -78,7 +75,7 @@ public class ScopeService {
                 .build();
 
         Scope savedScope = scopeRepository.save(scope);
-        createPhysicalScopeFolder(savedScope.getScopeCode());
+        fileWatchService.createScopeFolder(savedScope.getScopeCode());
         return ScopeDto.from(savedScope);
     }
 
@@ -134,15 +131,4 @@ public class ScopeService {
         return false;
     }
 
-    private void createPhysicalScopeFolder(String scopeCode) {
-        try {
-            Path path = Paths.get("uploads", "Scopes", scopeCode);
-            if (!Files.exists(path)) {
-                Files.createDirectories(path);
-                log.info("Created physical directory for scope: {}", path);
-            }
-        } catch (IOException e) {
-            log.error("Failed to create directory for scope: {}", scopeCode, e);
-        }
-    }
 }

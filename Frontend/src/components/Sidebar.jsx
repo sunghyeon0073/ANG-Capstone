@@ -1,4 +1,4 @@
-import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield } from 'react-icons/fi'
+import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar } from 'react-icons/fi'
 
 const iconMap = {
   'home-dashboard': FiHome,
@@ -27,7 +27,6 @@ const iconMap = {
   'chat-groups': FiUsers,
   'org-all': FiList,
   'org-dept': FiList,
-  'org-admin': FiShield
 }
 
 export const SIDEBAR_MENUS = {
@@ -71,7 +70,6 @@ export const SIDEBAR_MENUS = {
   org: [
     { id: 'org-all', label: '전체조직' },
     { id: 'org-dept', label: '부서별' },
-    { id: 'org-admin', label: '가입승인' }
   ]
 }
 

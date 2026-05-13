@@ -24,10 +24,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -45,6 +41,8 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final com.ang.Backend.domain.user.service.UserService userService;
+    private final com.ang.Backend.domain.file.service.FileWatchService fileWatchService;
 
     @Transactional
     public void register(RegisterRequest req) {
@@ -77,7 +75,7 @@ public class AuthService {
                 .status(UserStatus.PENDING)
                 .build();
         userRepository.save(user);
-        createPhysicalUserFolder(user.getEmpNo());
+        fileWatchService.createUserFolder(user.getEmpNo());
 
         userMembershipRepository.save(UserMembership.builder()
                 .user(user)
@@ -87,18 +85,6 @@ public class AuthService {
         Role defaultRole = roleRepository.findByRoleLevel(0)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
         userRoleRepository.save(new UserRole(user, scope, defaultRole));
-    }
-
-    private void createPhysicalUserFolder(String empNo) {
-        try {
-            Path path = Paths.get("uploads", "Users", empNo);
-            if (!Files.exists(path)) {
-                Files.createDirectories(path);
-                log.info("Created physical directory for user: {}", path);
-            }
-        } catch (IOException e) {
-            log.error("Failed to create directory for user: {}", empNo, e);
-        }
     }
 
     @Transactional(readOnly = true)
@@ -121,7 +107,7 @@ public class AuthService {
                 .accessToken(jwtTokenProvider.createAccessToken(user.getEmpNo()))
                 .refreshToken(jwtTokenProvider.createRefreshToken(user.getEmpNo()))
                 .tokenType("Bearer")
-                .user(UserDto.from(user))
+                .user(userService.getUser(user.getUserId()))
                 .build();
     }
 }

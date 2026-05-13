@@ -56,6 +56,11 @@ export default function Dashboard() {
   }
 
   const handlePageChange = (pageId) => {
+    if (pageId === 'admin') {
+      setCurrentPage('admin')
+      return
+    }
+
     const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization']
 
     if (topNavMenuIds.includes(pageId)) {
@@ -71,7 +76,7 @@ export default function Dashboard() {
   }
 
   const renderPage = () => {
-    if (currentPage === 'org-admin') return <Admin />
+    if (currentPage === 'admin') return <Admin />
 
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
@@ -89,6 +94,8 @@ export default function Dashboard() {
     return null
   }
 
+  const hideSidebar = currentPage === 'mypage' || currentPage === 'calendar' || currentPage === 'admin'
+
   return (
     <div className="dashboard">
       <TopNavBar
@@ -97,8 +104,8 @@ export default function Dashboard() {
         currentPage={currentPage}
         onPageChange={handlePageChange}
       />
-      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar') ? 'full-width' : ''}`}>
-        {currentPage !== 'mypage' && currentPage !== 'calendar' && (
+      <div className={`dashboard-content ${hideSidebar ? 'full-width' : ''}`}>
+        {!hideSidebar && (
           <Sidebar
             currentPage={currentPage}
             onPageChange={handlePageChange}

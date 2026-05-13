@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AdminController {
 
     private final UserService userService;

@@ -1,6 +1,5 @@
 package com.ang.Backend.domain.scope.controller;
 
-import com.ang.Backend.common.enums.ScopeType;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
@@ -14,14 +13,17 @@ import com.ang.Backend.domain.user.repository.UserRepository;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/scopes")
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ScopeController {
 
     private final ScopeRepository scopeRepository;
@@ -32,10 +34,21 @@ public class ScopeController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<ScopeDto>>> getAllScopes() {
-        List<ScopeDto> scopes = scopeRepository.findAll().stream()
-                .map(ScopeDto::from)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(ApiResponse.ok(scopes));
+        List<Scope> all = scopeRepository.findAll();
+        Map<Integer, ScopeDto> dtoMap = all.stream()
+                .collect(Collectors.toMap(Scope::getScopeId, ScopeDto::from));
+
+        List<ScopeDto> roots = new java.util.ArrayList<>();
+        for (Scope scope : all) {
+            ScopeDto dto = dtoMap.get(scope.getScopeId());
+            if (scope.getParentScope() == null) {
+                roots.add(dto);
+            } else {
+                ScopeDto parent = dtoMap.get(scope.getParentScope().getScopeId());
+                if (parent != null) parent.getChildren().add(dto);
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.ok(roots));
     }
 
     @PostMapping
