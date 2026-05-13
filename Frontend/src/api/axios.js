@@ -1,11 +1,21 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "/api", // 백엔드 서버 주소
-  timeout: 5000, // 5초 이상 응답 없으면 에러
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  timeout: 5000,
   headers: {
     'Content-Type': 'application/json',
+  },
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
+
+  return config;
 });
 
 export default api;
