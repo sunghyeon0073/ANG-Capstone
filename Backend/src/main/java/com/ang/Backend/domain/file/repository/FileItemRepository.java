@@ -9,5 +9,6 @@ import java.util.List;
 public interface FileItemRepository extends JpaRepository<FileItem, Long> {
     List<FileItem> findByOwnerTypeAndOwnerId(OwnerType ownerType, Integer ownerId);
     boolean existsByFilePath(String filePath);
+    java.util.Optional<FileItem> findByFilePath(String filePath);
     List<FileItem> findByOwnerType(OwnerType ownerType);
 }

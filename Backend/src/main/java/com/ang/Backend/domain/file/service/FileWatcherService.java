@@ -205,7 +205,7 @@ public class FileWatcherService {
             registerUnclassified(file, filePath, fileName);
             return;
         }
-        FileItem item = saveFileItem(file, filePath, fileName, OwnerType.DEPT, scope.getScopeId(), null);
+        FileItem item = saveFileItem(file, filePath, fileName, OwnerType.SCOPE, scope.getScopeId(), null);
         saveDocument(item, fileName, scope, null);
     }
 
