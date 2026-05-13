@@ -2,7 +2,7 @@ package com.ang.Backend.config;
 
 import com.ang.Backend.security.JwtAuthenticationFilter;
 import com.ang.Backend.security.JwtTokenProvider;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -23,10 +23,18 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final List<String> allowedOriginPatterns;
+
+    public SecurityConfig(
+            JwtTokenProvider jwtTokenProvider,
+            @Value("${cors.allowed-origin-patterns}") List<String> allowedOriginPatterns
+    ) {
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.allowedOriginPatterns = allowedOriginPatterns;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -61,14 +69,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost:3000",
-                "http://localhost:5173",
-                "http://localhost:5500",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:5173",
-                "http://127.0.0.1:5500"
-        ));
+        config.setAllowedOriginPatterns(allowedOriginPatterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
