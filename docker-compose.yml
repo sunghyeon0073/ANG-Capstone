@@ -1,16 +1,4 @@
 services:
-  db:
-    image: mariadb:12.0.2
-    restart: unless-stopped
-    container_name: ang-db
-    environment:
-      MARIADB_DATABASE: ang_db
-      MARIADB_ROOT_PASSWORD: ang1234
-    ports:
-      - "3306:3306"
-    volumes:
-      - mariadb_data:/var/lib/mysql
-
   backend:
     build:
       context: ./Backend
@@ -20,19 +8,17 @@ services:
     ports:
       - "9090:9090"
     environment:
-      DB_URL: jdbc:mariadb://db:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-      DB_USERNAME: root
-      DB_PASSWORD: ang1234
-      JWT_SECRET: change-this-secret-value-at-least-32-bytes-long
-      ADMIN_INIT_PASSWORD: admin1234
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD}
       FILE_UPLOAD_DIR: /app/uploads
       AI_BASE_URL: http://ai:8888
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: qwen3:8b
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      - db
     volumes:
       - ./uploads:/app/uploads
 
@@ -56,13 +42,10 @@ services:
     ports:
       - "8888:8888"
     environment:
-      OLLAMA_MODEL: qwen3:8b
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_HOST: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_HOST: ${OLLAMA_BASE_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./uploads:/app/uploads
-
-volumes:
-  mariadb_data:
