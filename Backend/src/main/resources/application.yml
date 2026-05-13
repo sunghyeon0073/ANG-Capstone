@@ -3,12 +3,16 @@ spring:
     name: Ang
 
   profiles:
+<<<<<<< HEAD
     active: local   # 배포 시 prod 로 변경
+=======
+    active: local   #todo 일단 로컬 해놨음 배포할떼 프로드 변경하면될드ㅡㅅ?
+>>>>>>> bd8f3b26d94a00469ea71a4077582c6d47a13a27
 
   datasource:
     url: ${DB_URL:jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD}
+    password: ${DB_PASSWORD:ang1234}
     driver-class-name: org.mariadb.jdbc.Driver
 
   jpa:
@@ -26,7 +30,6 @@ spring:
       enabled: true
       max-file-size: 50MB
       max-request-size: 100MB
-
 jwt:
   secret: ${JWT_SECRET}
   access-token-expiration: 1800000    # 30분 (ms)

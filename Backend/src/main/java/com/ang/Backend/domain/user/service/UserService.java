@@ -65,6 +65,7 @@ public class UserService {
         userRepository.save(user);
     }
 
+
     @Transactional
     public void approveUser(Integer userId) {
         User user = userRepository.findById(userId)
@@ -78,6 +79,7 @@ public class UserService {
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
+
 
     private UserDto toDto(User user) {
         String dept = userMembershipRepository.findByUser(user).stream()

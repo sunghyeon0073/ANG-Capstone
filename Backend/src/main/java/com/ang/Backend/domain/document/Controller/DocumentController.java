@@ -1,7 +1,7 @@
-package com.ang.Backend.domain.document.Controller;
+package com.ang.Backend.domain.document.controller;
 
 import com.ang.Backend.common.response.ApiResponse;
-import com.ang.Backend.domain.document.DTO.DocumentParseResponse;
+import com.ang.Backend.domain.document.dto.DocumentParseResponse;
 import com.ang.Backend.domain.document.service.DocumentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
