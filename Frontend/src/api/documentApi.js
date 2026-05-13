@@ -1,7 +1,7 @@
 import api from './axios';
 
 export const uploadDocument = (formData) =>
-  api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  api.post('/documents', formData, { headers: { 'Content-Type': undefined } });
 
 export const getMyDocuments = () => api.get('/documents/my');
 

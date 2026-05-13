@@ -57,5 +57,7 @@ server:
 
 logging:
   level:
+    root: info
+    com.ang: debug
     org.hibernate.SQL: debug
-    org.springframework.security: debug
+    org.springframework.security: warn
