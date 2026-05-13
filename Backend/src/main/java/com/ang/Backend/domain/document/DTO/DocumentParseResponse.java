@@ -1,4 +1,4 @@
-package com.ang.Backend.domain.document.DTO;
+package com.ang.Backend.domain.document.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

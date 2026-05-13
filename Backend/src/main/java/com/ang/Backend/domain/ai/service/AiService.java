@@ -9,17 +9,35 @@ import com.ang.Backend.domain.ai.repository.AiRecommendationRepository;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiService {
 
     private final AiRecommendationRepository aiRecommendationRepository;
     private final UserRepository userRepository;
+    private final RestClient ollamaRestClient;
+
+    @Value("${ollama.model}")
+    private String ollamaModel;
+
+    // ── Ollama 요청/응답 구조 ─────────────────────────────────────────────
+
+    record OllamaRequest(String model, List<Message> messages, boolean stream, boolean think) {
+        record Message(String role, String content) {}
+    }
+
+    record OllamaResponse(Message message) {
+        record Message(String content) {}
+    }
 
     // ── 추천 조회 ──────────────────────────────────────────────────────────
 
@@ -71,11 +89,11 @@ public class AiService {
     }
 
     // ── OCR 텍스트 추출 (AI-01-5) ─────────────────────────────────────────
+    // llava 모델 설치 후 실제 vision 호출로 교체 가능
 
     public String extractTextFromImage(String originalFilename) {
-        // TODO: Ollama 설치 후 vision 모델(llava)로 교체
-        return "[OCR Mock] '" + originalFilename + "' 파일에서 추출된 텍스트입니다.\n"
-                + "예시) 출장신청서\n신청인: 홍길동\n출장지: 부산\n기간: 2025-06-01 ~ 2025-06-03";
+        return "[OCR] '" + originalFilename + "' 파일 분석 중...\n"
+                + "(vision 모델 설치 후 실제 텍스트 추출이 활성화됩니다)";
     }
 
     // ── AI 일정 추천 (AI-02-1) ───────────────────────────────────────────
@@ -94,16 +112,35 @@ public class AiService {
                         .build()));
     }
 
-    // ── Mock AI 호출 ──────────────────────────────────────────────────────
-    // TODO: Ollama 설치 후 아래 메서드 내부를 RestClient 호출로 교체
-    // RestClient 빈은 OllamaConfig.ollamaRestClient() 사용
-    // POST /api/chat { "model": "llama3.2", "messages": [...], "stream": false }
+    // ── Ollama 호출 ───────────────────────────────────────────────────────
 
     private String callOllama(String prompt) {
-        String preview = prompt.length() > 30 ? prompt.substring(0, 30) + "..." : prompt;
-        return "[AI Mock 응답] 요청: \"" + preview + "\"\n"
-                + "1. 출장신청서\n2. 업무보고서\n3. 회의록\n"
-                + "(실제 AI 응답은 Ollama 설치 후 활성화됩니다)";
+        try {
+            OllamaRequest request = new OllamaRequest(
+                    ollamaModel,
+                    List.of(new OllamaRequest.Message("user", prompt)),
+                    false,
+                    false   // Qwen3 thinking 모드 비활성화 (빠른 응답)
+            );
+
+            OllamaResponse response = ollamaRestClient
+                    .post()
+                    .uri("/api/chat")
+                    .body(request)
+                    .retrieve()
+                    .body(OllamaResponse.class);
+
+            if (response == null || response.message() == null) {
+                throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
+            }
+            return response.message().content();
+
+        } catch (CustomException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Ollama 호출 실패: {}", e.getMessage());
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
     }
 
     // ── 공통 ──────────────────────────────────────────────────────────────
