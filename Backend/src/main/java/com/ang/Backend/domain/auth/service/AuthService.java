@@ -58,6 +58,10 @@ public class AuthService {
         Scope scope = scopeRepository.findByScopeCode(req.getScopeCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
 
+        if (scope.getScopeType() != com.ang.Backend.common.enums.ScopeType.TEAM) {
+            throw new CustomException(ErrorCode.ONLY_TEAM_REGISTRATION_ALLOWED);
+        }
+
         User user = User.builder()
                 .empNo(req.getEmpNo())
                 .passwordHash(passwordEncoder.encode(req.getPassword()))
