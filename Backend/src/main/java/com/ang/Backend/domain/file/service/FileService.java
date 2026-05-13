@@ -2,8 +2,12 @@ package com.ang.Backend.domain.file.service;
 
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
-import com.ang.Backend.domain.file.entity.FileEntity;
-import com.ang.Backend.domain.file.repository.FileRepository;
+import com.ang.Backend.domain.file.dto.FileDto;
+import com.ang.Backend.domain.file.entity.FileItem;
+import com.ang.Backend.common.enums.OwnerType;
+import com.ang.Backend.domain.file.repository.FileItemRepository;
+import com.ang.Backend.domain.user.entity.User;
+import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -12,59 +16,92 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.*;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class FileService {
 
-    private final FileRepository fileRepository;
+    private final FileItemRepository fileItemRepository;
+    private final UserRepository userRepository;
 
-    @Value("${file.upload-dir}")
+    @Value("${file.upload.dir:/app/uploads}")
     private String uploadDir;
 
     @Transactional
-    public FileEntity storeFile(MultipartFile file) {
-        if (file.isEmpty()) throw new CustomException(ErrorCode.INVALID_INPUT);
-
-        String originalName = file.getOriginalFilename();
-        String storedName = UUID.randomUUID() + "_" + originalName;
-        Path targetPath = Paths.get(uploadDir).resolve(storedName);
-
-        try {
-            Files.createDirectories(targetPath.getParent());
-            file.transferTo(targetPath.toFile());
-
-            FileEntity fileEntity = FileEntity.builder()
-                    .originalName(originalName)
-                    .storedName(storedName)
-                    .filePath(targetPath.toString())
-                    .fileSize(file.getSize())
-                    .fileType(file.getContentType())
-                    .build();
-
-            return fileRepository.save(fileEntity);
-        } catch (IOException e) {
-            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
+    public FileDto uploadFile(MultipartFile file, Integer uploaderId, OwnerType ownerType, Integer ownerId) throws IOException {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("파일이 존재하지 않습니다.");
         }
+
+        User uploader = userRepository.findById(uploaderId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        File directory = new File(uploadDir);
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        String storedFileName = UUID.randomUUID().toString() + "_" + originalFilename;
+        String filePath = uploadDir + File.separator + storedFileName;
+
+        // 실제 파일을 서버 경로에 저장
+        file.transferTo(new File(filePath));
+
+        // DB에 파일 메타데이터 저장
+        FileItem fileItem = FileItem.builder()
+                .originalFileName(originalFilename)
+                .storedFileName(storedFileName)
+                .filePath(filePath)
+                .fileSize(file.getSize())
+                .ownerType(ownerType)
+                .ownerId(ownerId)
+                .uploader(uploader)
+                .build();
+
+        return FileDto.from(fileItemRepository.save(fileItem));
+    }
+
+    @Transactional(readOnly = true)
+    public List<FileDto> getFilesByOwner(OwnerType ownerType, Integer ownerId) {
+        return fileItemRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId).stream()
+                .map(FileDto::from)
+                .collect(Collectors.toList());
     }
 
     @Transactional
-    public void deletePhysicalFile(FileEntity fileEntity) {
-        try {
-            Path path = Paths.get(fileEntity.getFilePath());
-            Files.deleteIfExists(path);
-            fileRepository.delete(fileEntity);
-        } catch (IOException e) {
-            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
-        }
+    public FileItem storeFile(MultipartFile file, User uploader) throws IOException {
+        if (file.isEmpty()) return null;
+
+        File directory = new File(uploadDir);
+        if (!directory.exists()) directory.mkdirs();
+
+        String originalFilename = file.getOriginalFilename();
+        String storedFileName = UUID.randomUUID().toString() + "_" + originalFilename;
+        String filePath = uploadDir + File.separator + storedFileName;
+
+        file.transferTo(new File(filePath));
+
+        return fileItemRepository.save(FileItem.builder()
+                .originalFileName(originalFilename)
+                .storedFileName(storedFileName)
+                .filePath(filePath)
+                .fileSize(file.getSize())
+                .uploader(uploader) // 업로더 정보 저장
+                .ownerId(uploader != null ? uploader.getUserId() : null)
+                .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+                .build());
     }
 
-    // [이 메서드가 누락되어 에러 발생]
-    public FileEntity getFile(Long fileId) {
-        return fileRepository.findById(fileId)
-                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+    @Transactional
+    public void deletePhysicalFile(FileItem fileItem) {
+        File file = new File(fileItem.getFilePath());
+        if (file.exists()) {
+            file.delete();
+        }
+        fileItemRepository.delete(fileItem);
     }
 }

@@ -8,16 +8,22 @@ import com.ang.Backend.domain.role.entity.Role;
 import com.ang.Backend.domain.role.entity.UserRole;
 import com.ang.Backend.domain.role.repository.RoleRepository;
 import com.ang.Backend.domain.role.repository.UserRoleRepository;
+import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.service.ScopeService;
+import com.ang.Backend.domain.user.dto.UserApproveRequest;
 import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/admin")
@@ -28,6 +34,7 @@ public class AdminController {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
+    private final ScopeService scopeService;
 
     @GetMapping("/users")
     public ResponseEntity<ApiResponse<List<UserDto>>> getAllUsers() {
@@ -35,13 +42,31 @@ public class AdminController {
     }
 
     @GetMapping("/users/pending")
-    public ResponseEntity<ApiResponse<List<UserDto>>> getPendingUsers() {
-        return ResponseEntity.ok(ApiResponse.ok(userService.getPendingUsers()));
+    public ResponseEntity<ApiResponse<List<UserDto>>> getPendingUsers(@AuthenticationPrincipal UserDetails userDetails) {
+        User admin = userRepository.findByEmpNo(userDetails.getUsername())
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        List<UserRole> adminRoles = userRoleRepository.findByUserOrderByRoleLevelDesc(admin);
+        if (adminRoles.isEmpty()) {
+            return ResponseEntity.ok(ApiResponse.ok(userService.getPendingUsers()));
+        }
+
+        // 가장 높은 권한의 스코프를 기준으로 하위 멤버들 조회
+        Scope adminScope = adminRoles.get(0).getScope();
+
+        // 최고관리자(Level 100)면 전체 조회, 아니면 하위 스코프 필터링
+        if (adminRoles.get(0).getRole().getRoleLevel() >= 100) {
+            return ResponseEntity.ok(ApiResponse.ok(userService.getPendingUsers()));
+        }
+
+        List<Integer> subScopeIds = scopeService.getAllSubScopeIds(adminScope);
+        return ResponseEntity.ok(ApiResponse.ok(userService.getPendingUsersByScopes(subScopeIds)));
     }
 
     @PatchMapping("/users/{id}/approve")
-    public ResponseEntity<ApiResponse<Void>> approveUser(@PathVariable Integer id) {
-        userService.approveUser(id);
+    public ResponseEntity<ApiResponse<Void>> approveUser(@PathVariable Integer id, 
+                                                           @RequestBody UserApproveRequest req) {
+        userService.approveUser(id, req.getPosition());
         return ResponseEntity.ok(ApiResponse.ok("승인 완료되었습니다."));
     }
 

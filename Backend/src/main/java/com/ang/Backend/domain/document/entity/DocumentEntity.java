@@ -1,14 +1,19 @@
 package com.ang.Backend.domain.document.entity;
 
-import com.ang.Backend.domain.file.entity.FileEntity;
+import com.ang.Backend.common.enums.DocumentStatus;
+import com.ang.Backend.domain.file.entity.FileItem;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.scope.entity.Scope;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "documents")
-@Getter @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter @Setter @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor @Builder
 public class DocumentEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,9 +27,13 @@ public class DocumentEntity {
     @Column(columnDefinition = "TEXT")
     private String aiSummary;
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private DocumentStatus status = DocumentStatus.DRAFT;
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "file_id")
-    private FileEntity file; // 원본 물리 파일
+    private FileItem file; // 원본 물리 파일
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id") // User의 userId와 연결
@@ -33,6 +42,16 @@ public class DocumentEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "scope_id")
     private Scope scope;
+
+    @Column(name = "is_ai_generated")
+    @Builder.Default
+    private Boolean isAiGenerated = false;
+
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
 
     public void updateContent(String title, String content) {
         this.title = title;

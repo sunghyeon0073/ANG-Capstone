@@ -1,35 +1,45 @@
-package com.ang.Backend.domain.file.controller;
+package com.ang.Backend.domain.file.Controller;
 
 import com.ang.Backend.common.response.ApiResponse;
-import com.ang.Backend.domain.file.entity.FileEntity;
+import com.ang.Backend.domain.file.dto.FileDto;
+import com.ang.Backend.common.enums.OwnerType;
 import com.ang.Backend.domain.file.service.FileService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.net.MalformedURLException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/files")
+@RequestMapping("/files")
 @RequiredArgsConstructor
 public class FileController {
 
     private final FileService fileService;
 
-    // 파일 다운로드 API
-    @GetMapping("/{fileId}/download")
-    public ResponseEntity<Resource> downloadFile(@PathVariable Long fileId) throws MalformedURLException {
-        FileEntity fileEntity = fileService.getFile(fileId);
-        Path path = Paths.get(fileEntity.getFilePath());
-        Resource resource = new UrlResource(path.toUri());
+    // 기능정의서 File-01-1: 파일 업로드
+    @PostMapping("/upload")
+    public ResponseEntity<ApiResponse<FileDto>> uploadFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("uploaderId") Integer uploaderId,
+            @RequestParam("ownerType") OwnerType ownerType,
+            @RequestParam("ownerId") Integer ownerId) {
+        try {
+            FileDto uploadedFile = fileService.uploadFile(file, uploaderId, ownerType, ownerId);
+            return ResponseEntity.ok(ApiResponse.ok(uploadedFile));
+        } catch (Exception e) {
+            // 프로젝트 전역 예외 처리 로직이 있다면 그에 맞게 수정
+            throw new RuntimeException("파일 업로드 실패: " + e.getMessage());
+        }
+    }
 
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileEntity.getOriginalName() + "\"")
-                .body(resource);
+    // 기능정의서 File-01-4: 파일 리스트 조회 (개인 또는 부서 전체 파일 관리)
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<FileDto>>> getFiles(
+            @RequestParam("ownerType") OwnerType ownerType,
+            @RequestParam("ownerId") Integer ownerId) {
+        List<FileDto> files = fileService.getFilesByOwner(ownerType, ownerId);
+        return ResponseEntity.ok(ApiResponse.ok(files));
     }
 }

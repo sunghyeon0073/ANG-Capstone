@@ -1,5 +1,6 @@
 package com.ang.Backend.domain.scope.controller;
 
+import com.ang.Backend.common.enums.ScopeType;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
@@ -7,6 +8,7 @@ import com.ang.Backend.domain.scope.dto.ScopeDto;
 import com.ang.Backend.domain.scope.entity.Scope;
 import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
+import com.ang.Backend.domain.scope.service.ScopeService;
 import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,7 @@ public class ScopeController {
     private final ScopeRepository scopeRepository;
     private final UserMembershipRepository userMembershipRepository;
     private final UserService userService;
+    private final ScopeService scopeService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<ScopeDto>>> getAllScopes() {
@@ -31,6 +34,11 @@ public class ScopeController {
                 .map(ScopeDto::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(scopes));
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<ScopeDto>> createScope(@jakarta.validation.Valid @RequestBody com.ang.Backend.domain.scope.dto.ScopeCreateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(scopeService.createScope(request)));
     }
 
     @GetMapping("/{id}/members")
