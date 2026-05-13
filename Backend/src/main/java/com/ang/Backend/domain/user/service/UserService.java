@@ -4,6 +4,7 @@ import com.ang.Backend.common.enums.UserStatus;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.role.entity.UserRole;
+import com.ang.Backend.domain.role.repository.RoleRepository;
 import com.ang.Backend.domain.role.repository.UserRoleRepository;
 import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
@@ -26,6 +27,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserMembershipRepository userMembershipRepository;
     private final UserRoleRepository userRoleRepository;
+    private final RoleRepository roleRepository;
 
     @Transactional(readOnly = true)
     public List<UserDto> getAllUsers() {
@@ -70,12 +72,26 @@ public class UserService {
 
 
     @Transactional
-    public void approveUser(Integer userId, String position) {
+    public void approveUser(Integer userId, Integer roleLevel) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        
+        // 1. 상태 활성화
         user.setStatus(UserStatus.ACTIVE);
-        user.setPosition(position);
         userRepository.save(user);
+
+        // 2. 권한 업데이트 (선택 사항)
+        if (roleLevel != null) {
+            com.ang.Backend.domain.role.entity.Role role = roleRepository.findByRoleLevel(roleLevel)
+                    .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
+            
+            UserMembership membership = userMembershipRepository.findByUser(user).stream()
+                    .findFirst().orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
+
+            // 기존 권한 삭제 후 새로운 권한 부여 (단순화된 정책)
+            userRoleRepository.deleteByUserAndScope(user, membership.getScope());
+            userRoleRepository.save(new UserRole(user, membership.getScope(), role));
+        }
     }
 
     public List<UserDto> getPendingUsersByScopes(List<Integer> scopeIds) {

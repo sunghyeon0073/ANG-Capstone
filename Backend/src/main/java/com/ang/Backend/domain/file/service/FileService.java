@@ -8,18 +8,26 @@ import com.ang.Backend.common.enums.OwnerType;
 import com.ang.Backend.domain.file.repository.FileItemRepository;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileService {
@@ -29,6 +37,36 @@ public class FileService {
 
     @Value("${file.upload.dir:/app/uploads}")
     private String uploadDir;
+
+    @PostConstruct
+    @Transactional
+    public void syncPdfFilesFromUploadsDir() {
+        File directory = new File(uploadDir);
+        if (!directory.exists()) {
+            directory.mkdirs();
+            return;
+        }
+
+        File[] files = directory.listFiles((dir, name) -> name.toLowerCase().endsWith(".pdf"));
+        if (files == null) return;
+
+        for (File file : files) {
+            String filePath = file.getAbsolutePath();
+            // DB에 존재하는지 확인
+            boolean exists = fileItemRepository.existsByFilePath(filePath);
+            if (!exists) {
+                FileItem fileItem = FileItem.builder()
+                        .originalFileName(file.getName())
+                        .storedFileName(file.getName())
+                        .filePath(filePath)
+                        .fileSize(file.length())
+                        .ownerType(OwnerType.USER)
+                        .build();
+                fileItemRepository.save(fileItem);
+                log.info("Synced PDF to DB: {}", file.getName());
+            }
+        }
+    }
 
     @Transactional
     public FileDto uploadFile(MultipartFile file, Integer uploaderId, OwnerType ownerType, Integer ownerId) throws IOException {
@@ -103,5 +141,28 @@ public class FileService {
             file.delete();
         }
         fileItemRepository.delete(fileItem);
+    }
+    
+    @Transactional(readOnly = true)
+    public Resource loadFileAsResource(Long fileId) {
+        try {
+            FileItem fileItem = fileItemRepository.findById(fileId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)); // or a specific FILE_NOT_FOUND
+            Path filePath = Paths.get(fileItem.getFilePath()).normalize();
+            Resource resource = new UrlResource(filePath.toUri());
+            if (resource.exists()) {
+                return resource;
+            } else {
+                throw new CustomException(ErrorCode.NOT_FOUND);
+            }
+        } catch (Exception ex) {
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
+    }
+    
+    @Transactional(readOnly = true)
+    public FileItem getFileItem(Long fileId) {
+        return fileItemRepository.findById(fileId)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
     }
 }
