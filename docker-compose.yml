@@ -5,18 +5,20 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     container_name: ang-backend
+    env_file:
+      - .env
     ports:
       - "9090:9090"
     environment:
-      DB_URL: ${DB_URL}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD}
-      FILE_UPLOAD_DIR: /app/uploads
-      AI_BASE_URL: http://ai:8888
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      DB_URL: ${DB_URL:?DB_URL is required}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:?ADMIN_INIT_PASSWORD is required}
+      FILE_UPLOAD_DIR: ${FILE_UPLOAD_DIR:-/app/uploads}
+      AI_BASE_URL: ${AI_BASE_URL:-http://ai:8888}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -42,9 +44,9 @@ services:
     ports:
       - "8888:8888"
     environment:
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
-      OLLAMA_HOST: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
