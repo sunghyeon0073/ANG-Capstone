@@ -7,5 +7,5 @@ export const login = (loginData) => {
 
 // 회원가입 요청
 export const signUp = (userData) => {
-  return api.post('/api/auth/signup', userData);
+  return api.post('/api/auth/register', userData);
 };
