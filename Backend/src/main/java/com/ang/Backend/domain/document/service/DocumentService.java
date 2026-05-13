@@ -4,6 +4,8 @@ import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
 import com.ang.Backend.domain.document.repository.DocumentRepository;
+import com.ang.Backend.domain.file.entity.FileItem;
+import com.ang.Backend.domain.file.repository.FileItemRepository;
 import com.ang.Backend.domain.file.service.FileService;
 import com.ang.Backend.domain.scope.entity.Scope;
 import com.ang.Backend.domain.scope.entity.UserMembership;
@@ -11,7 +13,9 @@ import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.scope.service.ScopeService;
 import com.ang.Backend.domain.user.entity.User;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,11 +26,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DocumentService {
     private final DocumentRepository documentRepository;
+    private final FileItemRepository fileItemRepository;
     private final FileService fileService;
     private final UserMembershipRepository userMembershipRepository;
     private final ScopeRepository scopeRepository;
@@ -35,6 +41,33 @@ public class DocumentService {
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
+
+    @PostConstruct
+    @Transactional
+    public void syncDocumentsFromFiles() {
+        // fileItem 중 문서(Document)와 연결되지 않은 파일들을 찾아서 문서로 변환
+        List<FileItem> allFiles = fileItemRepository.findAll();
+        for (FileItem file : allFiles) {
+            if (file.getOriginalFileName() != null && file.getOriginalFileName().toLowerCase().endsWith(".pdf")) {
+                if (!documentRepository.existsByFile(file)) {
+                    DocumentEntity doc = DocumentEntity.builder()
+                            .title(file.getOriginalFileName())
+                            .file(file)
+                            .status(DocumentStatus.DRAFT)
+                            .originalContent("Extracted content from PDF: " + file.getOriginalFileName())
+                            .build();
+                    documentRepository.save(doc);
+                    log.info("Synced File to Document: {}", file.getOriginalFileName());
+                }
+            }
+        }
+    }
+
+    @Transactional
+    public void manualSync() {
+        fileService.syncPdfFilesFromUploadsDir();
+        syncDocumentsFromFiles();
+    }
 
     @Transactional
     public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
@@ -101,23 +134,53 @@ public class DocumentService {
                 .collect(Collectors.toList());
     }
 
-    public List<DocumentDto.Response> getDepartmentDocuments(User user, String keyword) {
-        List<Scope> userScopes = userMembershipRepository.findByUser(user).stream()
+    public List<DocumentDto.Response> getDepartmentDocuments(User user, Integer targetScopeId, String keyword) {
+        List<Integer> scopeIds;
+
+        // 사용자가 속한 모든 부서 정보 가져오기 (보안 검증용)
+        List<Scope> myScopes = userMembershipRepository.findByUser(user).stream()
                 .map(UserMembership::getScope)
                 .collect(Collectors.toList());
 
-        if (userScopes.isEmpty()) {
-            throw new RuntimeException("사용자의 부서 정보를 찾을 수 없습니다.");
+        if (targetScopeId != null) {
+            // 특정 부서 필터링 시 보안 검증: 요청한 부서가 사용자의 권한 범위 내에 있는지 확인
+            Scope targetScope = scopeRepository.findById(targetScopeId)
+                    .orElseThrow(() -> new RuntimeException("해당 부서를 찾을 수 없습니다."));
+            
+            boolean hasAccess = myScopes.stream()
+                    .anyMatch(myScope -> isSameOrChild(myScope, targetScope));
+            
+            if (!hasAccess) {
+                throw new RuntimeException("해당 부서의 문서에 접근할 권한이 없습니다.");
+            }
+            
+            scopeIds = scopeService.getAllSubScopeIds(targetScope);
+        } else {
+            // 전체 조회 시
+            if (myScopes.isEmpty()) {
+                return List.of();
+            }
+
+            scopeIds = myScopes.stream()
+                    .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
+                    .distinct()
+                    .collect(Collectors.toList());
         }
 
-        List<Integer> allSubScopeIds = userScopes.stream()
-                .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
-                .distinct()
-                .collect(Collectors.toList());
-
-        return documentRepository.searchByScopes(allSubScopeIds, keyword).stream()
+        return documentRepository.searchByScopes(scopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+    }
+
+    private boolean isSameOrChild(Scope parent, Scope target) {
+        if (parent.getScopeId().equals(target.getScopeId())) return true;
+        
+        Scope current = target.getParentScope();
+        while (current != null) {
+            if (current.getScopeId().equals(parent.getScopeId())) return true;
+            current = current.getParentScope();
+        }
+        return false;
     }
 
     public DocumentDto.Response getDocument(Long id) {

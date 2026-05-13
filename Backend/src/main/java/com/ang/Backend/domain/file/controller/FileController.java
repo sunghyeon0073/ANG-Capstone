@@ -1,14 +1,20 @@
-package com.ang.Backend.domain.file.Controller;
+package com.ang.Backend.domain.file.controller;
 
 import com.ang.Backend.common.response.ApiResponse;
 import com.ang.Backend.domain.file.dto.FileDto;
+import com.ang.Backend.domain.file.entity.FileItem;
 import com.ang.Backend.common.enums.OwnerType;
 import com.ang.Backend.domain.file.service.FileService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -41,5 +47,20 @@ public class FileController {
             @RequestParam("ownerId") Integer ownerId) {
         List<FileDto> files = fileService.getFilesByOwner(ownerType, ownerId);
         return ResponseEntity.ok(ApiResponse.ok(files));
+    }
+    
+    // 파일 다운로드 기능
+    @GetMapping("/download/{fileId}")
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long fileId) {
+        Resource resource = fileService.loadFileAsResource(fileId);
+        FileItem fileItem = fileService.getFileItem(fileId);
+        
+        String encodedFileName = URLEncoder.encode(fileItem.getOriginalFileName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        String contentDisposition = "attachment; filename=\"" + encodedFileName + "\"";
+        
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .body(resource);
     }
 }
