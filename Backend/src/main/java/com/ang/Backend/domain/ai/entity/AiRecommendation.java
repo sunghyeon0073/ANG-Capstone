@@ -39,6 +39,7 @@ public class AiRecommendation {
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
+
     public void apply() {
         this.isApplied = true;
     }
