@@ -1,6 +1,6 @@
 import Memo from './Memo'
 
-export default function Home({ currentSubPage }) {
+export default function Home({ currentSubPage, user }) {
   if (currentSubPage === 'home-memo') {
     return <Memo />
   }
@@ -8,7 +8,7 @@ export default function Home({ currentSubPage }) {
   return (
     <div className="page-content">
       <h1>홈</h1>
-      <p>안녕하세요! ANG 시스템에 오신 것을 환영합니다^^.</p>
+      <p>안녕하세요, {user?.name || '사용자'}님! ANG 시스템에 오신 것을 환영합니다.</p>
     </div>
   )
 }

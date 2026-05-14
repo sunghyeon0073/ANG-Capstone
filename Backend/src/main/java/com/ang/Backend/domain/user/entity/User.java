@@ -45,6 +45,9 @@ public class User {
     @Column(name = "position", length = 50)
     private String position;
 
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20)
     @Builder.Default

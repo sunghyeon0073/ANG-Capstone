@@ -157,8 +157,26 @@ public class DocumentService {
                     .orElseThrow(() -> new RuntimeException("해당 부서를 찾을 수 없습니다."));
             
             if (!isSuperAdmin) {
-                boolean hasAccess = myScopes.stream()
-                        .anyMatch(myScope -> isSameOrChild(myScope, targetScope));
+                // 새로운 로직: 사용자가 속한 부서의 Level 2 조상을 찾음
+                // 예: 영진전문대학교(L1) -> 평생교육원(L2) -> 교육팀(L3)
+                // 사용자가 교육팀 소속이면 평생교육원 산하 모든 부서 문서를 볼 수 있음
+                
+                boolean hasAccess = false;
+                for (Scope myScope : myScopes) {
+                    Scope myLevel2 = getLevel2Ancestor(myScope);
+                    Scope targetLevel2 = getLevel2Ancestor(targetScope);
+                    
+                    if (myLevel2 != null && targetLevel2 != null && 
+                        myLevel2.getScopeId().equals(targetLevel2.getScopeId())) {
+                        hasAccess = true;
+                        break;
+                    }
+                    // 혹은 기존처럼 직계 부모-자식 관계인 경우도 허용
+                    if (isSameOrChild(myScope, targetScope)) {
+                        hasAccess = true;
+                        break;
+                    }
+                }
                 
                 if (!hasAccess) {
                     throw new RuntimeException("해당 부서의 문서에 접근할 권한이 없습니다.");
@@ -176,16 +194,48 @@ public class DocumentService {
                     return List.of();
                 }
 
+                // 사용자가 속한 모든 L2 조상들의 모든 하위 부서 ID를 모음
                 scopeIds = myScopes.stream()
-                        .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
+                        .map(this::getLevel2Ancestor)
+                        .filter(java.util.Objects::nonNull)
+                        .flatMap(l2 -> scopeService.getAllSubScopeIds(l2).stream())
                         .distinct()
                         .collect(Collectors.toList());
+                
+                // 본인이 속한 부서의 하위 부서들도 포함 (L2가 없는 경우 대비)
+                List<Integer> myDirectSubScopes = myScopes.stream()
+                        .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
+                        .distinct()
+                        .toList();
+                
+                scopeIds.addAll(myDirectSubScopes);
+                scopeIds = scopeIds.stream().distinct().collect(Collectors.toList());
             }
         }
 
         return documentRepository.searchByScopes(scopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+    }
+
+    private Scope getLevel2Ancestor(Scope scope) {
+        if (scope == null) return null;
+        
+        // Root (Level 1)
+        if (scope.getParentScope() == null) return null;
+        
+        // Level 2 (Parent is root)
+        if (scope.getParentScope().getParentScope() == null) return scope;
+        
+        // Level 3 (Parent is Level 2)
+        if (scope.getParentScope().getParentScope().getParentScope() == null) return scope.getParentScope();
+        
+        // 그 이상 깊이가 있다면 계속 위로 올라가서 Level 2를 찾음
+        Scope current = scope;
+        while (current.getParentScope() != null && current.getParentScope().getParentScope() != null) {
+            current = current.getParentScope();
+        }
+        return current;
     }
 
     private boolean isSameOrChild(Scope parent, Scope target) {

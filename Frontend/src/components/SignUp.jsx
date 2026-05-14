@@ -7,11 +7,11 @@ export default function SignUp() {
     name: '',
     employeeId: '',
     birthDate: '',
-    departmentCode: '',
     email: '',
     password: '',
     passwordConfirm: ''
   })
+  const [scopeCode, setScopeCode] = useState('')
   const navigate = useNavigate()
 
   const handleChange = (e) => {
@@ -28,12 +28,18 @@ export default function SignUp() {
       alert('비밀번호가 일치하지 않습니다.')
       return
     }
+    
+    if (!scopeCode.trim()) {
+      alert('부서코드를 입력해주세요.')
+      return
+    }
+
     try {
       await signUp({
         name: formData.name,
         empNo: formData.employeeId,
         birthdate: formData.birthDate,
-        scopeCode: formData.departmentCode,
+        scopeCode: scopeCode.trim(),
         email: formData.email,
         password: formData.password,
         passwordConfirm: formData.passwordConfirm
@@ -95,18 +101,21 @@ export default function SignUp() {
                 required
               />
             </div>
+          </div>
 
+          <div className="form-row full-width">
             <div className="form-group">
-              <label htmlFor="departmentCode">부서코드</label>
-              <input
-                type="text"
-                id="departmentCode"
-                name="departmentCode"
-                value={formData.departmentCode}
-                onChange={handleChange}
-                placeholder="부서코드"
-                required
-              />
+              <label>부서 고유코드</label>
+              <div className="dynamic-input-row" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <input
+                  type="text"
+                  value={scopeCode}
+                  onChange={(e) => setScopeCode(e.target.value)}
+                  placeholder="부서코드를 입력하세요 (예: DEPT01)"
+                  required
+                  style={{ flex: 1 }}
+                />
+              </div>
             </div>
           </div>
 

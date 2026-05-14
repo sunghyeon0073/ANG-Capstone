@@ -86,14 +86,12 @@ public class ScopeService {
      * 특정 부서에 새로운 멤버를 추가합니다. (다중 소속 지원)
      */
     @Transactional
-    public void addMemberToScope(Integer scopeId, Integer userId, User requester) {
+    public void addMemberToScope(Integer scopeId, Integer userId, String position, User requester) {
         Scope targetScope = scopeRepository.findById(scopeId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
-        
         User targetUser = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        // 보안 검증: 최고관리자(100) 또는 해당 부서(또는 상위 부서)의 중간관리자(50)
         if (!isManagerOfScope(requester, targetScope)) {
             throw new CustomException(ErrorCode.ACCESS_DENIED);
         }
@@ -105,14 +103,69 @@ public class ScopeService {
         userMembershipRepository.save(UserMembership.builder()
                 .user(targetUser)
                 .scope(targetScope)
+                .position(position != null && !position.trim().isEmpty() ? position : "사원")
                 .build());
 
         Role defaultRole = roleRepository.findByRoleLevel(0)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
-        
+
         userRoleRepository.save(new UserRole(targetUser, targetScope, defaultRole));
-        
+
         log.info("User {} added to scope {} by manager {}", targetUser.getEmpNo(), targetScope.getScopeCode(), requester.getEmpNo());
+    }
+
+    /**
+     * 특정 부서에서의 멤버 직급을 업데이트합니다.
+     */
+    @Transactional
+    public void updateMemberPosition(Integer scopeId, Integer userId, String position, User requester) {
+        Scope targetScope = scopeRepository.findById(scopeId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        if (!isManagerOfScope(requester, targetScope)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED);
+        }
+
+        UserMembership membership = userMembershipRepository.findByUserAndScope(targetUser, targetScope)
+                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+
+        membership.setPosition(position);
+        userMembershipRepository.save(membership);
+        
+        log.info("User {} position in scope {} updated to {} by manager {}", targetUser.getEmpNo(), targetScope.getScopeCode(), position, requester.getEmpNo());
+    }
+
+    /**
+     * 특정 부서에서 멤버를 제거합니다.
+     */
+    @Transactional
+    public void removeMemberFromScope(Integer scopeId, Integer userId, User requester) {
+        Scope targetScope = scopeRepository.findById(scopeId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        if (!isManagerOfScope(requester, targetScope)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED);
+        }
+
+        // 최소 하나의 부서는 유지해야 함
+        long membershipCount = userMembershipRepository.findByUser(targetUser).size();
+        if (membershipCount <= 1) {
+            throw new CustomException(ErrorCode.INVALID_INPUT, "최소 하나의 부서 소속은 유지해야 합니다.");
+        }
+
+        UserMembership membership = userMembershipRepository.findByUserAndScope(targetUser, targetScope)
+                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+
+        userMembershipRepository.delete(membership);
+        
+        // 해당 부서에서 부여된 역할도 삭제
+        userRoleRepository.deleteByUserAndScope(targetUser, targetScope);
+
+        log.info("User {} removed from scope {} by manager {}", targetUser.getEmpNo(), targetScope.getScopeCode(), requester.getEmpNo());
     }
 
     private boolean isManagerOfScope(User user, Scope targetScope) {

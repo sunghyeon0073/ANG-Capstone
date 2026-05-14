@@ -2,7 +2,7 @@ export default function Mail() {
   return (
     <div className="page-content">
       <h1>메일</h1>
-      <p>이메일을 확인하세요.</p>
+      <div className="file-empty" style={{ marginTop: 40 }}>수신된 메일이 없습니다.</div>
     </div>
   )
 }

@@ -29,6 +29,9 @@ public class UserMembership {
     @JoinColumn(name = "scope_id", nullable = false)
     private Scope scope;
 
+    @Column(name = "position", length = 50)
+    private String position;
+
     @CreationTimestamp
     @Column(name = "joined_at", updatable = false)
     private LocalDateTime joinedAt;

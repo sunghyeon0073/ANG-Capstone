@@ -80,9 +80,31 @@ public class ScopeController {
     public ResponseEntity<ApiResponse<Void>> addMemberToScope(
             @PathVariable Integer id,
             @RequestParam Integer userId,
+            @RequestParam(required = false) String position,
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
         com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        scopeService.addMemberToScope(id, userId, requester);
+        scopeService.addMemberToScope(id, userId, position, requester);
         return ResponseEntity.ok(ApiResponse.ok("부서 멤버로 추가되었습니다."));
+    }
+
+    @PatchMapping("/{id}/members/{userId}/position")
+    public ResponseEntity<ApiResponse<Void>> updateMemberPosition(
+            @PathVariable Integer id,
+            @PathVariable Integer userId,
+            @RequestBody com.ang.Backend.domain.scope.dto.MemberPositionUpdateRequest request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        scopeService.updateMemberPosition(id, userId, request.getPosition(), requester);
+        return ResponseEntity.ok(ApiResponse.ok("직급이 변경되었습니다."));
+    }
+
+    @DeleteMapping("/{id}/members/{userId}")
+    public ResponseEntity<ApiResponse<Void>> removeMemberFromScope(
+            @PathVariable Integer id,
+            @PathVariable Integer userId,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        scopeService.removeMemberFromScope(id, userId, requester);
+        return ResponseEntity.ok(ApiResponse.ok("부서 소속이 해제되었습니다."));
     }
 }

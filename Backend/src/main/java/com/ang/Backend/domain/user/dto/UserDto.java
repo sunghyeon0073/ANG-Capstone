@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 @Builder
@@ -17,12 +18,24 @@ public class UserDto {
     private String phone;
     private LocalDate birthdate;
     private String profileImageUrl;
-    private String position;
+    private String position; // Primary or legacy position
     private UserStatus status;
-    private String dept;
+    private String dept;     // Legacy or summary dept
     private String role;
     private int roleLevel;
     private String avatar;
+    private String rejectionReason;
+
+    private List<DepartmentInfo> departments;
+
+    @Getter
+    @Builder
+    public static class DepartmentInfo {
+        private Integer scopeId;
+        private String scopeName;
+        private String scopeCode;
+        private String position;
+    }
 
     public static UserDto from(User user) {
         String avatar = user.getName() != null && user.getName().length() >= 2

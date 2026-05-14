@@ -25,6 +25,7 @@ public enum ErrorCode {
     DUPLICATE_EMP_NO(HttpStatus.CONFLICT, "이미 사용 중인 사번입니다."),
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     USER_PENDING(HttpStatus.FORBIDDEN, "관리자 승인 대기 중입니다."),
+    USER_REJECTED(HttpStatus.FORBIDDEN, "가입이 거절된 계정입니다."),
     USER_ANONYMIZED(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
     INVALID_SCOPE_CODE(HttpStatus.BAD_REQUEST, "유효하지 않은 부서 코드입니다."),
     ONLY_TEAM_REGISTRATION_ALLOWED(HttpStatus.BAD_REQUEST, "팀 단위의 고유 식별 번호로만 가입이 가능합니다."),

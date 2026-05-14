@@ -3,7 +3,7 @@ import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMa
 
 export default function TopNavBar({ user, onLogout, currentPage, onPageChange }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false)
-  const [notificationCount] = useState(2)
+  const [notificationCount] = useState(0)
 
   const menuItems = [
     { id: 'home', label: '홈', icon: FiHome },
@@ -18,9 +18,6 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
   ]
 
   // 관리자 권한(Level 50 이상)이 있는 경우 관리자 탭 추가
-  console.log(user)
-  console.log(user?.roleLevel)
-
   if (user?.roleLevel >= 50) {
     menuItems.push({ id: 'admin', label: '관리자 페이지', icon: FiShield });
   }
