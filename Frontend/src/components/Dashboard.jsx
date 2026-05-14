@@ -13,6 +13,7 @@ import Chat from './pages/Chat'
 import Organization from './pages/Organization'
 import MyPage from './pages/MyPage'
 import Admin from './pages/Admin'
+import FloatingMascot from './FloatingMascot'
 
 const PAGE_COMPONENTS = {
   home: Home,
@@ -110,6 +111,7 @@ export default function Dashboard() {
           {renderPage()}
         </div>
       </div>
+      <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} />
     </div>
   )
 }
