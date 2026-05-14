@@ -78,7 +78,7 @@ public class FileService {
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         String originalFilename = file.getOriginalFilename();
-        String s3Key = s3FileService.upload(file);
+        String s3Key = s3FileService.uploadForPerson(file, uploader.getEmpNo());
 
         FileItem fileItem = FileItem.builder()
                 .originalFileName(originalFilename)
@@ -111,7 +111,9 @@ public class FileService {
         if (file.isEmpty()) return null;
 
         String originalFilename = file.getOriginalFilename();
-        String s3Key = s3FileService.upload(file);
+        String s3Key = uploader != null
+                ? s3FileService.uploadForPerson(file, uploader.getEmpNo())
+                : s3FileService.upload(file);
 
         return fileItemRepository.save(FileItem.builder()
                 .originalFileName(originalFilename)

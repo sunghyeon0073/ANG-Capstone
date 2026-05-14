@@ -3,7 +3,6 @@ import api from '../../api/axios'
 import { getDepartmentDocuments, getMyDocuments } from '../../api/documentApi'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
-const fileStreamUrl = (fileId) => `${API_BASE_URL}/files/stream/${fileId}`
 const filePreviewUrl = (fileId) => `${API_BASE_URL}/files/preview/${fileId}`
 const fileDownloadUrl = (fileId) => `${API_BASE_URL}/files/download/${fileId}`
 
@@ -178,34 +177,6 @@ export default function DocumentWriter() {
   const renderDocumentBody = () => {
     if (!selectedDoc.fileId) {
       return selectedDoc.originalContent?.trim() || '내용이 없습니다.'
-    }
-
-    const contentType = selectedDoc.fileContentType || ''
-
-    if (contentType.startsWith('image/')) {
-      return (
-        <img
-          src={fileStreamUrl(selectedDoc.fileId)}
-          alt={selectedDoc.title}
-          onError={() => setPreviewError(true)}
-          style={{ maxWidth: '100%' }}
-        />
-      )
-    }
-
-    if (contentType.includes('pdf')) {
-      if (previewError) {
-        return renderPreviewFallback()
-      }
-
-      return (
-        <iframe
-          src={fileStreamUrl(selectedDoc.fileId)}
-          title={selectedDoc.title}
-          onError={() => setPreviewError(true)}
-          style={{ width: '100%', height: '600px', border: 'none' }}
-        />
-      )
     }
 
     if (previewError) {

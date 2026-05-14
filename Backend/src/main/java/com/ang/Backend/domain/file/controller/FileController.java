@@ -97,8 +97,26 @@ public class FileController {
         String contentDisposition = "inline; filename=\"" + encodedFileName + "\"";
 
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
+                .contentType(resolvePreviewMediaType(fileItem))
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                 .body(resource);
+    }
+
+    private MediaType resolvePreviewMediaType(FileItem fileItem) {
+        String contentType = fileItem.getContentType();
+
+        if (contentType == null || contentType.isBlank()) {
+            return MediaType.APPLICATION_PDF;
+        }
+
+        try {
+            if (contentType.startsWith("image/") || contentType.contains("pdf")) {
+                return MediaType.parseMediaType(contentType);
+            }
+        } catch (Exception ignored) {
+            return MediaType.APPLICATION_PDF;
+        }
+
+        return MediaType.APPLICATION_PDF;
     }
 }
