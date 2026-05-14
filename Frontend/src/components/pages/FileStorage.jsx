@@ -6,6 +6,7 @@ import {
   deleteDocument,
   getDocument
 } from '../../api/documentApi';
+import { getScopes } from '../../api/scopeApi';
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleDateString('ko-KR') : '-';
 const formatSize = (bytes) => {
@@ -24,6 +25,8 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [myScopes, setMyScopes] = useState([]);
+  const [targetScopeId, setTargetScopeId] = useState('');
   const fileInputRef = useRef();
 
   const isMy = currentSubPage === 'file-my';
@@ -46,8 +49,29 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
     }
   };
 
+  const fetchMyScopes = async () => {
+    try {
+      const res = await getScopes();
+      // 조직도 API는 트리 구조이므로 평탄화하거나 현재 사용자가 속한 부서만 필터링해야 함
+      // 여기서는 일단 모든 부서 목록을 가져오는 것으로 가정 (또는 /scopes/my API가 있다면 좋음)
+      const data = res.data?.data || [];
+      const flatScopes = [];
+      const flatten = (items) => {
+        items.forEach(item => {
+          flatScopes.push({ id: item.id, name: item.name });
+          if (item.children) flatten(item.children);
+        });
+      };
+      flatten(Array.isArray(data) ? data : [data]);
+      setMyScopes(flatScopes);
+    } catch (error) {
+      console.error('부서 목록 로드 실패', error);
+    }
+  };
+
   useEffect(() => {
     fetchDocs();
+    if (isMy) fetchMyScopes();
   }, [currentSubPage]);
 
   const handleSearch = (e) => {
@@ -63,10 +87,15 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       const formData = new FormData();
       formData.append('title', uploadTitle);
       formData.append('file', uploadFile);
+      if (targetScopeId) {
+        formData.append('targetScopeId', targetScopeId);
+      }
+      
       await uploadDocument(formData);
       setShowUpload(false);
       setUploadTitle('');
       setUploadFile(null);
+      setTargetScopeId('');
       fetchDocs();
     } catch (error) {
       alert('업로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
@@ -152,6 +181,21 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                 required
                 style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
               />
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 13, color: '#666' }}>저장 위치 (미선택 시 개인 보관함)</label>
+                <select 
+                  value={targetScopeId} 
+                  onChange={e => setTargetScopeId(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
+                >
+                  <option value="">개인 문서함</option>
+                  {myScopes.map(scope => (
+                    <option key={scope.id} value={scope.id}>{scope.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <input
                 type="file"
                 ref={fileInputRef}
@@ -177,6 +221,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
               <div><strong>업로드일:</strong> {formatDate(selectedDoc.createdAt)}</div>
               <div><strong>파일명:</strong> {selectedDoc.originalFileName || '-'}</div>
               <div><strong>파일크기:</strong> {formatSize(selectedDoc.fileSize)}</div>
+              {selectedDoc.scopeName && <div><strong>소속 부서:</strong> {selectedDoc.scopeName}</div>}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>닫기</button>
@@ -209,6 +254,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                     >
                       📄 {doc.title}
                     </span>
+                    {doc.scopeName && <span style={{ marginLeft: 8, fontSize: 11, color: '#999', background: '#f0f0f0', padding: '2px 6px', borderRadius: 10 }}>{doc.scopeName}</span>}
                   </td>
                   <td style={{ padding: '10px 12px', color: '#888' }}>{formatDate(doc.createdAt)}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'center' }}>

@@ -72,12 +72,15 @@ public class UserService {
 
 
     @Transactional
-    public void approveUser(Integer userId, Integer roleLevel) {
+    public void approveUser(Integer userId, String position, Integer roleLevel) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         
-        // 1. 상태 활성화
+        // 1. 상태 활성화 및 직급 설정
         user.setStatus(UserStatus.ACTIVE);
+        if (position != null) {
+            user.setPosition(position);
+        }
         userRepository.save(user);
 
         // 2. 권한 업데이트 (선택 사항)
@@ -94,6 +97,7 @@ public class UserService {
         }
     }
 
+    @Transactional(readOnly = true)
     public List<UserDto> getPendingUsersByScopes(List<Integer> scopeIds) {
         return userMembershipRepository.findByScopeScopeIdIn(scopeIds).stream()
                 .map(UserMembership::getUser)
@@ -102,6 +106,7 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<UserDto> getPendingUsers() {
         return userRepository.findByStatus(UserStatus.PENDING).stream()
                 .map(this::toDto)
@@ -109,7 +114,8 @@ public class UserService {
     }
 
 
-    private UserDto toDto(User user) {
+    @Transactional(readOnly = true)
+    public UserDto toDto(User user) {
         String dept = userMembershipRepository.findByUser(user).stream()
                 .map(m -> m.getScope().getName())
                 .collect(Collectors.joining(", "));

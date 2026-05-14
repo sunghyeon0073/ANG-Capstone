@@ -77,14 +77,21 @@ public class FileService {
         User uploader = userRepository.findById(uploaderId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        File directory = new File(uploadDir);
+        String customPath = uploadDir;
+        if (ownerType == OwnerType.USER) {
+            customPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
+        } else if (ownerType == OwnerType.SCOPE) {
+            // Scope 전용 경로 로직 (필요 시 추가)
+        }
+
+        File directory = new File(customPath);
         if (!directory.exists()) {
             directory.mkdirs();
         }
 
         String originalFilename = file.getOriginalFilename();
         String storedFileName = UUID.randomUUID().toString() + "_" + originalFilename;
-        String filePath = uploadDir + File.separator + storedFileName;
+        String filePath = customPath + File.separator + storedFileName;
 
         // 실제 파일을 서버 경로에 저장
         file.transferTo(new File(filePath));
@@ -112,9 +119,21 @@ public class FileService {
 
     @Transactional
     public FileItem storeFile(MultipartFile file, User uploader) throws IOException {
+        return storeFile(file, uploader, null);
+    }
+
+    @Transactional
+    public FileItem storeFile(MultipartFile file, User uploader, String subPath) throws IOException {
         if (file.isEmpty()) return null;
 
-        File directory = new File(uploadDir).getAbsoluteFile();
+        String finalPath = uploadDir;
+        if (subPath != null && !subPath.isBlank()) {
+            finalPath += File.separator + subPath;
+        } else if (uploader != null) {
+            finalPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
+        }
+
+        File directory = new File(finalPath).getAbsoluteFile();
         if (!directory.exists()) directory.mkdirs();
 
         String originalFilename = file.getOriginalFilename();

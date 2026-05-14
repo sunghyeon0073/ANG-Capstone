@@ -16,6 +16,7 @@ import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
+import com.ang.Backend.domain.user.service.UserService;
 import com.ang.Backend.common.enums.UserStatus;
 import com.ang.Backend.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,7 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserService userService;
 
     @Transactional
     public void register(RegisterRequest req) {
@@ -121,7 +123,7 @@ public class AuthService {
                 .accessToken(jwtTokenProvider.createAccessToken(user.getEmpNo()))
                 .refreshToken(jwtTokenProvider.createRefreshToken(user.getEmpNo()))
                 .tokenType("Bearer")
-                .user(UserDto.from(user))
+                .user(userService.toDto(user))
                 .build();
     }
 }

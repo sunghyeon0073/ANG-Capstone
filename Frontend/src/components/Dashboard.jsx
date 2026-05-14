@@ -55,14 +55,19 @@ export default function Dashboard() {
   }
 
   const handlePageChange = (pageId) => {
-    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization']
+    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization', 'admin']
 
     if (topNavMenuIds.includes(pageId)) {
       const incomingCategory = pageId === 'organization' ? 'org' : pageId
       const currentCategory = getMainCategory(currentPage)
 
       if (incomingCategory !== currentCategory) {
-        setCurrentPage(SIDEBAR_MENUS[incomingCategory]?.[0]?.id || pageId)
+        // 관리자 탭 클릭 시 기본 서브페이지로 'admin-approval' 설정
+        if (incomingCategory === 'admin') {
+          setCurrentPage('admin-approval')
+        } else {
+          setCurrentPage(SIDEBAR_MENUS[incomingCategory]?.[0]?.id || pageId)
+        }
       }
     } else {
       setCurrentPage(pageId)
@@ -70,8 +75,6 @@ export default function Dashboard() {
   }
 
   const renderPage = () => {
-    if (currentPage === 'org-admin') return <Admin />
-
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
 
@@ -80,7 +83,7 @@ export default function Dashboard() {
     return <Component
       user={user}
       currentSubPage={currentPage}
-      me={user}
+      me={user} // Admin 컴포넌트 등에서 사용할 내 정보
     />
   }
 

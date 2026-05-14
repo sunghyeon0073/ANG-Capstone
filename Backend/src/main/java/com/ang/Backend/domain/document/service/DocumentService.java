@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -35,6 +36,7 @@ public class DocumentService {
     private final FileItemRepository fileItemRepository;
     private final FileService fileService;
     private final UserMembershipRepository userMembershipRepository;
+    private final com.ang.Backend.domain.role.repository.UserRoleRepository userRoleRepository;
     private final ScopeRepository scopeRepository;
     private final ScopeService scopeService;
     private final RestTemplate restTemplate;
@@ -71,13 +73,16 @@ public class DocumentService {
 
     @Transactional
     public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
-        var storedFile = fileService.storeFile(file, user);
-
         Scope targetScope = null;
+        String subPath = null;
+
         if (targetScopeId != null) {
             targetScope = scopeRepository.findById(targetScopeId)
                     .orElseThrow(() -> new RuntimeException("대상 부서를 찾을 수 없습니다."));
+            subPath = "Scopes" + File.separator + targetScope.getScopeCode();
         }
+
+        var storedFile = fileService.storeFile(file, user, subPath);
 
         DocumentEntity doc = DocumentEntity.builder()
                 .title(title)
@@ -142,29 +147,40 @@ public class DocumentService {
                 .map(UserMembership::getScope)
                 .collect(Collectors.toList());
 
+        // 최고관리자 권한 확인
+        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
+        boolean isSuperAdmin = roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100);
+
         if (targetScopeId != null) {
             // 특정 부서 필터링 시 보안 검증: 요청한 부서가 사용자의 권한 범위 내에 있는지 확인
             Scope targetScope = scopeRepository.findById(targetScopeId)
                     .orElseThrow(() -> new RuntimeException("해당 부서를 찾을 수 없습니다."));
             
-            boolean hasAccess = myScopes.stream()
-                    .anyMatch(myScope -> isSameOrChild(myScope, targetScope));
-            
-            if (!hasAccess) {
-                throw new RuntimeException("해당 부서의 문서에 접근할 권한이 없습니다.");
+            if (!isSuperAdmin) {
+                boolean hasAccess = myScopes.stream()
+                        .anyMatch(myScope -> isSameOrChild(myScope, targetScope));
+                
+                if (!hasAccess) {
+                    throw new RuntimeException("해당 부서의 문서에 접근할 권한이 없습니다.");
+                }
             }
             
             scopeIds = scopeService.getAllSubScopeIds(targetScope);
         } else {
             // 전체 조회 시
-            if (myScopes.isEmpty()) {
-                return List.of();
-            }
+            if (isSuperAdmin) {
+                // 최고관리자는 모든 부서 ID 가져오기
+                scopeIds = scopeRepository.findAll().stream().map(Scope::getScopeId).collect(Collectors.toList());
+            } else {
+                if (myScopes.isEmpty()) {
+                    return List.of();
+                }
 
-            scopeIds = myScopes.stream()
-                    .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
-                    .distinct()
-                    .collect(Collectors.toList());
+                scopeIds = myScopes.stream()
+                        .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
+                        .distinct()
+                        .collect(Collectors.toList());
+            }
         }
 
         return documentRepository.searchByScopes(scopeIds, keyword).stream()

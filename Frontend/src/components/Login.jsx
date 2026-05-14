@@ -12,7 +12,7 @@ export default function Login() {
     try {
       // 더미 로그인: 사번 '1' 비밀번호 '1'이면 백엔드 호출 없이 로컬 저장 및 이동
       if (employeeId === '1' && password === '1') {
-        const dummyUser = { id: 1, empNo: '1', name: '더미 사용자' }
+        const dummyUser = { id: 1, empNo: '1', name: '최고관리자(테스트)', roleLevel: 100, role: '최고관리자' }
         const dummyToken = 'dummy-token'
         localStorage.setItem('user', JSON.stringify(dummyUser))
         localStorage.setItem('token', dummyToken)

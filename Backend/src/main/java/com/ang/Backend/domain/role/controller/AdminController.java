@@ -37,11 +37,13 @@ public class AdminController {
     private final ScopeService scopeService;
 
     @GetMapping("/users")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<UserDto>>> getAllUsers() {
         return ResponseEntity.ok(ApiResponse.ok(userService.getAllUsers()));
     }
 
     @GetMapping("/users/pending")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<UserDto>>> getPendingUsers(@AuthenticationPrincipal UserDetails userDetails) {
         User admin = userRepository.findByEmpNo(userDetails.getUsername())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
@@ -66,7 +68,7 @@ public class AdminController {
     @PatchMapping("/users/{id}/approve")
     public ResponseEntity<ApiResponse<Void>> approveUser(@PathVariable Integer id, 
                                                            @RequestBody UserApproveRequest req) {
-        userService.approveUser(id, req.getRoleLevel());
+        userService.approveUser(id, req.getPosition(), req.getRoleLevel());
         return ResponseEntity.ok(ApiResponse.ok("승인 완료되었습니다."));
     }
 

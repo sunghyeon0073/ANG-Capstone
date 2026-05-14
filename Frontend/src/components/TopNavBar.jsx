@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMail, FiMessageCircle, FiUsers, FiBell } from 'react-icons/fi'
+import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
 
 export default function TopNavBar({ user, onLogout, currentPage, onPageChange }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -16,6 +16,14 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
     { id: 'chat', label: '채팅', icon: FiMessageCircle },
     { id: 'organization', label: '조직도', icon: FiUsers }
   ]
+
+  // 관리자 권한(Level 50 이상)이 있는 경우 관리자 탭 추가
+  console.log(user)
+  console.log(user?.roleLevel)
+
+  if (user?.roleLevel >= 50) {
+    menuItems.push({ id: 'admin', label: '관리자 페이지', icon: FiShield });
+  }
 
   const getInitials = (name) => {
     return name
