@@ -8,10 +8,10 @@ spring:
     name: Ang
 
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:local}
+    active: ${SPRING_PROFILES_ACTIVE:prod}
 
   datasource:
-    url: ${DB_URL:jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
+    url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.mariadb.jdbc.Driver
@@ -62,5 +62,13 @@ server:
 
 logging:
   level:
+    root: info
+    com.ang: debug
     org.hibernate.SQL: debug
-    org.springframework.security: debug
+    org.springframework.security: warn
+
+cloud:
+  aws:
+    region: ap-northeast-3
+    s3:
+      bucket: ang-s3-bucket-418295679042-ap-northeast-3-an
