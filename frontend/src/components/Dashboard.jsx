@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import TopNavBar from './TopNavBar'
-import Sidebar from './Sidebar'
+import Sidebar, { SIDEBAR_MENUS } from './Sidebar'
 import Home from './pages/Home'
 import DocumentWriter from './pages/DocumentWriter'
 import ESignature from './pages/ESignature'
@@ -12,111 +12,77 @@ import Mail from './pages/Mail'
 import Chat from './pages/Chat'
 import Organization from './pages/Organization'
 import MyPage from './pages/MyPage'
-import Memo from './pages/Memo'
+import FloatingMascot from './FloatingMascot'
+import Admin from './pages/Admin'
 
-const sidebarMenus = {
-  home: [
-    { id: 'home', label: '대시보드' },
-    { id: 'home-memo', label: '메모' }
-  ],
-  document: [
-    { id: 'document-AI', label: 'AI문서작성' },
-    { id: 'document', label: '문서작성' },
-    { id: 'document-preview', label: '문서 미리보기' }
-  ],
-  esignature: [
-    { id: 'esignature', label: '결재대기' },
-    { id: 'esignature-completed', label: '완료' },
-    { id: 'esignature-rejected', label: '반려' },
-    { id: 'esignature-my', label: '내가 요청' }
-  ],
-  calendar: [
-    { id: 'calendar', label: '내 캘린더' }
-  ],
-  file: [
-    { id: 'file', label: '내 파일' },
-    { id: 'file-shared', label: '공유파일' },
-    { id: 'file-trash', label: '휴지통' }
-  ],
-  board: [
-    { id: 'board-notice', label: '공지사항' },
-    { id: 'board-free', label: '자유게시판' }
-  ],
-  mail: [
-    { id: 'mail', label: '받은메일' },
-    { id: 'mail-sent', label: '보낸메일' },
-    { id: 'mail-important', label: '중요' },
-    { id: 'mail-trash', label: '휴지통' }
-  ],
-  chat: [
-    { id: 'chat-personal', label: '개인채팅' },
-    { id: 'chat-groups', label: '그룹채팅' }
-  ],
-  organization: [
-    { id: 'organization', label: '전체조직' },
-    { id: 'organization-dept', label: '부서별' }
-  ]
+const PAGE_COMPONENTS = {
+  home: Home,
+  document: DocumentWriter,
+  esignature: ESignature,
+  calendar: Calendar,
+  file: FileStorage,
+  board: Board,
+  mail: Mail,
+  chat: Chat,
+  org: Organization,
+  organization: Organization,
+  mypage: MyPage,
+  admin: Admin
 }
 
-const getFirstSubPage = (page) => {
-  const items = sidebarMenus[page] || sidebarMenus.home
-  return items[0]?.id || page
+const getMainCategory = (page) => {
+  const category = page.split('-')[0]
+  return category === 'organization' ? 'org' : category
 }
 
 export default function Dashboard() {
-  const [currentPage, setCurrentPage] = useState('home')
-  const [selectedSubPage, setSelectedSubPage] = useState(getFirstSubPage('home'))
-  const [user, setUser] = useState(null)
   const navigate = useNavigate()
+  const [user, setUser] = useState(null)
+  const [currentPage, setCurrentPage] = useState('home-dashboard')
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user')
-    if (storedUser) {
-      setUser(JSON.parse(storedUser))
-    } else {
-      navigate('/')
+    const savedUser = localStorage.getItem('user')
+    if (!savedUser) {
+      navigate('/login')
+      return
     }
+    setUser(JSON.parse(savedUser))
   }, [navigate])
-
-  const handlePageChange = (page) => {
-    setCurrentPage(page)
-    setSelectedSubPage(getFirstSubPage(page))
-  }
 
   const handleLogout = () => {
     localStorage.removeItem('user')
-    navigate('/')
+    localStorage.removeItem('token')
+    navigate('/login')
+  }
+
+  const handlePageChange = (pageId) => {
+    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization']
+
+    if (topNavMenuIds.includes(pageId)) {
+      const incomingCategory = pageId === 'organization' ? 'org' : pageId
+      const currentCategory = getMainCategory(currentPage)
+
+      if (incomingCategory !== currentCategory) {
+        setCurrentPage(SIDEBAR_MENUS[incomingCategory]?.[0]?.id || pageId)
+      }
+    } else {
+      setCurrentPage(pageId)
+    }
   }
 
   const renderPage = () => {
-    if (currentPage === 'home' && selectedSubPage === 'home-memo') {
-      return <Memo />
-    }
+    if (currentPage === 'org-admin') return <Admin />
 
-    switch (currentPage) {
-      case 'home':
-        return <Home />
-      case 'document':
-        return <DocumentWriter />
-      case 'esignature':
-        return <ESignature selectedSubPage={selectedSubPage} />
-      case 'calendar':
-        return <Calendar />
-      case 'file':
-        return <FileStorage />
-      case 'board':
-        return <Board />
-      case 'mail':
-        return <Mail />
-      case 'chat':
-        return <Chat />
-      case 'organization':
-        return <Organization />
-      case 'mypage':
-        return <MyPage user={user} />
-      default:
-        return <Home />
-    }
+    const mainCategory = getMainCategory(currentPage)
+    const Component = PAGE_COMPONENTS[mainCategory]
+
+    if (!Component) return <Home user={user} />
+
+    return <Component
+      user={user}
+      currentSubPage={currentPage}
+      me={user}
+    />
   }
 
   if (!user) {
@@ -131,16 +97,18 @@ export default function Dashboard() {
         currentPage={currentPage}
         onPageChange={handlePageChange}
       />
-      <div className="dashboard-content">
-        <Sidebar
-          currentPage={currentPage}
-          selectedSubPage={selectedSubPage}
-          onSubPageChange={setSelectedSubPage}
-        />
+      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar') ? 'full-width' : ''}`}>
+        {currentPage !== 'mypage' && currentPage !== 'calendar' && (
+          <Sidebar
+            currentPage={currentPage}
+            onPageChange={handlePageChange}
+          />
+        )}
         <div className="main-content">
           {renderPage()}
         </div>
       </div>
+      <FloatingMascot mode={currentPage === 'document-AI' ? 'ai' : 'default'} />
     </div>
   )
 }

@@ -3,6 +3,9 @@ package com.ang.Backend.domain.scope.entity;
 import com.ang.Backend.common.enums.ScopeType;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "scopes")
@@ -30,4 +33,8 @@ public class Scope {
 
     @Column(name = "name", nullable = false, length = 100)
     private String name;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
 }

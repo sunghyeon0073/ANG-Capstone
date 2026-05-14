@@ -27,11 +27,16 @@ public enum ErrorCode {
     USER_PENDING(HttpStatus.FORBIDDEN, "관리자 승인 대기 중입니다."),
     USER_ANONYMIZED(HttpStatus.FORBIDDEN, "탈퇴한 계정입니다."),
     INVALID_SCOPE_CODE(HttpStatus.BAD_REQUEST, "유효하지 않은 부서 코드입니다."),
+    ONLY_TEAM_REGISTRATION_ALLOWED(HttpStatus.BAD_REQUEST, "팀 단위의 고유 식별 번호로만 가입이 가능합니다."),
     PASSWORD_POLICY_VIOLATION(HttpStatus.BAD_REQUEST, "비밀번호 정책을 위반했습니다. (6자 이상 24자 이하, 영문+특수문자 조합)"),
     PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "비밀번호와 비밀번호 확인이 일치하지 않습니다."),
 
     // 부서/스코프
     SCOPE_NOT_FOUND(HttpStatus.NOT_FOUND, "부서/조직을 찾을 수 없습니다."),
+    DUPLICATE_SCOPE_CODE(HttpStatus.CONFLICT, "이미 사용 중인 팀/부서 코드입니다."),
+    PARENT_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "상위 부서(parentId)를 지정해야 합니다."),
+    ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 해당 부서의 멤버입니다."),
+    ACCESS_DENIED(HttpStatus.FORBIDDEN, "접근이 거부되었습니다."),
 
     // 역할/권한
     ROLE_NOT_FOUND(HttpStatus.NOT_FOUND, "역할을 찾을 수 없습니다."),

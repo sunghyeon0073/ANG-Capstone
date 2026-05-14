@@ -22,6 +22,7 @@ Thumbs.db
 *.stackdump
 
 ### Spring Boot - 민감 정보 ###
+Backend/src/main/resources/application.yml
 Backend/src/main/resources/application-local.yml
 Backend/src/main/resources/application-prod.yml
 *.env

@@ -1,84 +1,88 @@
-import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers } from 'react-icons/fi'
+import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield } from 'react-icons/fi'
 
-export default function Sidebar({ currentPage, selectedSubPage, onSubPageChange }) {
-  const getSidebarItems = () => {
-    const iconMap = {
-      'home': FiHome,
-      'home-memo': FiFileText,
-      'document-AI': FiFileText,
-      'document': FiFileText,
-      'document-preview': FiFileText,
-      'esignature': FiCheckSquare,
-      'esignature-completed': FiCheckSquare,
-      'esignature-rejected': FiCheckSquare,
-      'esignature-my': FiCheckSquare,
-      'calendar': FiCalendar,
-      'file': FiFolder,
-      'file-shared': FiShare2,
-      'file-trash': FiTrash2,
-      'board-notice': FiBell,
-      'board-free': FiList,
-      'mail': FiInbox,
-      'mail-sent': FiSend,
-      'mail-important': FiInbox,
-      'mail-trash': FiTrash2,
-      'chat-personal': FiMessageSquare,
-      'chat-groups': FiUsers,
-      'organization': FiList,
-      'organization-dept': FiList
-    }
+const iconMap = {
+  'home-dashboard': FiHome,
+  'home-memo': FiFileText,
+  'document-AI': FiFileText,
+  'document-general': FiFileText,
+  'document-preview': FiFileText,
+  'esignature-waiting': FiCheckSquare,
+  'esignature-completed': FiCheckSquare,
+  'esignature-rejected': FiCheckSquare,
+  'esignature-my': FiCheckSquare,
+  'calendar-my': FiCalendar,
+  'file-home': FiHome,
+  'file-my': FiFolder,
+  'file-shared': FiShare2,
+  'file-template': FiFileText,
+  'file-important': FiStar,
+  'file-trash': FiTrash2,
+  'board-notice': FiBell,
+  'board-general': FiEdit3,
+  'mail-inbox': FiInbox,
+  'mail-sent': FiSend,
+  'mail-important': FiStar,
+  'mail-trash': FiTrash2,
+  'chat-personal': FiMessageSquare,
+  'chat-groups': FiUsers,
+  'org-all': FiList,
+  'org-dept': FiList,
+  'org-admin': FiShield
+}
 
-    const sidebarMenus = {
-      home: [
-        { id: 'home', label: '대시보드' },
-        { id: 'home-memo', label: '메모' }
-      ],
-      document: [
-        { id: 'document-AI', label: 'AI문서작성' },
-        { id: 'document', label: '문서작성' },
-        { id: 'document-preview', label: '문서 미리보기' }
-      ],
-      esignature: [
-        { id: 'esignature', label: '결재대기' },
-        { id: 'esignature-completed', label: '완료' },
-        { id: 'esignature-rejected', label: '반려' },
-        { id: 'esignature-my', label: '내가 요청' }
-      ],
-      calendar: [
-        { id: 'calendar', label: '내 캘린더' }
-      ],
-      file: [
-        { id: 'file', label: '내 파일' },
-        { id: 'file-shared', label: '공유파일' },
-        { id: 'file-trash', label: '휴지통' }
-      ],
-      board: [
-        { id: 'board-notice', label: '공지사항' },
-        { id: 'board-free', label: '자유게시판' }
-      ],
-      mail: [
-        { id: 'mail', label: '받은메일' },
-        { id: 'mail-sent', label: '보낸메일' },
-        { id: 'mail-important', label: '중요' },
-        { id: 'mail-trash', label: '휴지통' }
-      ],
-      chat: [
-        { id: 'chat-personal', label: '개인채팅' },
-        { id: 'chat-groups', label: '그룹채팅' }
-      ],
-      organization: [
-        { id: 'organization', label: '전체조직' },
-        { id: 'organization-dept', label: '부서별' }
-      ]
-    }
+export const SIDEBAR_MENUS = {
+  home: [
+    { id: 'home-dashboard', label: '대시보드' },
+    { id: 'home-memo', label: '메모' }
+  ],
+  document: [
+    { id: 'document-AI', label: 'AI문서작성' },
+    { id: 'document-general', label: '문서작성' },
+    { id: 'document-preview', label: '문서 미리보기' }
+  ],
+  esignature: [
+    { id: 'esignature-waiting', label: '결재대기' },
+    { id: 'esignature-completed', label: '완료' },
+    { id: 'esignature-rejected', label: '반려' },
+    { id: 'esignature-my', label: '내가 요청' }
+  ],
+  file: [
+    { id: 'file-home', label: '홈' },
+    { id: 'file-my', label: '내 파일' },
+    { id: 'file-shared', label: '공유파일' },
+    { id: 'file-template', label: '빈 양식' },
+    { id: 'file-important', label: '중요 문서함' },
+    { id: 'file-trash', label: '휴지통' }
+  ],
+  board: [
+    { id: 'board-notice', label: '공지사항' },
+    { id: 'board-general', label: '자유게시판' }
+  ],
+  mail: [
+    { id: 'mail-inbox', label: '받은메일' },
+    { id: 'mail-sent', label: '보낸메일' },
+    { id: 'mail-important', label: '중요' },
+    { id: 'mail-trash', label: '휴지통' }
+  ],
+  chat: [
+    { id: 'chat-personal', label: '개인채팅' },
+    { id: 'chat-groups', label: '그룹채팅' }
+  ],
+  org: [
+    { id: 'org-all', label: '전체조직' },
+    { id: 'org-dept', label: '부서별' },
+    { id: 'org-admin', label: '가입승인' }
+  ]
+}
 
-    return {
-      items: sidebarMenus[currentPage] || sidebarMenus.home,
-      iconMap
-    }
-  }
+const getMainCategory = (page) => {
+  const category = page.split('-')[0]
+  return category === 'organization' ? 'org' : category
+}
 
-  const { items, iconMap } = getSidebarItems()
+export default function Sidebar({ currentPage, onPageChange }) {
+  const mainCategory = getMainCategory(currentPage)
+  const items = SIDEBAR_MENUS[mainCategory] || SIDEBAR_MENUS.home
 
   return (
     <div className="sidebar">
@@ -88,12 +92,13 @@ export default function Sidebar({ currentPage, selectedSubPage, onSubPageChange 
       <nav className="sidebar-menu">
         {items.map(item => {
           const IconComponent = iconMap[item.id]
-          const isActive = selectedSubPage === item.id
           return (
             <button
               key={item.id}
-              className={`sidebar-menu-item ${isActive ? 'active' : ''}`}
-              onClick={() => onSubPageChange(item.id)}
+              // 현재 선택된 메뉴와 ID가 일치하면 'active' 클래스 부여 (활성화 상태 UI 표시)
+              className={`sidebar-menu-item ${currentPage === item.id ? 'active' : ''}`}
+              // 상위 컴포넌트로 정확한 하위 메뉴 ID 전달하여 화면 전환
+              onClick={() => onPageChange(item.id)}
             >
               {IconComponent && <IconComponent className="sidebar-icon" />}
               <span className="sidebar-label">{item.label}</span>

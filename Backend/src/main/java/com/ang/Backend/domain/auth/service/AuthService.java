@@ -19,12 +19,18 @@ import com.ang.Backend.domain.user.repository.UserRepository;
 import com.ang.Backend.common.enums.UserStatus;
 import com.ang.Backend.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -58,6 +64,10 @@ public class AuthService {
         Scope scope = scopeRepository.findByScopeCode(req.getScopeCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
 
+        if (scope.getScopeType() != com.ang.Backend.common.enums.ScopeType.TEAM) {
+            throw new CustomException(ErrorCode.ONLY_TEAM_REGISTRATION_ALLOWED);
+        }
+
         User user = User.builder()
                 .empNo(req.getEmpNo())
                 .passwordHash(passwordEncoder.encode(req.getPassword()))
@@ -67,6 +77,7 @@ public class AuthService {
                 .status(UserStatus.PENDING)
                 .build();
         userRepository.save(user);
+        createPhysicalUserFolder(user.getEmpNo());
 
         userMembershipRepository.save(UserMembership.builder()
                 .user(user)
@@ -76,6 +87,18 @@ public class AuthService {
         Role defaultRole = roleRepository.findByRoleLevel(0)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
         userRoleRepository.save(new UserRole(user, scope, defaultRole));
+    }
+
+    private void createPhysicalUserFolder(String empNo) {
+        try {
+            Path path = Paths.get("uploads", "Users", empNo);
+            if (!Files.exists(path)) {
+                Files.createDirectories(path);
+                log.info("Created physical directory for user: {}", path);
+            }
+        } catch (IOException e) {
+            log.error("Failed to create directory for user: {}", empNo, e);
+        }
     }
 
     @Transactional(readOnly = true)
