@@ -125,6 +125,27 @@ public class UserService {
         return userMembershipRepository.findByScopeScopeIdIn(scopeIds).stream()
                 .map(UserMembership::getUser)
                 .filter(u -> u.getStatus() == UserStatus.PENDING)
+                .collect(Collectors.toMap(
+                        User::getUserId,
+                        user -> user,
+                        (left, right) -> left))
+                .values()
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserDto> getUsersByScopes(List<Integer> scopeIds) {
+        return userMembershipRepository.findByScopeScopeIdIn(scopeIds).stream()
+                .map(UserMembership::getUser)
+                .filter(u -> u.getStatus() != UserStatus.ANONYMIZED)
+                .collect(Collectors.toMap(
+                        User::getUserId,
+                        user -> user,
+                        (left, right) -> left))
+                .values()
+                .stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
