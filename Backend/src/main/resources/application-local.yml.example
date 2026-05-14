@@ -71,4 +71,4 @@ cloud:
   aws:
     region: ap-northeast-3
     s3:
-      bucket: ang-s3-bucket
+      bucket: ang-s3-bucket-418295679042-ap-northeast-3-an
