@@ -63,4 +63,26 @@ public class FileController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                 .body(resource);
     }
+
+    // 파일 스트리밍(미리보기) - inline 표시 및 원래 contentType 사용
+    @GetMapping("/stream/{fileId}")
+    public ResponseEntity<Resource> streamFile(@PathVariable Long fileId) {
+        Resource resource = fileService.loadFileAsResource(fileId);
+        FileItem fileItem = fileService.getFileItem(fileId);
+
+        String encodedFileName = URLEncoder.encode(fileItem.getOriginalFileName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        String contentDisposition = "inline; filename=\"" + encodedFileName + "\"";
+
+        MediaType mediaType;
+        try {
+            mediaType = fileItem.getContentType() != null ? MediaType.parseMediaType(fileItem.getContentType()) : MediaType.APPLICATION_OCTET_STREAM;
+        } catch (Exception ex) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .body(resource);
+    }
 }

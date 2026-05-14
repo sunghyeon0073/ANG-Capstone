@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 public class FileDto {
     private Long fileId;
     private String originalFileName;
+    private String contentType;
     private Long fileSize;
     private OwnerType ownerType;
     private Integer ownerId;
@@ -22,6 +23,7 @@ public class FileDto {
         return FileDto.builder()
                 .fileId(fileItem.getFileId())
                 .originalFileName(fileItem.getOriginalFileName())
+                .contentType(fileItem.getContentType())
                 .fileSize(fileItem.getFileSize())
                 .ownerType(fileItem.getOwnerType())
                 .ownerId(fileItem.getOwnerId())
