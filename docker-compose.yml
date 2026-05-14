@@ -1,4 +1,20 @@
 services:
+  # 1. DB 서비스 추가 (이 부분이 없어서 안 떴던 것입니다)
+  db:
+    image: mariadb:latest
+    container_name: ang-db
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      - MARIADB_DATABASE=ang_db
+      - MARIADB_USER=${DB_USERNAME}
+      - MARIADB_PASSWORD=${DB_PASSWORD}
+      - MARIADB_ROOT_PASSWORD=${DB_PASSWORD} # root 비번도 동일하게 설정
+    volumes:
+      - ./mariadb_data:/var/lib/mysql
+
+  # 2. 백엔드 설정 수정
   backend:
     build:
       context: ./Backend
@@ -10,7 +26,8 @@ services:
     ports:
       - "9090:9090"
     environment:
-      DB_URL: ${DB_URL:?DB_URL is required}
+      # DB 주소를 로컬이 아닌 도커 내부의 'db' 서비스로 향하게 합니다.
+      DB_URL: jdbc:mariadb://db:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
@@ -20,11 +37,14 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-http://ai:8888}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
+    depends_on:
+      - db # DB가 먼저 떠야 백엔드가 실행됩니다.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./uploads:/app/uploads
 
+  # 3. 프론트엔드
   frontend:
     build:
       context: ./Frontend
@@ -36,6 +56,7 @@ services:
     depends_on:
       - backend
 
+  # 4. AI 서비스
   ai:
     build:
       context: ./AI
