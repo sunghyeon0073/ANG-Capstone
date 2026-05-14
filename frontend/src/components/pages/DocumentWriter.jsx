@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 
 export default function DocumentWriter() {
@@ -10,32 +10,114 @@ export default function DocumentWriter() {
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [attachedDocs, setAttachedDocs] = useState([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [docFilter, setDocFilter] = useState('all')
+  const [showDocSelector, setShowDocSelector] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     fetchDocuments()
   }, [])
 
   useEffect(() => {
-    const filtered = documents.filter(doc =>
-      doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.originalContent?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const filtered = documents.filter(doc => {
+      const matchesSearch =
+        doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.originalContent?.toLowerCase().includes(searchTerm.toLowerCase())
+
+      const matchesFilter =
+        docFilter === 'all' ||
+        (docFilter === 'server' && doc.source === 'server') ||
+        (docFilter === 'uploaded' && doc.source === 'uploaded')
+
+      return matchesSearch && matchesFilter
+    })
     setFilteredDocuments(filtered)
-  }, [searchTerm, documents])
+  }, [searchTerm, documents, docFilter])
 
   const fetchDocuments = async () => {
     try {
       setLoading(true)
       const response = await api.get('/documents')
-      setDocuments(response.data?.data || [])
+      const docs = (response.data?.data || []).map(doc => ({
+        ...doc,
+        source: doc.source || 'server'
+      }))
+      setDocuments(docs)
       setError(null)
     } catch (err) {
       console.error('문서 목록 조회 실패:', err)
-      setError('문서 목록을 불러올 수 없습니다.')
       setDocuments([])
+      setError('문서 목록을 불러올 수 없습니다.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleFileSelect = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      setIsUploading(true)
+      const formData = new FormData()
+      formData.append('file', file)
+
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: '파일을 업로드 중입니다...' }
+      }))
+
+      const response = await api.post('/documents/upload', formData)
+
+      if (response.data.success) {
+        const newDoc = response.data.data
+        newDoc.source = 'uploaded'
+        setDocuments([newDoc, ...documents])
+        setSelectedDoc(newDoc)
+        window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+          detail: { message: '파일이 업로드되었어요!' }
+        }))
+      }
+    } catch (err) {
+      console.error('파일 업로드 실패:', err)
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: '파일 업로드에 실패했습니다.' }
+      }))
+      alert(err.response?.data?.message || '파일 업로드에 실패했습니다.')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleSelectDocument = (doc) => {
+    setSelectedDoc(doc)
+  }
+
+  const handleAddDocumentClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleAddToPrompt = () => {
+    if (selectedDoc && !attachedDocs.some(d => d.docId === selectedDoc.docId)) {
+      setAttachedDocs([...attachedDocs, selectedDoc])
+    }
+  }
+
+  const handleAttachDocument = (doc) => {
+    const isAttached = attachedDocs.some(d => d.docId === doc.docId)
+    if (isAttached) {
+      setAttachedDocs(attachedDocs.filter(d => d.docId !== doc.docId))
+    } else {
+      setAttachedDocs([...attachedDocs, doc])
+    }
+  }
+
+  const handleRemoveAttachedDoc = (docId) => {
+    setAttachedDocs(attachedDocs.filter(d => d.docId !== docId))
   }
 
   const handleAiGenerate = async () => {
@@ -49,15 +131,24 @@ export default function DocumentWriter() {
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
         detail: { message: '문서 읽는 중... 잠시만 기다려주세요.' }
       }))
-      const response = await api.post('/documents/ai-generate', {
-        prompt: prompt
-      })
+
+      const payload = {
+        prompt: prompt,
+        attachedDocIds: attachedDocs.map(d => d.docId),
+        attachedDocs: attachedDocs.length > 0 ? attachedDocs.map(d => ({
+          docId: d.docId,
+          title: d.title,
+          content: d.originalContent
+        })) : null
+      }
+
+      const response = await api.post('/documents/ai-generate', payload)
 
       if (response.data.success) {
-        // 생성된 문서를 문서 목록에 추가
         setDocuments([response.data.data, ...documents])
         setSelectedDoc(response.data.data)
         setPrompt('')
+        setAttachedDocs([])
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
           detail: { message: 'AI 문서 초안이 완성됐어요.' }
         }))
@@ -79,6 +170,29 @@ export default function DocumentWriter() {
       <div className="document-sidebar">
         <div className="sidebar-header">
           <h3>문서 목록</h3>
+          <div className="doc-filter-buttons">
+            <button
+              className={`filter-btn ${docFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setDocFilter('all')}
+              title="모든 문서"
+            >
+              전체
+            </button>
+            <button
+              className={`filter-btn ${docFilter === 'server' ? 'active' : ''}`}
+              onClick={() => setDocFilter('server')}
+              title="서버 문서"
+            >
+              서버
+            </button>
+            <button
+              className={`filter-btn ${docFilter === 'uploaded' ? 'active' : ''}`}
+              onClick={() => setDocFilter('uploaded')}
+              title="내가 추가한 파일"
+            >
+              내가 추가
+            </button>
+          </div>
         </div>
 
         <div className="search-container">
@@ -109,7 +223,7 @@ export default function DocumentWriter() {
               <div
                 key={doc.docId}
                 className={`document-item ${selectedDoc?.docId === doc.docId ? 'active' : ''}`}
-                onClick={() => setSelectedDoc(doc)}
+                onClick={() => handleSelectDocument(doc)}
               >
                 <div className="doc-title">{doc.title}</div>
                 <div className="doc-date">
@@ -124,6 +238,21 @@ export default function DocumentWriter() {
       <div className="document-main">
         <div className="main-header">
           <h1>AI 문서작성</h1>
+          <button
+            className="btn-add-document"
+            onClick={handleAddDocumentClick}
+            disabled={isUploading}
+            title="컴퓨터에서 파일 추가"
+          >
+            + 파일 추가
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+            accept=".txt,.pdf,.doc,.docx,.hwp,.md"
+          />
         </div>
 
         <div className="document-content">
@@ -145,25 +274,52 @@ export default function DocumentWriter() {
         </div>
 
         <div className="ai-prompt-section">
-          <div className="prompt-header">
-            <h3>AI 문서 생성</h3>
-            <p>프롬프트를 입력하면 AI가 문서를 자동으로 생성합니다.</p>
+          <div className="prompt-tabs">
+            {attachedDocs.map((doc) => (
+              <div
+                key={doc.docId}
+                className="prompt-tab prompt-tab-added"
+              >
+                <button
+                  className="tab-remove-btn"
+                  onClick={() => handleRemoveAttachedDoc(doc.docId)}
+                  title="제거"
+                >
+                  ×
+                </button>
+                <span className="tab-name">{doc.title}</span>
+              </div>
+            ))}
+
+            {selectedDoc && !attachedDocs.some(d => d.docId === selectedDoc.docId) && (
+              <div
+                className="prompt-tab prompt-tab-pending"
+                onClick={handleAddToPrompt}
+              >
+                <span className="tab-add-btn">+</span>
+                <span className="tab-name">{selectedDoc.title}</span>
+              </div>
+            )}
           </div>
+
           <div className="prompt-input-group">
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="생성할 문서의 주제나 내용을 입력하세요..."
+              placeholder="프롬프트를 입력하세요..."
               className="prompt-textarea"
               disabled={aiLoading}
             />
-            <button
-              onClick={handleAiGenerate}
-              className="btn-generate"
-              disabled={aiLoading}
-            >
-              {aiLoading ? '생성 중...' : 'AI 생성'}
-            </button>
+
+            <div className="prompt-actions">
+              <button
+                onClick={handleAiGenerate}
+                className="btn-generate"
+                disabled={aiLoading}
+              >
+                {aiLoading ? '생성 중...' : 'AI 생성'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
