@@ -263,7 +263,40 @@ export default function DocumentWriter() {
                 <span>작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
               </div>
               <div className="doc-body">
-                {selectedDoc.originalContent || '내용이 없습니다.'}
+                {selectedDoc.fileId ? (
+                  (() => {
+                    const ct = selectedDoc.fileContentType || ''
+                    if (ct.startsWith && ct.startsWith('image/')) {
+                      return (
+                        <img
+                          src={`/files/stream/${selectedDoc.fileId}`}
+                          alt={selectedDoc.title}
+                          style={{ maxWidth: '100%' }}
+                        />
+                      )
+                    }
+
+                    if (ct.includes && ct.includes('pdf')) {
+                      return (
+                        <iframe
+                          src={`/files/stream/${selectedDoc.fileId}`}
+                          title={selectedDoc.title}
+                          style={{ width: '100%', height: '600px', border: 'none' }}
+                        />
+                      )
+                    }
+
+                    // PPT/PPTX 및 기타 바이너리 파일은 인라인 렌더링이 어려움 -> 다운로드 링크 제공
+                    return (
+                      <div>
+                        <p>미리보기를 지원하지 않는 파일 형식입니다.</p>
+                        <a href={`/files/download/${selectedDoc.fileId}`} target="_blank" rel="noopener noreferrer">파일 다운로드</a>
+                      </div>
+                    )
+                  })()
+                ) : (
+                  (selectedDoc.originalContent && selectedDoc.originalContent.trim()) ? selectedDoc.originalContent : '내용이 없습니다.'
+                )}
               </div>
             </div>
           ) : (
