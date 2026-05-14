@@ -66,16 +66,19 @@ export default function DocumentWriter() {
     try {
       setIsUploading(true)
       const formData = new FormData()
+      formData.append('title', file.name)
       formData.append('file', file)
 
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
         detail: { message: '파일을 업로드 중입니다...' }
       }))
 
-      const response = await api.post('/documents/upload', formData)
+      const response = await api.post('/documents', formData)
 
       if (response.data.success) {
-        const newDoc = response.data.data
+        const docId = response.data.data
+        const detailResponse = await api.get(`/documents/${docId}`)
+        const newDoc = detailResponse.data.data
         newDoc.source = 'uploaded'
         setDocuments([newDoc, ...documents])
         setSelectedDoc(newDoc)
