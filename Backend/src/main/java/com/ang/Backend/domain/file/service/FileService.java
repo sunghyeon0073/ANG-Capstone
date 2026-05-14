@@ -56,12 +56,13 @@ public class FileService {
             boolean exists = fileItemRepository.existsByFilePath(filePath);
             if (!exists) {
                 FileItem fileItem = FileItem.builder()
-                        .originalFileName(file.getName())
-                        .storedFileName(file.getName())
-                        .filePath(filePath)
-                        .fileSize(file.length())
-                        .ownerType(OwnerType.USER)
-                        .build();
+                    .originalFileName(file.getName())
+                    .storedFileName(file.getName())
+                    .filePath(filePath)
+                    .fileSize(file.length())
+                    .ownerType(OwnerType.USER)
+                    .contentType("application/pdf")
+                    .build();
                 fileItemRepository.save(fileItem);
                 log.info("Synced PDF to DB: {}", file.getName());
             }
@@ -91,14 +92,15 @@ public class FileService {
 
         // DB에 파일 메타데이터 저장
         FileItem fileItem = FileItem.builder()
-                .originalFileName(originalFilename)
-                .storedFileName(storedFileName)
-                .filePath(filePath)
-                .fileSize(file.getSize())
-                .ownerType(ownerType)
-                .ownerId(ownerId)
-                .uploader(uploader)
-                .build();
+            .originalFileName(originalFilename)
+            .storedFileName(storedFileName)
+            .filePath(filePath)
+            .fileSize(file.getSize())
+            .ownerType(ownerType)
+            .ownerId(ownerId)
+            .uploader(uploader)
+            .contentType(file.getContentType())
+            .build();
 
         return FileDto.from(fileItemRepository.save(fileItem));
     }
@@ -124,14 +126,15 @@ public class FileService {
         file.transferTo(new File(filePath));
 
         return fileItemRepository.save(FileItem.builder()
-                .originalFileName(originalFilename)
-                .storedFileName(storedFileName)
-                .filePath(filePath)
-                .fileSize(file.getSize())
-                .uploader(uploader) // 업로더 정보 저장
-                .ownerId(uploader != null ? uploader.getUserId() : null)
-                .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
-                .build());
+            .originalFileName(originalFilename)
+            .storedFileName(storedFileName)
+            .filePath(filePath)
+            .fileSize(file.getSize())
+            .uploader(uploader) // 업로더 정보 저장
+            .ownerId(uploader != null ? uploader.getUserId() : null)
+            .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+            .contentType(file.getContentType())
+            .build());
     }
 
     @Transactional
