@@ -168,15 +168,24 @@ public class ScopeService {
         log.info("User {} removed from scope {} by manager {}", targetUser.getEmpNo(), targetScope.getScopeCode(), requester.getEmpNo());
     }
 
+    // 요청자가 targetScope에 대한 관리 권한이 있는지 판단
+    // level=100 → 전 조직 관리 가능 (슈퍼 어드민)
+    // level=50  → 자신이 속한 scope 및 그 하위 scope 관리 가능 (팀장/원장)
+    // level=0   → 거부
     private boolean isManagerOfScope(User user, Scope targetScope) {
         List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
+
+        // level=100이면 어느 부서든 무조건 통과
         if (roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100)) return true;
 
+        // level=50 이상인 역할 중, 해당 role의 scope가 targetScope이거나 상위 조직인 경우 통과
+        // 예) 평생교육원(상위) 관리자는 산하 팀(하위) 모두 관리 가능
         return roles.stream()
                 .filter(r -> r.getRole().getRoleLevel() >= 50)
                 .anyMatch(r -> isSameOrParent(r.getScope(), targetScope));
     }
 
+    // targetScope의 부모를 최상위(COMPANY)까지 타고 올라가며 potentialParent와 일치하는지 확인
     private boolean isSameOrParent(Scope potentialParent, Scope target) {
         if (potentialParent.getScopeId().equals(target.getScopeId())) return true;
         Scope current = target.getParentScope();

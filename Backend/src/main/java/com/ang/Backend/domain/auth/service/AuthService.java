@@ -48,14 +48,19 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
 
+    // 회원가입: User + UserMembership + UserRole 세 행을 하나의 트랜잭션으로 생성
     @Transactional
     public void register(RegisterRequest req) {
+
+        // 중복 체크 — 같은 사번/이메일 재사용 불가
         if (userRepository.existsByEmpNo(req.getEmpNo())) {
             throw new CustomException(ErrorCode.DUPLICATE_EMP_NO);
         }
         if (userRepository.existsByEmail(req.getEmail())) {
             throw new CustomException(ErrorCode.DUPLICATE_EMAIL);
         }
+
+        // 비밀번호 일치 + 정책 검증: 영문 + 특수문자 포함, 6~24자
         if (!req.getPassword().equals(req.getPasswordConfirm())) {
             throw new CustomException(ErrorCode.PASSWORD_MISMATCH);
         }
@@ -63,10 +68,11 @@ public class AuthService {
             throw new CustomException(ErrorCode.PASSWORD_POLICY_VIOLATION);
         }
 
-        // Validate the scope code
+        // 가입 시 입력한 부서코드(scopeCode)가 실제 존재하는 Scope인지 검증
         Scope scope = scopeRepository.findByScopeCode(req.getScopeCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
 
+        // User 저장 — 비밀번호는 BCrypt 해싱, status=PENDING(관리자 승인 전까지 로그인 불가)
         User user = User.builder()
                 .empNo(req.getEmpNo())
                 .passwordHash(passwordEncoder.encode(req.getPassword()))
@@ -76,18 +82,20 @@ public class AuthService {
                 .status(UserStatus.PENDING)
                 .build();
         userRepository.save(user);
+
+        // 개인 파일 디렉토리 생성: uploads/Users/{사번}/
         createPhysicalUserFolder(user.getEmpNo());
 
-        // Create membership for the scope
+        // 부서 소속(UserMembership) 생성 — 기본 직책 "사원"
         userMembershipRepository.save(UserMembership.builder()
                 .user(user)
                 .scope(scope)
-                .position("사원") // Default position
+                .position("사원")
                 .build());
 
+        // 부서별 역할(UserRole) 생성 — 기본 roleLevel=0 (최하위 권한)
         Role defaultRole = roleRepository.findByRoleLevel(0)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
-        
         userRoleRepository.save(new UserRole(user, scope, defaultRole));
     }
 
@@ -103,15 +111,22 @@ public class AuthService {
         }
     }
 
+    // 로그인: 사번+비번 검증 후 JWT accessToken(30분) + refreshToken(7일) 발급
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest req) {
+        // 사번으로 조회 (없으면 INVALID_EMP_NO)
         User user = userRepository.findByEmpNo(req.getEmpNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.INVALID_EMP_NO));
 
+        // BCrypt 비교: 입력 평문 vs DB 해시 (salt 포함 자동 비교)
         if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
             throw new CustomException(ErrorCode.INVALID_PASSWORD);
         }
 
+        // 계정 상태 체크
+        // PENDING   → 관리자 승인 전 (로그인 불가)
+        // REJECTED  → 가입 거절됨, 거절 사유를 응답에 포함
+        // ANONYMIZED → 개인정보 삭제된 탈퇴 계정
         if (user.getStatus() == UserStatus.PENDING) {
             throw new CustomException(ErrorCode.USER_PENDING);
         }
@@ -123,6 +138,7 @@ public class AuthService {
             throw new CustomException(ErrorCode.USER_ANONYMIZED);
         }
 
+        // JWT 발급 — subject(sub 클레임) = 사번(empNo)
         return LoginResponse.builder()
                 .accessToken(jwtTokenProvider.createAccessToken(user.getEmpNo()))
                 .refreshToken(jwtTokenProvider.createRefreshToken(user.getEmpNo()))
