@@ -14,9 +14,6 @@ import com.ang.Backend.domain.user.repository.UserRepository;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,7 +32,6 @@ public class ScopeController {
     private final com.ang.Backend.domain.role.repository.UserRoleRepository userRoleRepository;
 
     @GetMapping
-    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<ScopeDto>>> getAllScopes() {
         List<ScopeDto> scopes = scopeRepository.findAll().stream()
                 .map(ScopeDto::from)
@@ -44,17 +40,13 @@ public class ScopeController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<ScopeDto>> createScope(
-            @jakarta.validation.Valid @RequestBody com.ang.Backend.domain.scope.dto.ScopeCreateRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        requireAdmin(getRequester(userDetails));
+    public ResponseEntity<ApiResponse<ScopeDto>> createScope(@jakarta.validation.Valid @RequestBody com.ang.Backend.domain.scope.dto.ScopeCreateRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(scopeService.createScope(request)));
     }
 
     @GetMapping("/my")
-    @Transactional(readOnly = true)
-    public ResponseEntity<ApiResponse<List<ScopeDto>>> getMyScopes(@AuthenticationPrincipal UserDetails userDetails) {
-        com.ang.Backend.domain.user.entity.User user = getRequester(userDetails);
+    public ResponseEntity<ApiResponse<List<ScopeDto>>> getMyScopes(@org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         
         // 최고관리자(100)면 전체 부서 조회, 아니면 본인 소속 부서만 조회
         List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
@@ -75,7 +67,6 @@ public class ScopeController {
     }
 
     @GetMapping("/{id}/members")
-    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<UserDto>>> getScopeMembers(@PathVariable Integer id) {
         Scope scope = scopeRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
@@ -90,8 +81,8 @@ public class ScopeController {
             @PathVariable Integer id,
             @RequestParam Integer userId,
             @RequestParam(required = false) String position,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        com.ang.Backend.domain.user.entity.User requester = getRequester(userDetails);
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         scopeService.addMemberToScope(id, userId, position, requester);
         return ResponseEntity.ok(ApiResponse.ok("부서 멤버로 추가되었습니다."));
     }
@@ -101,8 +92,8 @@ public class ScopeController {
             @PathVariable Integer id,
             @PathVariable Integer userId,
             @RequestBody com.ang.Backend.domain.scope.dto.MemberPositionUpdateRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        com.ang.Backend.domain.user.entity.User requester = getRequester(userDetails);
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         scopeService.updateMemberPosition(id, userId, request.getPosition(), requester);
         return ResponseEntity.ok(ApiResponse.ok("직급이 변경되었습니다."));
     }
@@ -111,27 +102,9 @@ public class ScopeController {
     public ResponseEntity<ApiResponse<Void>> removeMemberFromScope(
             @PathVariable Integer id,
             @PathVariable Integer userId,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        com.ang.Backend.domain.user.entity.User requester = getRequester(userDetails);
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         scopeService.removeMemberFromScope(id, userId, requester);
         return ResponseEntity.ok(ApiResponse.ok("부서 소속이 해제되었습니다."));
-    }
-
-    private com.ang.Backend.domain.user.entity.User getRequester(UserDetails userDetails) {
-        if (userDetails == null) {
-            throw new CustomException(ErrorCode.UNAUTHORIZED);
-        }
-        return userRepository.findByEmpNo(userDetails.getUsername())
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-    }
-
-    private void requireAdmin(com.ang.Backend.domain.user.entity.User requester) {
-        int maxRoleLevel = userRoleRepository.findByUserOrderByRoleLevelDesc(requester).stream()
-                .mapToInt(userRole -> userRole.getRole().getRoleLevel())
-                .max()
-                .orElse(0);
-        if (maxRoleLevel < 50) {
-            throw new CustomException(ErrorCode.FORBIDDEN);
-        }
     }
 }

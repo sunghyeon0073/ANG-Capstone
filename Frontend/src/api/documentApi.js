@@ -5,13 +5,8 @@ export const uploadDocument = (formData) =>
 
 export const getMyDocuments = () => api.get('/documents/my');
 
-export const getDepartmentDocuments = (keyword, scopeId) =>
-  api.get('/documents/department', {
-    params: {
-      ...(keyword ? { keyword } : {}),
-      ...(scopeId ? { scopeId } : {})
-    }
-  });
+export const getDepartmentDocuments = (keyword) =>
+  api.get('/documents/department', { params: keyword ? { keyword } : {} });
 
 export const getDocument = (docId) => api.get(`/documents/${docId}`);
 

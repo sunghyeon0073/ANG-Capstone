@@ -13,9 +13,7 @@ export const getAllUsers = () => api.get('/admin/users');
 export const deleteUser = (userId) => api.delete(`/admin/users/${userId}`);
 
 export const addMemberToScope = (scopeId, userId, position) => 
-  api.post(`/scopes/${scopeId}/members`, null, {
-    params: { userId, position: position || '사원' },
-  });
+  api.post(`/scopes/${scopeId}/members?userId=${userId}&position=${position || '사원'}`);
 
 export const removeMemberFromScope = (scopeId, userId) =>
   api.delete(`/scopes/${scopeId}/members/${userId}`);

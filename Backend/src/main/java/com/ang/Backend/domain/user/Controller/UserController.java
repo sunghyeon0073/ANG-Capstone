@@ -1,15 +1,11 @@
 package com.ang.Backend.domain.user.Controller;
 
-import com.ang.Backend.common.exception.CustomException;
-import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
 import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.dto.UserUpdateRequest;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,14 +20,6 @@ public class UserController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<UserDto>>> getAllUsers() {
         return ResponseEntity.ok(ApiResponse.ok(userService.getAllUsers()));
-    }
-
-    @GetMapping("/me")
-    public ResponseEntity<ApiResponse<UserDto>> getMe(@AuthenticationPrincipal UserDetails userDetails) {
-        if (userDetails == null) {
-            throw new CustomException(ErrorCode.UNAUTHORIZED);
-        }
-        return ResponseEntity.ok(ApiResponse.ok(userService.getUserByEmpNo(userDetails.getUsername())));
     }
 
     @GetMapping("/{id}")
