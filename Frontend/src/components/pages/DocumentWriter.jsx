@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+const fileStreamUrl = (fileId) => `${API_BASE_URL}/files/stream/${fileId}`
+const fileDownloadUrl = (fileId) => `${API_BASE_URL}/files/download/${fileId}`
+
 export default function DocumentWriter() {
   const [documents, setDocuments] = useState([])
   const [filteredDocuments, setFilteredDocuments] = useState([])
@@ -269,7 +273,7 @@ export default function DocumentWriter() {
                     if (ct.startsWith && ct.startsWith('image/')) {
                       return (
                         <img
-                          src={`/files/stream/${selectedDoc.fileId}`}
+                          src={fileStreamUrl(selectedDoc.fileId)}
                           alt={selectedDoc.title}
                           style={{ maxWidth: '100%' }}
                         />
@@ -279,7 +283,7 @@ export default function DocumentWriter() {
                     if (ct.includes && ct.includes('pdf')) {
                       return (
                         <iframe
-                          src={`/files/stream/${selectedDoc.fileId}`}
+                          src={fileStreamUrl(selectedDoc.fileId)}
                           title={selectedDoc.title}
                           style={{ width: '100%', height: '600px', border: 'none' }}
                         />
@@ -290,7 +294,7 @@ export default function DocumentWriter() {
                     return (
                       <div>
                         <p>미리보기를 지원하지 않는 파일 형식입니다.</p>
-                        <a href={`/files/download/${selectedDoc.fileId}`} target="_blank" rel="noopener noreferrer">파일 다운로드</a>
+                        <a href={fileDownloadUrl(selectedDoc.fileId)} target="_blank" rel="noopener noreferrer">파일 다운로드</a>
                       </div>
                     )
                   })()

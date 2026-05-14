@@ -68,6 +68,8 @@ public class SecurityConfig {
                                 "/api/health",
                                 "/documents/**",
                                 "/api/documents/**",
+                                "/files/**",
+                                "/api/files/**",
                                 "/error"
                         ).permitAll()
                         .anyRequest().authenticated()
