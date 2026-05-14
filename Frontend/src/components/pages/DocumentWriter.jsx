@@ -3,6 +3,7 @@ import api from '../../api/axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 const fileStreamUrl = (fileId) => `${API_BASE_URL}/files/stream/${fileId}`
+const filePreviewUrl = (fileId) => `${API_BASE_URL}/files/preview/${fileId}`
 const fileDownloadUrl = (fileId) => `${API_BASE_URL}/files/download/${fileId}`
 
 export default function DocumentWriter() {
@@ -18,6 +19,7 @@ export default function DocumentWriter() {
   const [isUploading, setIsUploading] = useState(false)
   const [docFilter, setDocFilter] = useState('all')
   const [showDocSelector, setShowDocSelector] = useState(false)
+  const [previewError, setPreviewError] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -102,6 +104,7 @@ export default function DocumentWriter() {
 
   const handleSelectDocument = (doc) => {
     setSelectedDoc(doc)
+    setPreviewError(false)
   }
 
   const handleAddDocumentClick = () => {
@@ -278,27 +281,48 @@ export default function DocumentWriter() {
                         <img
                           src={fileStreamUrl(selectedDoc.fileId)}
                           alt={selectedDoc.title}
+                          onError={() => setPreviewError(true)}
                           style={{ maxWidth: '100%' }}
                         />
                       )
                     }
 
                     if (ct.includes && ct.includes('pdf')) {
+                      if (previewError) {
+                        return (
+                          <div>
+                            <p>미리보기를 불러올 수 없습니다.</p>
+                            <a href={fileDownloadUrl(selectedDoc.fileId)} target="_blank" rel="noopener noreferrer">파일 다운로드</a>
+                          </div>
+                        )
+                      }
+
                       return (
                         <iframe
                           src={fileStreamUrl(selectedDoc.fileId)}
                           title={selectedDoc.title}
+                          onError={() => setPreviewError(true)}
                           style={{ width: '100%', height: '600px', border: 'none' }}
                         />
                       )
                     }
 
-                    // PPT/PPTX 및 기타 바이너리 파일은 인라인 렌더링이 어려움 -> 다운로드 링크 제공
+                    if (previewError) {
+                      return (
+                        <div>
+                          <p>미리보기를 불러올 수 없습니다.</p>
+                          <a href={fileDownloadUrl(selectedDoc.fileId)} target="_blank" rel="noopener noreferrer">파일 다운로드</a>
+                        </div>
+                      )
+                    }
+
                     return (
-                      <div>
-                        <p>미리보기를 지원하지 않는 파일 형식입니다.</p>
-                        <a href={fileDownloadUrl(selectedDoc.fileId)} target="_blank" rel="noopener noreferrer">파일 다운로드</a>
-                      </div>
+                      <iframe
+                        src={filePreviewUrl(selectedDoc.fileId)}
+                        title={selectedDoc.title}
+                        onError={() => setPreviewError(true)}
+                        style={{ width: '100%', height: '600px', border: 'none' }}
+                      />
                     )
                   })()
                 ) : (

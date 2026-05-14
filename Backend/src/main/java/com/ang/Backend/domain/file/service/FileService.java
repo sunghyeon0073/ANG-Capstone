@@ -158,6 +158,23 @@ public class FileService {
     }
 
     @Transactional(readOnly = true)
+    public Resource loadPreviewAsResource(Long fileId) {
+        FileItem fileItem = fileItemRepository.findById(fileId)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
+
+        if (!isS3Key(fileItem.getFilePath()) || isBrowserPreviewable(fileItem.getContentType())) {
+            return loadFileAsResource(fileId);
+        }
+
+        String previewKey = makePreviewPdfKey(fileItem.getFilePath());
+        if (!s3FileService.exists(previewKey)) {
+            throw new CustomException(ErrorCode.NOT_FOUND);
+        }
+
+        return new ByteArrayResource(s3FileService.download(previewKey));
+    }
+
+    @Transactional(readOnly = true)
     public FileItem getFileItem(Long fileId) {
         return fileItemRepository.findById(fileId)
                 .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND));
@@ -165,5 +182,18 @@ public class FileService {
 
     private boolean isS3Key(String filePath) {
         return filePath != null && filePath.startsWith("uploads/");
+    }
+
+    private boolean isBrowserPreviewable(String contentType) {
+        return contentType != null && (contentType.startsWith("image/") || contentType.contains("pdf"));
+    }
+
+    private String makePreviewPdfKey(String originalKey) {
+        String previewKey = originalKey.replaceFirst("^uploads/", "preview/");
+        int dotIndex = previewKey.lastIndexOf('.');
+        if (dotIndex >= 0) {
+            previewKey = previewKey.substring(0, dotIndex);
+        }
+        return previewKey + ".pdf";
     }
 }

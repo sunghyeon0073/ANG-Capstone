@@ -85,4 +85,18 @@ public class FileController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
                 .body(resource);
     }
+
+    @GetMapping("/preview/{fileId}")
+    public ResponseEntity<Resource> previewFile(@PathVariable Long fileId) {
+        Resource resource = fileService.loadPreviewAsResource(fileId);
+        FileItem fileItem = fileService.getFileItem(fileId);
+
+        String encodedFileName = URLEncoder.encode(fileItem.getOriginalFileName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        String contentDisposition = "inline; filename=\"" + encodedFileName + "\"";
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .body(resource);
+    }
 }
