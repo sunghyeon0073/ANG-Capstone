@@ -40,6 +40,7 @@ public class DocumentService {
     private final ScopeRepository scopeRepository;
     private final ScopeService scopeService;
     private final RestTemplate restTemplate;
+    private final com.ang.Backend.domain.user.repository.UserRepository userRepository;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
@@ -55,9 +56,16 @@ public class DocumentService {
                     DocumentEntity doc = DocumentEntity.builder()
                             .title(file.getOriginalFileName())
                             .file(file)
+                            .owner(file.getUploader()) // Set owner to prevent null constraint violation
                             .status(DocumentStatus.DRAFT)
                             .originalContent("Extracted content from PDF: " + file.getOriginalFileName())
                             .build();
+                    
+                    // If owner is null and DB requires it, we fallback to finding admin
+                    if (doc.getOwner() == null) {
+                        userRepository.findByEmpNo("admin").ifPresent(doc::setOwner);
+                    }
+                    
                     documentRepository.save(doc);
                     log.info("Synced File to Document: {}", file.getOriginalFileName());
                 }
