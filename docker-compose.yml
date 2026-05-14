@@ -1,25 +1,47 @@
 services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    container_name: ang-db
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-ang_db}
+      MARIADB_USER: ${DB_USERNAME:-ang_user}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-ang_password}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+      TZ: Asia/Seoul
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -u root -p$${MARIADB_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./Backend
       dockerfile: Dockerfile
     restart: unless-stopped
     container_name: ang-backend
-    env_file:
-      - .env
     ports:
       - "9090:9090"
     environment:
-      DB_URL: ${DB_URL:?DB_URL is required}
-      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
-      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:?ADMIN_INIT_PASSWORD is required}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      DB_URL: ${DB_URL:-jdbc:mariadb://db:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
+      DB_USERNAME: ${DB_USERNAME:-ang_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ang_password}
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me-local-dev-jwt-secret}
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-Password123!}
       CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:3000,http://localhost:5173,http://localhost:5500,http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:5500,http://15.168.156.224:5500}
       FILE_UPLOAD_DIR: ${FILE_UPLOAD_DIR:-/app/uploads}
       AI_BASE_URL: ${AI_BASE_URL:-http://ai:8888}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
+    depends_on:
+      db:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -37,6 +59,8 @@ services:
       - backend
 
   ai:
+    profiles:
+      - ai
     build:
       context: ./AI
       dockerfile: Dockerfile
@@ -52,3 +76,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./uploads:/app/uploads
+
+volumes:
+  db-data:

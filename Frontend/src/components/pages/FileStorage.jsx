@@ -6,6 +6,7 @@ import {
   deleteDocument,
   getDocument
 } from '../../api/documentApi';
+import { getFiles, downloadFile } from '../../api/fileApi';
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleDateString('ko-KR') : '-';
 const formatSize = (bytes) => {
@@ -24,6 +25,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [fileMap, setFileMap] = useState({});
   const fileInputRef = useRef();
 
   const isMy = currentSubPage === 'file-my';
@@ -38,6 +40,20 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
         ? await getMyDocuments()
         : await getDepartmentDocuments(keyword);
       setDocs(res.data?.data || []);
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || 'null');
+        if (user?.id) {
+          const fileRes = await getFiles('USER', user.id);
+          const files = fileRes.data?.data || [];
+          setFileMap(files.reduce((acc, file) => {
+            acc[file.originalFileName] = file;
+            return acc;
+          }, {}));
+        }
+      } catch (fileError) {
+        console.error('파일 목록 로드 실패', fileError);
+        setFileMap({});
+      }
     } catch (error) {
       console.error('문서 로드 실패', error);
       setDocs([]);
@@ -53,6 +69,28 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
   const handleSearch = (e) => {
     e.preventDefault();
     fetchDocs();
+  };
+
+  const handleDownload = async (doc) => {
+    const file = fileMap[doc.originalFileName];
+    if (!file?.fileId) {
+      alert('다운로드할 파일 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    try {
+      const res = await downloadFile(file.fileId);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.originalFileName || doc.originalFileName || doc.title;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('다운로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
+    }
   };
 
   const handleUpload = async (e) => {
@@ -212,6 +250,16 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                   </td>
                   <td style={{ padding: '10px 12px', color: '#888' }}>{formatDate(doc.createdAt)}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    <button
+                      onClick={() => handleDownload(doc)}
+                      style={{
+                        background: '#4A90D9', color: '#fff', border: 'none',
+                        borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
+                        marginRight: 6
+                      }}
+                    >
+                      다운로드
+                    </button>
                     <button
                       onClick={() => handleDelete(doc.docId)}
                       style={{
