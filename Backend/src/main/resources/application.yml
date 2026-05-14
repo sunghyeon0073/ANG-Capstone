@@ -61,3 +61,9 @@ logging:
     com.ang: debug
     org.hibernate.SQL: debug
     org.springframework.security: warn
+
+cloud:
+  aws:
+    region: ap-northeast-3
+    s3:
+      bucket: ang-s3-bucket
