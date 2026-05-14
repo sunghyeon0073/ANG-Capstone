@@ -111,14 +111,14 @@ public class AuthService {
         }
     }
 
-    // 로그인: 사번+비번 검증 후 JWT accessToken(30분) + refreshToken(7일) 발급
+    // 로그인: 사번+비번 검증 후 JWT 발급
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest req) {
         // 사번으로 조회 (없으면 INVALID_EMP_NO)
         User user = userRepository.findByEmpNo(req.getEmpNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.INVALID_EMP_NO));
 
-        // BCrypt 비교: 입력 평문 vs DB 해시 (salt 포함 자동 비교)
+        // BCrypt 비교 , 해시 저장함
         if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
             throw new CustomException(ErrorCode.INVALID_PASSWORD);
         }

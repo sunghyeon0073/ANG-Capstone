@@ -20,14 +20,14 @@ public class UserRole {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
-
+    // 조인으로 연결 건들지 x
     @Id
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "scope_id")
-    private Scope scope;    // 이 역할이 적용되는 부서
+    private Scope scope;
 
     @Id
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "role_id")
-    private Role role;      // roleLevel: 0=사원, 50=팀장, 100=최고관리자
+    private Role role;
 }
