@@ -1580,6 +1580,37 @@ body {
   white-space: pre-wrap;
 }
 
+.doc-preview {
+  width: 100%;
+  height: min(72vh, 760px);
+  min-height: 520px;
+  border: 1px solid #dfe5e8;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f7f9fa;
+}
+
+.doc-preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.doc-preview-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #687882;
+  font-size: 14px;
+}
+
+.doc-preview-state.error {
+  color: #d32f2f;
+}
+
 .document-list .loading,
 .document-list .error,
 .document-list .empty-state {
