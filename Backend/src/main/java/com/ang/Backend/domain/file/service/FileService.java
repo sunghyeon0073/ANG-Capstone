@@ -102,6 +102,7 @@ public class FileService {
                 .storedFileName(storedFileName)
                 .filePath(filePath)
                 .fileSize(file.getSize())
+                .contentType(file.getContentType())
                 .ownerType(ownerType)
                 .ownerId(ownerId)
                 .uploader(uploader)
@@ -148,6 +149,7 @@ public class FileService {
                 .filePath(filePath)
                 .fileSize(file.getSize())
                 .uploader(uploader) // 업로더 정보 저장
+                .contentType(file.getContentType())
                 .ownerId(uploader != null ? uploader.getUserId() : null)
                 .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                 .build());
