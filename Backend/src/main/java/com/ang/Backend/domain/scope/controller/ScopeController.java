@@ -14,6 +14,7 @@ import com.ang.Backend.domain.user.repository.UserRepository;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -45,7 +46,11 @@ public class ScopeController {
     }
 
     @GetMapping("/my")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<ScopeDto>>> getMyScopes(@org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
         com.ang.Backend.domain.user.entity.User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         
         // 최고관리자(100)면 전체 부서 조회, 아니면 본인 소속 부서만 조회

@@ -168,14 +168,16 @@ public class FileService {
     public Resource loadFileAsResource(Long fileId) {
         try {
             FileItem fileItem = fileItemRepository.findById(fileId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)); // or a specific FILE_NOT_FOUND
+                    .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
             Path filePath = Paths.get(fileItem.getFilePath()).normalize();
             Resource resource = new UrlResource(filePath.toUri());
             if (resource.exists()) {
                 return resource;
             } else {
-                throw new CustomException(ErrorCode.NOT_FOUND);
+                throw new CustomException(ErrorCode.FILE_NOT_FOUND);
             }
+        } catch (CustomException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
