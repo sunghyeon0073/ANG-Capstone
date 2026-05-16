@@ -61,6 +61,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.FORWARD).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/files/preview/**", "/api/files/preview/**").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, "/files/preview/**", "/api/files/preview/**").permitAll()
                         .requestMatchers(
                                 "/auth/**",
                                 "/api/auth/**",

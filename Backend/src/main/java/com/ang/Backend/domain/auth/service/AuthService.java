@@ -25,10 +25,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -92,15 +88,7 @@ public class AuthService {
     }
 
     private void createPhysicalUserFolder(String empNo) {
-        try {
-            Path path = Paths.get("uploads", "Users", empNo);
-            if (!Files.exists(path)) {
-                Files.createDirectories(path);
-                log.info("Created physical directory for user: {}", path);
-            }
-        } catch (IOException e) {
-            log.error("Failed to create directory for user: {}", empNo, e);
-        }
+        log.debug("Skipping local user directory creation for {} because files are stored in S3", empNo);
     }
 
     @Transactional(readOnly = true)

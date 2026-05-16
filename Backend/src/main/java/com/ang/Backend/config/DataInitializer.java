@@ -20,9 +20,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -167,13 +164,6 @@ public class DataInitializer {
     }
 
     private void createFolder(String type, String code) {
-        try {
-            Path path = Paths.get("uploads", type, code);
-            if (!Files.exists(path)) {
-                Files.createDirectories(path);
-            }
-        } catch (Exception e) {
-            log.error("Failed to create folder for {}: {}", type, code);
-        }
+        log.debug("Skipping local folder creation for {}/{} because files are stored in S3", type, code);
     }
 }

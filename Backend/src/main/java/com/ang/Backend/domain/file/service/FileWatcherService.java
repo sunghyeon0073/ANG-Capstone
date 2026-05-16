@@ -41,12 +41,20 @@ public class FileWatcherService {
     @Value("${file.upload.dir:/app/uploads}")
     private String uploadDir;
 
+    @Value("${file.watcher.enabled:false}")
+    private boolean watcherEnabled;
+
     private WatchService watchService;
     private ExecutorService executor;
     private Map<WatchKey, Path> keys;
 
     @PostConstruct
     public void init() {
+        if (!watcherEnabled) {
+            log.info("File Watcher disabled because files are stored in S3");
+            return;
+        }
+
         try {
             watchService = FileSystems.getDefault().newWatchService();
             keys = new HashMap<>();

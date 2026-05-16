@@ -30,6 +30,7 @@ Backend/src/main/resources/application-prod.yml
 
 ### 업로드 파일 ###
 Backend/uploads/
+uploads/
 
 ### 로그 ###
 logs/

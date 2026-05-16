@@ -54,7 +54,7 @@ export default function DocumentWriter() {
       setPreviewUrl(null)
       setPreviewError(null)
 
-      if (!selectedDoc?.fileId || !isPdfDocument(selectedDoc)) {
+      if (!selectedDoc?.fileId || !isPreviewableFile(selectedDoc)) {
         return
       }
 
@@ -63,7 +63,8 @@ export default function DocumentWriter() {
         const response = await api.get(`/files/preview/${selectedDoc.fileId}`, {
           responseType: 'blob',
         })
-        objectUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+        const previewType = isPdfDocument(selectedDoc) ? 'application/pdf' : selectedDoc.fileContentType || response.data?.type || 'image/*'
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: previewType }))
         setPreviewUrl(objectUrl)
       } catch (err) {
         console.error('문서 미리보기 로드 실패:', err)
@@ -87,6 +88,14 @@ export default function DocumentWriter() {
     const fileName = doc?.originalFileName?.toLowerCase() || doc?.title?.toLowerCase() || ''
     return contentType.includes('pdf') || fileName.endsWith('.pdf')
   }
+
+  const isImageDocument = (doc) => {
+    const contentType = doc?.fileContentType?.toLowerCase() || ''
+    const fileName = doc?.originalFileName?.toLowerCase() || doc?.title?.toLowerCase() || ''
+    return contentType.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(fileName)
+  }
+
+  const isPreviewableFile = (doc) => isPdfDocument(doc) || isImageDocument(doc)
 
   const fetchDocuments = async () => {
     try {
@@ -250,19 +259,29 @@ export default function DocumentWriter() {
                 <span>작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
                 {selectedDoc.originalFileName && <span>파일: {selectedDoc.originalFileName}</span>}
               </div>
-              {selectedDoc.fileId && isPdfDocument(selectedDoc) ? (
+              {selectedDoc.fileId && isPreviewableFile(selectedDoc) ? (
                 <div className="doc-preview">
                   {previewLoading ? (
                     <div className="doc-preview-state">미리보기를 불러오는 중...</div>
                   ) : previewError ? (
                     <div className="doc-preview-state error">{previewError}</div>
-                  ) : previewUrl ? (
+                  ) : previewUrl && isPdfDocument(selectedDoc) ? (
                     <iframe
                       src={previewUrl}
                       title={`${selectedDoc.title} 미리보기`}
                       className="doc-preview-frame"
                     />
+                  ) : previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt={`${selectedDoc.title} 미리보기`}
+                      className="doc-preview-image"
+                    />
                   ) : null}
+                </div>
+              ) : selectedDoc.fileId ? (
+                <div className="doc-body" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                  {selectedDoc.originalFileName || selectedDoc.title} 파일은 미리보기를 지원하지 않습니다.
                 </div>
               ) : (
                 <div className="doc-body" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
