@@ -258,6 +258,18 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                   </td>
                   <td style={{ padding: '10px 12px', color: '#888' }}>{formatDate(doc.createdAt)}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    {doc.fileId && (
+                      <button
+                        onClick={() => handleDownload(doc.fileId)}
+                        style={{
+                          background: '#4A90D9', color: '#fff', border: 'none',
+                          borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
+                          marginRight: 4
+                        }}
+                      >
+                        다운로드
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDelete(doc.docId)}
                       style={{
