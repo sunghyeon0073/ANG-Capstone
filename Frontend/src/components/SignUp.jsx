@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { signUp } from '../api/authApi'
 
 export default function SignUp() {
   const [formData, setFormData] = useState({
     name: '',
     employeeId: '',
     birthDate: '',
-    departmentCode: '',
     email: '',
     password: '',
     passwordConfirm: ''
   })
+  const [scopeCode, setScopeCode] = useState('')
   const navigate = useNavigate()
 
   const handleChange = (e) => {
@@ -21,15 +22,34 @@ export default function SignUp() {
     }))
   }
 
-  const handleSignUp = (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault()
     if (formData.password !== formData.passwordConfirm) {
       alert('비밀번호가 일치하지 않습니다.')
       return
     }
-    console.log('회원가입:', formData)
-    // TODO: 나중에 백엔드 API로 교체
-    navigate('/login')
+    
+    if (!scopeCode.trim()) {
+      alert('부서코드를 입력해주세요.')
+      return
+    }
+
+    try {
+      await signUp({
+        name: formData.name,
+        empNo: formData.employeeId,
+        birthdate: formData.birthDate,
+        scopeCode: scopeCode.trim(),
+        email: formData.email,
+        password: formData.password,
+        passwordConfirm: formData.passwordConfirm
+      })
+      alert('회원가입이 완료되었습니다. 관리자 승인 후 로그인이 가능합니다.')
+      navigate('/login')
+    } catch (error) {
+      const message = error.response?.data?.message || '회원가입에 실패했습니다.'
+      alert(message)
+    }
   }
 
   const handleLoginClick = () => {
@@ -81,18 +101,21 @@ export default function SignUp() {
                 required
               />
             </div>
+          </div>
 
+          <div className="form-row full-width">
             <div className="form-group">
-              <label htmlFor="departmentCode">부서코드</label>
-              <input
-                type="text"
-                id="departmentCode"
-                name="departmentCode"
-                value={formData.departmentCode}
-                onChange={handleChange}
-                placeholder="부서코드"
-                required
-              />
+              <label>부서 고유코드</label>
+              <div className="dynamic-input-row" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <input
+                  type="text"
+                  value={scopeCode}
+                  onChange={(e) => setScopeCode(e.target.value)}
+                  placeholder="부서코드를 입력하세요 (예: DEPT01)"
+                  required
+                  style={{ flex: 1 }}
+                />
+              </div>
             </div>
           </div>
 

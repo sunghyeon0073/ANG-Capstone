@@ -1,24 +1,23 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { login } from '../api/authApi';
 
 export default function Login() {
   const [employeeId, setEmployeeId] = useState('')
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault()
-    console.log('로그인:', { employeeId, password })
-    if (employeeId && password) {
-      const userData = {
-        employeeId,
-        name: '이상영',
-        department: '한사운영팀',
-        position: '주임',
-        email: `${employeeId}@ang.lab`
-      }
-      localStorage.setItem('user', JSON.stringify(userData))
+    try {
+      const response = await login({ empNo: employeeId, password })
+      const { data } = response.data
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('token', data.accessToken)
       navigate('/dashboard')
+    } catch (error) {
+      const message = error.response?.data?.message || '로그인에 실패했습니다.'
+      alert(message)
     }
   }
 

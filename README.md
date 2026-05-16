@@ -1,244 +1,82 @@
-# Ang Project
+# 🚀 ANG (Admin Next Generation) 시스템 기술 명세서
 
-> Spring Boot + Vite + FastAPI + Ollama 기반 풀스택 프로젝트
-
----
-
-## 기술 스택
-
-| 영역 | 기술 |
-|------|------|
-| Backend | Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) |
-| Frontend | Vite 8, React 19 |
-| AI | Python 3.12, FastAPI, Ollama |
-| DB | MariaDB 12.0.2 |
-| 패키지 | `com.ang.Backend` |
+이 문서는 시스템의 핵심 비즈니스 로직, 데이터 구조, 그리고 프론트엔드 API 연동을 위한 상세 가이드를 포함합니다.
 
 ---
 
-## 프로젝트 구조
+## 🧠 핵심 비즈니스 로직 (Core Business Logic)
 
-```
-Ang/
-├── Backend/    ← 자바 서버 (포트 9090)
-├── Frontend/   ← 웹 화면 (포트 5500)
-├── AI/         ← AI 서버 (포트 8888)
-└── README.md
-```
+### 1. 조직 체계 및 계층 구조 (Organizational Hierarchy)
+시스템은 최대 3단계의 계층 구조를 가집니다.
+- **Level 1 (COMPANY):** 최상위 기관 (예: 영진전문대학교)
+- **Level 2 (DEPARTMENT):** 중간 부서 (예: 평생교육원) - **핵심 권한 단위**
+- **Level 3 (TEAM):** 하위 실무 팀 (예: 장기요양교육센터, 행정지원팀 등)
 
----
+### 2. 문서 열람 권한 로직 (Document Access Rules)
+단순한 부서 소속 여부가 아닌, **상위 부서(Level 2) 기준**으로 권한이 결정됩니다.
+- **로직:** 특정 사용자가 문서를 조회할 때, 사용자의 소속 부서의 **'Level 2 조상 부서'**를 찾습니다.
+- **허용 범위:** 동일한 Level 2 조상 부서를 공유하는 모든 사용자는 서로의 문서를 열람할 수 있습니다.
+  - *예: '장기요양교육센터(L3)' 직원은 '행정지원(L3)' 직원의 문서를 볼 수 있음 (둘 다 '평생교육원(L2)' 산아이기 때문)*
+  - *예: '평생교육원(L2)' 원장은 산하 모든 L3 팀의 문서를 열람 가능*
+- **업로드:** 파일 업로드 시에는 반드시 특정 실무 팀(Level 3) 또는 부서(Level 2)를 지정해야 하며, 파일은 해당 부서의 고유 코드 폴더(`uploads/Scopes/{code}`)에 물리적으로 저장됩니다.
 
-## 서버 실행 방법
+### 3. 사용자 가입 및 승인 워크플로우 (User Lifecycle)
+- **회원가입:** 사용자는 본인이 속한 **가장 구체적인 부서 코드(L2 또는 L3)** 하나를 입력하여 가입합니다.
+- **승인 대기:** 가입 직후 상태는 `PENDING`이며 로그인이 불가능합니다.
+- **관리자 승인:** 최고관리자는 대기 명단에서 다음 항목을 지정하여 승인합니다.
+  - **시스템 권한(Role Level):** 1(일반), 50(관리자), 100(최고관리자)
+  - **직급(Position):** 사원, 팀장, 원장 등 (문자열)
+- **거절:** 거절 시 사유를 입력하며, 해당 사용자는 상태가 `REJECTED`로 변경됩니다.
 
-> CMD 창을 **3개** 열어서 각각 실행하세요.
-
-### 1. 백엔드
-
-```cmd
-cd C:\JDEV\Ang\Backend
-gradlew.bat bootRun
-```
-
-`Started SpringBootDeveloperApplication` 로그가 뜨면 완료
-
-### 2. 프론트엔드
-
-```cmd
-cd C:\JDEV\Ang\Frontend
-npm run dev
-```
-
-`http://localhost:5500` 접속
-
-### 3. AI 서버
-
-```cmd
-cd C:\JDEV\Ang\AI
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8888
-```
-
-> Ollama가 먼저 실행되어 있어야 합니다 (`ollama serve`)
+### 4. 다중 소속 및 직급 관리 (Multi-Department Support)
+한 사용자는 여러 부서에 동시에 소속될 수 있습니다. (`UserMembership` 기반)
+- 각 소속 부서마다 **서로 다른 직급**을 가질 수 있습니다.
+- 관리자 페이지에서 기존 소속 외에 새로운 부서를 추가하거나, 특정 부서의 직급만 수정하는 것이 가능합니다.
 
 ---
 
-## 연동 테스트
+## 📡 API 상세 명세서
 
-백엔드 + 프론트엔드 실행 후 `http://localhost:5500` 접속  
-**연결 테스트** 버튼을 누르면 백엔드 응답이 화면에 표시됩니다.
+### 🔓 인증 (Authentication)
+| Method | Endpoint | Description | Payload | 비고 |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/auth/login` | 로그인 | `{ "empNo": "admin", "password": "..." }` | JWT(AccessToken, RefreshToken) 반환 |
+| `POST` | `/auth/register` | 회원가입 | `{ "name", "empNo", "birthdate", "email", "password", "passwordConfirm", "scopeCode" }` | `scopeCode`는 조직도 내 고유 코드 |
 
-```
-사용자
-  ↓ 브라우저에서 클릭
-Frontend (5173)
-  ↓ /api 요청 → Vite 프록시
-Backend (9090)
-  ↓ AI 기능 필요할 때
-AI 서버 (8888)
-  ↓
-Ollama (AI 모델)
-```
+### 👑 관리자 (Admin Management)
+| Method | Endpoint | Description | Payload / Params | 비고 |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/admin/users/pending` | 승인 대기자 조회 | - | `UserDto` 리스트 반환 |
+| `PATCH` | `/admin/users/{id}/approve` | 가입 승인 | `{ "roleLevel": 1, "position": "팀원" }` | 상태를 `ACTIVE`로 변경 |
+| `PATCH` | `/admin/users/{id}/reject` | 가입 거절 | `{ "reason": "정보 불일치" }` | 상태를 `REJECTED`로 변경 |
+| `GET` | `/admin/users` | 전체 직원 조회 | - | 다중 부서 정보(`departments`) 포함 |
+| `PATCH` | `/admin/users/{id}/role` | 시스템 권한 변경 | `{ "roleLevel": 50 }` | 1:일반, 50:관리자, 100:최고관리자 |
+| `DELETE` | `/admin/users/{id}` | 강제 퇴사 | - | 실제 삭제가 아닌 개인정보 익명화 처리 |
 
----
+### 🏢 조직 관리 (Scopes & Members)
+| Method | Endpoint | Description | Payload / Params | 비고 |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/scopes` | 조직도 트리 조회 | - | 계층 구조(Tree) 데이터 반환 |
+| `POST` | `/scopes/{id}/members` | 부서 멤버 추가 | `?userId={id}&position={직급}` | 한 명의 사용자를 여러 부서에 등록 |
+| `DELETE` | `/scopes/{id}/members/{uId}` | 부서 소속 해제 | - | 해당 부서와의 연결 관계만 끊음 |
+| `PATCH` | `/scopes/{id}/members/{uId}/position` | 직급 수정 | `{ "position": "센터장" }` | 특정 부서 내에서의 직급만 수정 |
 
-## 백엔드 패키지 구조
-
-```
-Backend/src/main/java/com/ang/Backend/
-├── common/             ← 공통으로 쓰는 것들
-│   ├── Controller/     ← 헬스체크 API
-│   ├── exception/      ← 에러 처리
-│   └── response/       ← 응답 형식 통일
-├── config/             ← 설정 파일들
-│   ├── SecurityConfig  ← 보안 설정 (추후 활성화 예정)
-│   └── OllamaConfig    ← AI 연결 설정
-├── security/           ← JWT 로그인/토큰 (추후 활성화 예정)
-└── domain/             ← ⭐ 기능 개발은 여기에
-    └── user/           ← 예시 구조
-        ├── Controller/ ← ① 요청 받는 곳 (API 입구)
-        ├── DTO/        ← ② 데이터 형식 정의
-        ├── service/    ← ③ 실제 기능 로직
-        ├── DAO/        ← ④ DB 조회
-        └── entity/     ← ⑤ DB 테이블 구조
-```
-
-### 새 기능 추가 순서
-
-예) 게시판 기능을 만든다면
-
-1. `domain/board/` 폴더 생성
-2. `entity/` → DB 테이블 설계
-3. `DAO/` → DB 조회 작성
-4. `service/` → 기능 로직 작성
-5. `Controller/` → API 엔드포인트 연결
-6. `DTO/` → 데이터 형식 정의
+### 📂 문서 및 파일 (Documents)
+| Method | Endpoint | Description | Payload / Params | 비고 |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/documents` | 내 열람 가능 목록 | - | 상위 부서(L2) 공유 로직 적용 |
+| `POST` | `/documents/upload` | 파일 업로드 | `file` (Multipart), `targetScopeId` (Long) | 지정된 부서 폴더에 저장 |
+| `GET` | `/documents/{id}/download`| 파일 다운로드 | - | - |
 
 ---
 
-## 로컬 환경 설정
+## 📂 데이터 저장 구조 (File System)
+- `uploads/Users/{empNo}/`: 사용자 개인 파일 (프로필 등)
+- `uploads/Scopes/{scopeCode}/`: 부서별 공유 문서 보관소
 
-### 백엔드 환경변수
-
-`Backend/src/main/resources/application-local.yml.example` 파일을 복사해서  
-`application-local.yml` 로 이름 변경 후 값을 채워주세요.
-
-```yaml
-DB_URL: jdbc:mariadb://localhost:3306/ang_db?useSSL=false&serverTimezone=Asia/Seoul
-DB_USERNAME: root
-DB_PASSWORD: 비밀번호
-JWT_SECRET: 256비트-이상의-시크릿-키
-ADMIN_INIT_PASSWORD: 초기관리자비밀번호
-OLLAMA_BASE_URL: http://localhost:11434
-OLLAMA_MODEL: qwen3:14b
-```
-
-### AI 환경변수
-
-`AI/.env.example` 파일을 복사해서 `.env` 로 이름 변경 후 값을 채워주세요.
-
-```
-OLLAMA_MODEL=qwen3:14b
-OLLAMA_HOST=http://localhost:11434
-```
+## 🔑 초기 접속 정보
+- **최고 관리자:** `admin` / `qwer1234!`
+- **평생교육원 원장:** `manager` / `qwer1234!` (김기종)
 
 ---
-
-## 팀 개발 흐름
-
-### 브랜치 전략
-
-```
-main        ← 최종 완성본만 올라오는 곳 (건드리지 않음)
-  └── develop   ← 팀원 작업물이 합쳐지는 곳
-        └── feature/기능명   ← 각자 기능 개발하는 곳
-```
-
-### 작업 순서
-
-```
-① develop 브랜치에서 내 브랜치 만들기
-② 내 브랜치에서 기능 개발
-③ GitHub에 push 후 PR(Pull Request) 올리기
-④ 팀원 코드 확인 후 develop에 merge
-⑤ git pull로 최신 코드 내려받기
-⑥ 기능 다 모이면 DB 연동 후 통합 테스트
-⑦ 문제 없으면 main에 merge (최종본)
-```
-
-### 브랜치 이름 규칙
-
-```
-feature/기능명      ← 새 기능 개발   예) feature/user-login
-fix/버그내용        ← 버그 수정      예) fix/login-error
-design/페이지명     ← UI 작업        예) design/main-page
-```
-
-### 자주 쓰는 명령어
-
-```cmd
-# develop 브랜치로 이동
-git checkout develop
-
-# 내 브랜치 만들기
-git checkout -b feature/기능명
-
-# 작업 저장
-git add .
-git commit -m "feat: 기능 설명"
-
-# GitHub에 올리기
-git push origin feature/기능명
-```
-
----
-
-## 로컬 개발 → 통합 테스트 흐름
-
-```
-각자 로컬에서 기능 개발 (DB 걱정 없이 코드만 작성)
-       ↓
-GitHub에 push & PR 올리기
-       ↓
-팀원 코드 확인 후 develop에 merge
-       ↓
-git pull로 최신 코드 내려받기
-       ↓
-기능 다 모이면 MariaDB 연동 후 통합 테스트
-       ↓
-main에 merge (최종본 완성)
-```
-
-> `application-local.yml`은 각자 본인 DB 설정으로 세팅하세요.  
-> 이 파일은 `.gitignore`에 등록되어 있어서 GitHub에 올라가지 않습니다.
-
----
-
-## ⛔ 금칙사항
-
-### Git 관련
-
-| 금지 | 이유 |
-|------|------|
-| `main`에 직접 push | 전체 코드가 망가질 수 있음 |
-| `git push --force` | 다른 팀원 작업이 사라질 수 있음 |
-| PR 없이 develop에 직접 merge | 코드 리뷰 없이 합쳐지면 버그 추적 불가 |
-| 팀원 리뷰 없이 본인이 본인 PR merge | 혼자 검토하면 실수를 못 잡음 |
-
-### 코드 관련
-
-| 금지 | 이유 |
-|------|------|
-| `application-local.yml` 커밋 | DB 비밀번호, JWT 시크릿 등 민감 정보 노출 |
-| `.env` 커밋 | AI 서버 환경변수 노출 |
-| 다른 팀원 브랜치에 직접 push | 작업 충돌 발생 |
-| `develop`, `main` 브랜치에서 직접 작업 | 항상 feature 브랜치 만들어서 작업 |
-
----
-
-## API 목록
-
-| 메서드 | 경로 | 설명            |
-|--------|------|---------------|
-| GET | `/api/health` | 백엔드 서버 상태 확인  |
-| POST | `/chat` | AI "채팅 (AI 서버) |
-| GET | `/health` | AI 서버 상태 확인   |
+*본 명세서는 백엔드 비즈니스 로직과 API를 기준으로 작성되었습니다.*

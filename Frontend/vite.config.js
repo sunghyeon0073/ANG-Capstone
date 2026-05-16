@@ -8,4 +8,16 @@ export default defineConfig({
     react(),
     babel({ presets: [reactCompilerPreset()] })
   ],
+  // 여기에 서버 설정을 추가합니다
+  server: {
+    port: 5500,
+    strictPort: true,
+    open: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:9090',
+        changeOrigin: true,
+      }
+    }
+  }
 })
