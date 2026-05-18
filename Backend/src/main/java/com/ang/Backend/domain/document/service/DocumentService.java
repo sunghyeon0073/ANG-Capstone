@@ -22,9 +22,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.ang.Backend.common.exception.CustomException;
+import com.ang.Backend.common.exception.ErrorCode;
+import com.ang.Backend.domain.file.service.S3FileService;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -41,6 +48,7 @@ public class DocumentService {
     private final ScopeService scopeService;
     private final RestTemplate restTemplate;
     private final com.ang.Backend.domain.user.repository.UserRepository userRepository;
+    private final S3FileService s3FileService;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
@@ -90,6 +98,31 @@ public class DocumentService {
             subPath = "Scopes" + File.separator + targetScope.getScopeCode();
         }
 
+        String originalContent = "";
+        Path tempFile = null;
+        try {
+            String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+            tempFile = Files.createTempFile("parse-", "-" + originalName);
+            // transferTo() 대신 getBytes()로 기록 — getInputStream()이 소진되지 않아 이후 S3 업로드에서도 사용 가능
+            Files.write(tempFile, file.getBytes());
+
+            Map<String, String> parseReq = Map.of("file_path", tempFile.toAbsolutePath().toString());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parseRes = restTemplate.postForObject(
+                    aiBaseUrl + "/parse-document", parseReq, Map.class);
+
+            if (parseRes != null && Boolean.TRUE.equals(parseRes.get("success"))) {
+                Object md = parseRes.get("markdown");
+                if (md != null) originalContent = md.toString();
+            }
+        } catch (Exception e) {
+            log.warn("kordoc 파싱 실패 (업로드는 계속 진행): {}", e.getMessage());
+        } finally {
+            if (tempFile != null) {
+                try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
+            }
+        }
+
         var storedFile = fileService.storeFile(file, user, subPath);
 
         DocumentEntity doc = DocumentEntity.builder()
@@ -98,7 +131,7 @@ public class DocumentService {
                 .owner(user)
                 .scope(targetScope)
                 .status(DocumentStatus.DRAFT)
-                .originalContent("")
+                .originalContent(originalContent)
                 .build();
 
         return documentRepository.save(doc).getDocId();
@@ -111,12 +144,23 @@ public class DocumentService {
     }
 
     @Transactional
-    public DocumentDto.Response generateWithAi(String prompt, User user) {
+    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId) {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
 
-        Map<String, String> aiRequest = Map.of("message", prompt);
+        String finalPrompt = prompt;
+        if (sourceDocId != null) {
+            DocumentEntity source = documentRepository.findById(sourceDocId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+            String sourceContent = source.getOriginalContent();
+            if (sourceContent != null && !sourceContent.isBlank()) {
+                finalPrompt = "다음 문서 내용을 참고하여 요청에 답해주세요.\n\n[문서 내용]\n"
+                        + sourceContent + "\n\n[요청]\n" + prompt;
+            }
+        }
+
+        Map<String, String> aiRequest = Map.of("message", finalPrompt);
         @SuppressWarnings("unchecked")
         Map<String, Object> aiResponse = restTemplate.postForObject(
                 aiBaseUrl + "/chat",
@@ -128,8 +172,27 @@ public class DocumentService {
                 ? aiResponse.get("reply").toString()
                 : "";
 
+        String aiTitle = makeAiTitle(prompt);
+
+        String s3Key = null;
+        FileItem fileItem = null;
+        try {
+            s3Key = s3FileService.uploadText(answer, aiTitle + ".md");
+            fileItem = fileItemRepository.save(FileItem.builder()
+                    .originalFileName(aiTitle + ".md")
+                    .storedFileName(s3Key)
+                    .filePath(s3Key)
+                    .fileSize((long) answer.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                    .contentType("text/markdown")
+                    .uploader(user)
+                    .build());
+        } catch (Exception e) {
+            log.warn("AI 생성 문서 S3 저장 실패: {}", e.getMessage());
+        }
+
         DocumentEntity doc = DocumentEntity.builder()
-                .title(makeAiTitle(prompt))
+                .title(aiTitle)
+                .file(fileItem)
                 .owner(user)
                 .status(DocumentStatus.DRAFT)
                 .originalContent(answer)
@@ -138,6 +201,13 @@ public class DocumentService {
                 .build();
 
         return DocumentDto.Response.fromEntity(documentRepository.save(doc));
+    }
+
+    @Transactional(readOnly = true)
+    public String getOriginalContent(Long docId) {
+        return documentRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND))
+                .getOriginalContent();
     }
 
     public List<DocumentDto.Response> getMyDocuments(User user) {
