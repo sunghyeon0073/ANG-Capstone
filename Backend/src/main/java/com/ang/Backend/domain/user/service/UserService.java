@@ -129,6 +129,15 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    // 이름 또는 사번 키워드로 ACTIVE 사용자 검색 (메일 수신자 선택용)
+    @Transactional(readOnly = true)
+    public List<UserDto.RecipientSearchResult> searchUsers(String keyword) {
+        return userRepository.searchByKeyword(keyword, UserStatus.ACTIVE).stream()
+                .map(user -> UserDto.RecipientSearchResult.from(
+                        user, userMembershipRepository.findByUser(user)))
+                .collect(Collectors.toList());
+    }
+
 @Transactional(readOnly = true)
 public UserDto toDto(User user) {
     List<UserMembership> memberships = userMembershipRepository.findByUser(user);
