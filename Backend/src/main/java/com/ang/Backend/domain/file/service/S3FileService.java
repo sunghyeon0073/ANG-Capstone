@@ -78,4 +78,18 @@ public class S3FileService {
 
         s3Client.deleteObject(request);
     }
+
+    public String uploadText(String content, String fileName) {
+        String key = "documents/" + LocalDate.now() + "/" + UUID.randomUUID() + ".md";
+        byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType("text/markdown; charset=UTF-8")
+                .build();
+
+        s3Client.putObject(request, RequestBody.fromBytes(bytes));
+        return key;
+    }
 }

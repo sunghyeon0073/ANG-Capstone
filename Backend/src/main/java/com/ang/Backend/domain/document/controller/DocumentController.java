@@ -66,7 +66,7 @@ public class DocumentController {
         if (userDetails != null && userDetails.getUsername() != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.generateWithAi(request.getPrompt(), user));
+        return ApiResponse.ok(documentService.generateWithAi(request.getPrompt(), user, request.getSourceDocId()));
     }
 
     @GetMapping("/my")
@@ -93,6 +93,11 @@ public class DocumentController {
     @GetMapping("/{id}")
     public ApiResponse<DocumentDto.Response> getDocument(@PathVariable Long id) {
         return ApiResponse.ok(documentService.getDocument(id));
+    }
+
+    @GetMapping("/{id}/original-content")
+    public ApiResponse<String> getOriginalContent(@PathVariable Long id) {
+        return ApiResponse.ok("요청이 성공적으로 처리되었습니다.", documentService.getOriginalContent(id));
     }
 
     @PutMapping("/{id}")
