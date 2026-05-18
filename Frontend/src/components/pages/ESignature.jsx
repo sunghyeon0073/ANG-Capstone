@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FiCheck, FiX, FiArrowLeft, FiPlus } from 'react-icons/fi'
 
-export default function ESignature({ selectedSubPage }) {
+export default function ESignature({ currentSubPage }) {
   const [approvals, setApprovals] = useState([])
   const [selectedApproval, setSelectedApproval] = useState(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -9,6 +9,25 @@ export default function ESignature({ selectedSubPage }) {
     title: '',
     description: ''
   })
+
+  useEffect(() => {
+    setSelectedApproval(null)
+  }, [currentSubPage])
+
+  const getSubPageLabel = (subPage) => {
+    switch (subPage) {
+      case 'esignature-waiting':
+        return '결재대기'
+      case 'esignature-completed':
+        return '완료'
+      case 'esignature-rejected':
+        return '반려'
+      case 'esignature-my':
+        return '내가 요청'
+      default:
+        return '결재대기'
+    }
+  }
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -38,10 +57,10 @@ export default function ESignature({ selectedSubPage }) {
 
   const filterApprovals = (tab) => {
     return approvals.filter(approval => {
-      if (tab === 'esignature') return approval.status === 'pending'
+      if (tab === 'esignature-waiting') return approval.status === 'pending'
       if (tab === 'esignature-completed') return approval.status === 'approved'
       if (tab === 'esignature-rejected') return approval.status === 'rejected'
-      if (tab === 'esignature-my') return approval.requestedBy === 'current-user'
+      if (tab === 'esignature-my') return approval.requestedBy === (me?.id || 'unknown')
       return true
     })
   }
@@ -80,11 +99,11 @@ export default function ESignature({ selectedSubPage }) {
       title: newApprovalForm.title,
       description: newApprovalForm.description,
       status: 'pending',
-      requestedBy: 'current-user',
+      requestedBy: me?.id || 'unknown',
       requestedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      requestedByName: '이상영',
-      requestedByRole: '주임'
+      requestedByName: me?.name || '익명',
+      requestedByRole: me?.position || '사원'
     }
 
     setApprovals([newApproval, ...approvals])
@@ -102,7 +121,7 @@ export default function ESignature({ selectedSubPage }) {
     })
   }
 
-  const filteredApprovals = filterApprovals(selectedSubPage)
+  const filteredApprovals = filterApprovals(currentSubPage)
 
   if (selectedApproval) {
     return (
@@ -164,7 +183,7 @@ export default function ESignature({ selectedSubPage }) {
     <>
       <div className="esignature-page">
         <div className="esignature-header">
-          <h1>전자결재</h1>
+          <h1>전자결재 ({getSubPageLabel(currentSubPage)})</h1>
           <div className="header-actions">
             <button className="btn-designated">대리 결재인 지정</button>
             <button className="btn-create" onClick={() => setIsCreating(true)}>

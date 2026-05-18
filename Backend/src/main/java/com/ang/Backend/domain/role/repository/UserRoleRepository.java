@@ -13,7 +13,8 @@ import java.util.List;
 public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> {
     List<UserRole> findByUser(User user);
     List<UserRole> findByUserAndScope(User user, Scope scope);
+    void deleteByUserAndScope(User user, Scope scope);
 
-    @Query("SELECT ur FROM UserRole ur WHERE ur.user = :user ORDER BY ur.role.roleLevel DESC")
+    @Query("SELECT ur FROM UserRole ur JOIN FETCH ur.role WHERE ur.user = :user ORDER BY ur.role.roleLevel DESC")
     List<UserRole> findByUserOrderByRoleLevelDesc(@Param("user") User user);
 }

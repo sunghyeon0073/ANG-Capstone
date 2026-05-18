@@ -16,15 +16,18 @@ import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
+import com.ang.Backend.domain.user.service.UserService;
 import com.ang.Backend.common.enums.UserStatus;
 import com.ang.Backend.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -39,6 +42,7 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserService userService;
 
     @Transactional
     public void register(RegisterRequest req) {
@@ -55,6 +59,7 @@ public class AuthService {
             throw new CustomException(ErrorCode.PASSWORD_POLICY_VIOLATION);
         }
 
+        // Validate the scope code
         Scope scope = scopeRepository.findByScopeCode(req.getScopeCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
 
@@ -67,15 +72,23 @@ public class AuthService {
                 .status(UserStatus.PENDING)
                 .build();
         userRepository.save(user);
+        createPhysicalUserFolder(user.getEmpNo());
 
+        // Create membership for the scope
         userMembershipRepository.save(UserMembership.builder()
                 .user(user)
                 .scope(scope)
+                .position("사원") // Default position
                 .build());
 
         Role defaultRole = roleRepository.findByRoleLevel(0)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
+        
         userRoleRepository.save(new UserRole(user, scope, defaultRole));
+    }
+
+    private void createPhysicalUserFolder(String empNo) {
+        log.debug("Skipping local user directory creation for {} because files are stored in S3", empNo);
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +103,10 @@ public class AuthService {
         if (user.getStatus() == UserStatus.PENDING) {
             throw new CustomException(ErrorCode.USER_PENDING);
         }
+        if (user.getStatus() == UserStatus.REJECTED) {
+            throw new CustomException(ErrorCode.USER_REJECTED,
+                    "가입이 거절되었습니다. 사유: " + user.getRejectionReason());
+        }
         if (user.getStatus() == UserStatus.ANONYMIZED) {
             throw new CustomException(ErrorCode.USER_ANONYMIZED);
         }
@@ -98,7 +115,7 @@ public class AuthService {
                 .accessToken(jwtTokenProvider.createAccessToken(user.getEmpNo()))
                 .refreshToken(jwtTokenProvider.createRefreshToken(user.getEmpNo()))
                 .tokenType("Bearer")
-                .user(UserDto.from(user))
+                .user(userService.toDto(user))
                 .build();
     }
 }
