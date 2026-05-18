@@ -22,6 +22,14 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.ok(userService.getAllUsers()));
     }
 
+    // 이름 또는 사번으로 사용자 검색 (메일 수신자 선택용)
+    // GET /api/users/search?q=김  or  ?q=EMP001
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<List<UserDto.RecipientSearchResult>>> searchUsers(
+            @RequestParam String q) {
+        return ResponseEntity.ok(ApiResponse.ok(userService.searchUsers(q)));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<UserDto>> getUser(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.ok(userService.getUser(id)));

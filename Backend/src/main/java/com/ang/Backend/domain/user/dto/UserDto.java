@@ -1,12 +1,14 @@
 package com.ang.Backend.domain.user.dto;
 
 import com.ang.Backend.common.enums.UserStatus;
+import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.user.entity.User;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Getter
 @Builder
@@ -35,6 +37,40 @@ public class UserDto {
         private String scopeName;
         private String scopeCode;
         private String position;
+    }
+
+    // 메일 수신자 검색 결과 (이름/사번 검색 후 선택용)
+    @Getter
+    @Builder
+    public static class RecipientSearchResult {
+        private String empNo;
+        private String name;
+        private String position;
+        private List<DepartmentInfo> departments;  // 소속 부서 + 직책
+
+        public static RecipientSearchResult from(User user, List<UserMembership> memberships) {
+            List<DepartmentInfo> depts = memberships.stream()
+                    .map(m -> DepartmentInfo.builder()
+                            .scopeId(m.getScope().getScopeId())
+                            .scopeName(m.getScope().getName())
+                            .scopeCode(m.getScope().getScopeCode())
+                            .position(m.getPosition())
+                            .build())
+                    .collect(Collectors.toList());
+
+            String position = memberships.stream()
+                    .map(UserMembership::getPosition)
+                    .filter(p -> p != null && !p.isBlank())
+                    .findFirst()
+                    .orElse(user.getPosition());
+
+            return RecipientSearchResult.builder()
+                    .empNo(user.getEmpNo())
+                    .name(user.getName())
+                    .position(position)
+                    .departments(depts)
+                    .build();
+        }
     }
 
     public static UserDto from(User user) {
