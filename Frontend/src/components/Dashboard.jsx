@@ -92,7 +92,8 @@ export default function Dashboard() {
     return null
   }
 
-  const hideSidebar = currentPage === 'mypage' || currentPage === 'calendar' || currentPage === 'admin'
+  const mainCategory = getMainCategory(currentPage)
+  const hideSidebar = currentPage === 'mypage' || mainCategory === 'calendar' || mainCategory === 'document'
 
   return (
     <div className="dashboard">
