@@ -88,10 +88,10 @@ export default function Board({ me, currentSubPage = 'board' }) {
   const handleSave = () => {
     if (!formData.title.trim() || !formData.content.trim()) return alert("제목과 내용을 모두 입력하세요.");
 
-    const myId = me?.id || 'my_user_id';
-    const myName = me?.name || '내 이름';
+    const myId = me?.id || '';
+    const myName = me?.name || '익명';
 
-    if (selected && isEdit) {
+    if (selected) {
       setPosts(prev => prev.map(p => p.id === selected.id ? { ...p, ...formData } : p));
       showMsg("게시글이 수정되었습니다.");
     } else {

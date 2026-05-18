@@ -1,4 +1,4 @@
-import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar } from 'react-icons/fi'
+import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield } from 'react-icons/fi'
 
 const iconMap = {
   'home-dashboard': FiHome,
@@ -69,8 +69,20 @@ export const SIDEBAR_MENUS = {
   ],
   org: [
     { id: 'org-all', label: '전체조직' },
-    { id: 'org-dept', label: '부서별' },
+    { id: 'org-dept', label: '부서별' }
+  ],
+  admin: [
+    { id: 'admin-approval', label: '가입 승인 관리' },
+    { id: 'admin-users', label: '직원 정보 관리' },
+    { id: 'admin-org', label: '조직 구조 관리' }
   ]
+}
+
+const iconMapExtended = {
+  ...iconMap,
+  'admin-approval': FiShield,
+  'admin-users': FiUsers,
+  'admin-org': FiFileText
 }
 
 const getMainCategory = (page) => {
@@ -89,7 +101,7 @@ export default function Sidebar({ currentPage, onPageChange }) {
       </div>
       <nav className="sidebar-menu">
         {items.map(item => {
-          const IconComponent = iconMap[item.id]
+          const IconComponent = iconMapExtended[item.id]
           return (
             <button
               key={item.id}

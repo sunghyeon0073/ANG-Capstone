@@ -5,7 +5,6 @@ on:
     branches:
       - dev-server
       - dev
-      - test-server
 
 jobs:
   deploy:
@@ -14,18 +13,35 @@ jobs:
     steps:
       - name: Deploy to AWS EC2
         uses: appleboy/ssh-action@v1.0.3
+
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+
           script: |
-            cd ${{ secrets.DEPLOY_PATH }}
+            set -e
 
+            echo "===== ANG CD START ====="
+            echo "BRANCH: ${{ github.ref_name }}"
+
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            echo "===== CURRENT PATH ====="
+            pwd
+
+            echo "===== GIT UPDATE ====="
             git fetch origin
-            git checkout dev-server
-            git pull origin dev-server
+            git checkout "${{ github.ref_name }}"
+            git reset --hard "origin/${{ github.ref_name }}"
 
+            echo "===== DOCKER DOWN ====="
             docker compose down
+
+            echo "===== DOCKER BUILD ====="
             docker compose up -d --build
 
+            echo "===== CLEAN UNUSED IMAGES ====="
             docker image prune -f
+
+            echo "===== DEPLOY COMPLETE ====="

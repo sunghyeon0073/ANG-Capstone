@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
+import { getMyDocuments, getDepartmentDocuments } from '../../api/documentApi'
+import { getScopes } from '../../api/scopeApi' // 본인 소속 부서 목록을 가져오기 위함
 
 export default function DocumentWriter() {
   const [documents, setDocuments] = useState([])
@@ -10,23 +12,103 @@ export default function DocumentWriter() {
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [category, setCategory] = useState('my') // 'my' 또는 'dept'
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState(null)
+  
+  // 다중 부서 처리를 위한 상태
+  const [myScopes, setMyScopes] = useState([])
+  const [selectedScopeId, setSelectedScopeId] = useState('all') // 'all' 또는 특정 scopeId
 
+  // 1. 초기 로딩 시 소속 부서 목록 가져오기
+  useEffect(() => {
+    const fetchScopes = async () => {
+      try {
+        const res = await api.get('/scopes/my'); // 본인이 소속된 부서 목록 API
+        setMyScopes(res.data?.data || []);
+      } catch (err) {
+        console.error('소속 부서 로드 실패', err);
+      }
+    };
+    fetchScopes();
+  }, []);
+
+  // 2. 카테고리나 선택된 부서가 바뀔 때마다 문서 목록 갱신
   useEffect(() => {
     fetchDocuments()
-  }, [])
+  }, [category, selectedScopeId])
 
   useEffect(() => {
     const filtered = documents.filter(doc =>
       doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.originalContent?.toLowerCase().includes(searchTerm.toLowerCase())
+      (doc.originalContent && doc.originalContent.toLowerCase().includes(searchTerm.toLowerCase()))
     )
     setFilteredDocuments(filtered)
   }, [searchTerm, documents])
 
+  useEffect(() => {
+    let objectUrl = null
+
+    const loadPreview = async () => {
+      setPreviewUrl(null)
+      setPreviewError(null)
+
+      if (!selectedDoc?.fileId || !isPreviewableFile(selectedDoc)) {
+        return
+      }
+
+      try {
+        setPreviewLoading(true)
+        const response = await api.get(`/files/preview/${selectedDoc.fileId}`, {
+          responseType: 'blob',
+        })
+        const previewType = isPdfDocument(selectedDoc) ? 'application/pdf' : selectedDoc.fileContentType || response.data?.type || 'image/*'
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: previewType }))
+        setPreviewUrl(objectUrl)
+      } catch (err) {
+        console.error('문서 미리보기 로드 실패:', err)
+        setPreviewError('미리보기를 불러올 수 없습니다.')
+      } finally {
+        setPreviewLoading(false)
+      }
+    }
+
+    loadPreview()
+
+    return () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+      }
+    }
+  }, [selectedDoc])
+
+  const isPdfDocument = (doc) => {
+    const contentType = doc?.fileContentType?.toLowerCase() || ''
+    const fileName = doc?.originalFileName?.toLowerCase() || doc?.title?.toLowerCase() || ''
+    return contentType.includes('pdf') || fileName.endsWith('.pdf')
+  }
+
+  const isImageDocument = (doc) => {
+    const contentType = doc?.fileContentType?.toLowerCase() || ''
+    const fileName = doc?.originalFileName?.toLowerCase() || doc?.title?.toLowerCase() || ''
+    return contentType.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(fileName)
+  }
+
+  const isPreviewableFile = (doc) => isPdfDocument(doc) || isImageDocument(doc)
+
   const fetchDocuments = async () => {
     try {
       setLoading(true)
-      const response = await api.get('/documents')
+      let response;
+      if (category === 'my') {
+        response = await getMyDocuments();
+      } else {
+        // 부서 문서일 경우 선택된 scopeId가 있으면 해당 부서만, 없으면 전체(null) 조회
+        const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId;
+        response = await getDepartmentDocuments(null, scopeParam);
+      }
+      
       setDocuments(response.data?.data || [])
       setError(null)
     } catch (err) {
@@ -47,15 +129,16 @@ export default function DocumentWriter() {
     try {
       setAiLoading(true)
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: '문서 읽는 중... 잠시만 기다려주세요.' }
+        detail: { message: '문서 생성 중... 잠시만 기다려주세요.' }
       }))
       const response = await api.post('/documents/ai-generate', {
         prompt: prompt
       })
 
       if (response.data.success) {
-        // 생성된 문서를 문서 목록에 추가
-        setDocuments([response.data.data, ...documents])
+        if (category === 'my') {
+          setDocuments([response.data.data, ...documents])
+        }
         setSelectedDoc(response.data.data)
         setPrompt('')
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
@@ -65,9 +148,6 @@ export default function DocumentWriter() {
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: 'AI 문서 생성에 실패했어요. 연결 상태를 확인해주세요.' }
-      }))
       alert(err.response?.data?.message || 'AI 문서 생성에 실패했습니다.')
     } finally {
       setAiLoading(false)
@@ -79,6 +159,40 @@ export default function DocumentWriter() {
       <div className="document-sidebar">
         <div className="sidebar-header">
           <h3>문서 목록</h3>
+          <div className="category-tabs" style={{ display: 'flex', marginTop: 10, borderBottom: '1px solid #eee' }}>
+            <button 
+              onClick={() => setCategory('my')}
+              style={{ 
+                flex: 1, padding: '8px 0', border: 'none', background: 'none',
+                borderBottom: category === 'my' ? '2px solid #4A90D9' : 'none',
+                color: category === 'my' ? '#4A90D9' : '#888', cursor: 'pointer', fontWeight: category === 'my' ? 'bold' : 'normal'
+              }}
+            >내 문서</button>
+            <button 
+              onClick={() => setCategory('dept')}
+              style={{ 
+                flex: 1, padding: '8px 0', border: 'none', background: 'none',
+                borderBottom: category === 'dept' ? '2px solid #4A90D9' : 'none',
+                color: category === 'dept' ? '#4A90D9' : '#888', cursor: 'pointer', fontWeight: category === 'dept' ? 'bold' : 'normal'
+              }}
+            >부서 문서</button>
+          </div>
+          
+          {/* 부서 선택 필터 (부서 문서 탭일 때만 노출) */}
+          {category === 'dept' && myScopes.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <select 
+                value={selectedScopeId} 
+                onChange={(e) => setSelectedScopeId(e.target.value)}
+                style={{ width: '100%', padding: '6px', borderRadius: 4, border: '1px solid #ddd', fontSize: 13 }}
+              >
+                <option value="all">전체 부서 문서보기</option>
+                {myScopes.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="search-container">
@@ -89,10 +203,6 @@ export default function DocumentWriter() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
           />
-          <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-          </svg>
         </div>
 
         <div className="document-list">
@@ -111,7 +221,15 @@ export default function DocumentWriter() {
                 className={`document-item ${selectedDoc?.docId === doc.docId ? 'active' : ''}`}
                 onClick={() => setSelectedDoc(doc)}
               >
-                <div className="doc-title">{doc.title}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div className="doc-title">{doc.title}</div>
+                  {/* 부서 문서 탭에서 전체보기일 때 부서 이름 태그 표시 */}
+                  {category === 'dept' && doc.scopeName && (
+                    <span style={{ fontSize: 10, background: '#f0f0f0', padding: '2px 4px', borderRadius: 4, color: '#666', marginLeft: 4 }}>
+                      {doc.scopeName}
+                    </span>
+                  )}
+                </div>
                 <div className="doc-date">
                   {new Date(doc.createdAt).toLocaleDateString('ko-KR')}
                 </div>
@@ -129,13 +247,47 @@ export default function DocumentWriter() {
         <div className="document-content">
           {selectedDoc ? (
             <div className="selected-document">
-              <h2>{selectedDoc.title}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <h2 style={{ margin: 0 }}>{selectedDoc.title}</h2>
+                {selectedDoc.scopeName && (
+                  <span style={{ fontSize: 12, background: '#e7f3ff', color: '#007bff', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+                    {selectedDoc.scopeName}
+                  </span>
+                )}
+              </div>
               <div className="doc-meta">
                 <span>작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
+                {selectedDoc.originalFileName && <span>파일: {selectedDoc.originalFileName}</span>}
               </div>
-              <div className="doc-body">
-                {selectedDoc.originalContent || '내용이 없습니다.'}
-              </div>
+              {selectedDoc.fileId && isPreviewableFile(selectedDoc) ? (
+                <div className="doc-preview">
+                  {previewLoading ? (
+                    <div className="doc-preview-state">미리보기를 불러오는 중...</div>
+                  ) : previewError ? (
+                    <div className="doc-preview-state error">{previewError}</div>
+                  ) : previewUrl && isPdfDocument(selectedDoc) ? (
+                    <iframe
+                      src={previewUrl}
+                      title={`${selectedDoc.title} 미리보기`}
+                      className="doc-preview-frame"
+                    />
+                  ) : previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt={`${selectedDoc.title} 미리보기`}
+                      className="doc-preview-image"
+                    />
+                  ) : null}
+                </div>
+              ) : selectedDoc.fileId ? (
+                <div className="doc-body" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                  {selectedDoc.originalFileName || selectedDoc.title} 파일은 미리보기를 지원하지 않습니다.
+                </div>
+              ) : (
+                <div className="doc-body" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                  {selectedDoc.originalContent || '내용이 없습니다.'}
+                </div>
+              )}
             </div>
           ) : (
             <div className="empty-content">

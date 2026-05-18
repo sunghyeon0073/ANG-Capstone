@@ -1,6 +1,8 @@
 package com.ang.Backend.domain.document.controller;
 
 import com.ang.Backend.common.response.ApiResponse;
+import com.ang.Backend.common.exception.CustomException;
+import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.service.DocumentService;
 import com.ang.Backend.domain.user.entity.User;
@@ -69,6 +71,9 @@ public class DocumentController {
 
     @GetMapping("/my")
     public ApiResponse<List<DocumentDto.Response>> getMyDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         return ApiResponse.ok(documentService.getMyDocuments(user));
     }
@@ -78,6 +83,9 @@ public class DocumentController {
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(required = false) Integer scopeId,
             @RequestParam(required = false) String keyword) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         return ApiResponse.ok(documentService.getDepartmentDocuments(user, scopeId, keyword));
     }

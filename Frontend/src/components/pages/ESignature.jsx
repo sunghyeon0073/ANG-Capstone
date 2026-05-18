@@ -60,7 +60,7 @@ export default function ESignature({ currentSubPage }) {
       if (tab === 'esignature-waiting') return approval.status === 'pending'
       if (tab === 'esignature-completed') return approval.status === 'approved'
       if (tab === 'esignature-rejected') return approval.status === 'rejected'
-      if (tab === 'esignature-my') return approval.requestedBy === 'current-user'
+      if (tab === 'esignature-my') return approval.requestedBy === (me?.id || 'unknown')
       return true
     })
   }
@@ -99,11 +99,11 @@ export default function ESignature({ currentSubPage }) {
       title: newApprovalForm.title,
       description: newApprovalForm.description,
       status: 'pending',
-      requestedBy: 'current-user',
+      requestedBy: me?.id || 'unknown',
       requestedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      requestedByName: '이상영',
-      requestedByRole: '주임'
+      requestedByName: me?.name || '익명',
+      requestedByRole: me?.position || '사원'
     }
 
     setApprovals([newApproval, ...approvals])

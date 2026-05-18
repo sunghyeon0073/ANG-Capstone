@@ -37,7 +37,7 @@ public class UserController {
     public ResponseEntity<ApiResponse<Void>> approveUser(
             @PathVariable Integer id,
             @RequestBody com.ang.Backend.domain.user.dto.UserApproveRequest req) {
-        userService.approveUser(id, req.getRoleLevel());
+        userService.approveUser(id, req.getRoleLevel(), req.getPosition());
         return ResponseEntity.ok(ApiResponse.ok("사용자 가입이 승인되었습니다."));
     }
 

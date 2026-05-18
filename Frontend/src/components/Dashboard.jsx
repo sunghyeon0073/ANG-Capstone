@@ -12,8 +12,8 @@ import Mail from './pages/Mail'
 import Chat from './pages/Chat'
 import Organization from './pages/Organization'
 import MyPage from './pages/MyPage'
-import FloatingMascot from './FloatingMascot'
 import Admin from './pages/Admin'
+import FloatingMascot from './FloatingMascot'
 
 const PAGE_COMPONENTS = {
   home: Home,
@@ -56,19 +56,19 @@ export default function Dashboard() {
   }
 
   const handlePageChange = (pageId) => {
-    if (pageId === 'admin') {
-      setCurrentPage('admin')
-      return
-    }
-
-    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization']
+    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization', 'admin']
 
     if (topNavMenuIds.includes(pageId)) {
       const incomingCategory = pageId === 'organization' ? 'org' : pageId
       const currentCategory = getMainCategory(currentPage)
 
       if (incomingCategory !== currentCategory) {
-        setCurrentPage(SIDEBAR_MENUS[incomingCategory]?.[0]?.id || pageId)
+        // 관리자 탭 클릭 시 기본 서브페이지로 'admin-approval' 설정
+        if (incomingCategory === 'admin') {
+          setCurrentPage('admin-approval')
+        } else {
+          setCurrentPage(SIDEBAR_MENUS[incomingCategory]?.[0]?.id || pageId)
+        }
       }
     } else {
       setCurrentPage(pageId)
@@ -76,8 +76,6 @@ export default function Dashboard() {
   }
 
   const renderPage = () => {
-    if (currentPage === 'admin') return <Admin />
-
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
 
@@ -86,7 +84,7 @@ export default function Dashboard() {
     return <Component
       user={user}
       currentSubPage={currentPage}
-      me={user}
+      me={user} // Admin 컴포넌트 등에서 사용할 내 정보
     />
   }
 
@@ -115,7 +113,7 @@ export default function Dashboard() {
           {renderPage()}
         </div>
       </div>
-      <FloatingMascot mode={currentPage === 'document-AI' ? 'ai' : 'default'} />
+      <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} />
     </div>
   )
 }

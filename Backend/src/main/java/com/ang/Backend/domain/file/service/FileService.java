@@ -12,6 +12,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
@@ -20,11 +21,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,6 +33,7 @@ public class FileService {
 
     private final FileItemRepository fileItemRepository;
     private final UserRepository userRepository;
+    private final S3FileService s3FileService;
 
     @Value("${file.upload-dir:uploads}")
     private String uploadDir;
@@ -43,7 +43,6 @@ public class FileService {
     public void syncPdfFilesFromUploadsDir() {
         File directory = new File(uploadDir);
         if (!directory.exists()) {
-            directory.mkdirs();
             return;
         }
 
@@ -77,17 +76,23 @@ public class FileService {
         User uploader = userRepository.findById(uploaderId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        File directory = new File(uploadDir);
+        String customPath = uploadDir;
+        if (ownerType == OwnerType.USER) {
+            customPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
+        } else if (ownerType == OwnerType.SCOPE) {
+            // Scope 전용 경로 로직 (필요 시 추가)
+        }
+
+        File directory = new File(customPath);
         if (!directory.exists()) {
-            directory.mkdirs();
+            log.debug("Skipping local upload directory creation because files are stored in S3: {}", customPath);
         }
 
         String originalFilename = file.getOriginalFilename();
-        String storedFileName = UUID.randomUUID().toString() + "_" + originalFilename;
-        String filePath = uploadDir + File.separator + storedFileName;
+        String storedFileName = s3FileService.upload(file);
+        String filePath = storedFileName;
 
         // 실제 파일을 서버 경로에 저장
-        file.transferTo(new File(filePath));
 
         // DB에 파일 메타데이터 저장
         FileItem fileItem = FileItem.builder()
@@ -95,6 +100,7 @@ public class FileService {
                 .storedFileName(storedFileName)
                 .filePath(filePath)
                 .fileSize(file.getSize())
+                .contentType(file.getContentType())
                 .ownerType(ownerType)
                 .ownerId(ownerId)
                 .uploader(uploader)
@@ -112,16 +118,29 @@ public class FileService {
 
     @Transactional
     public FileItem storeFile(MultipartFile file, User uploader) throws IOException {
+        return storeFile(file, uploader, null);
+    }
+
+    @Transactional
+    public FileItem storeFile(MultipartFile file, User uploader, String subPath) throws IOException {
         if (file.isEmpty()) return null;
 
-        File directory = new File(uploadDir).getAbsoluteFile();
-        if (!directory.exists()) directory.mkdirs();
+        String finalPath = uploadDir;
+        if (subPath != null && !subPath.isBlank()) {
+            finalPath += File.separator + subPath;
+        } else if (uploader != null) {
+            finalPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
+        }
+
+        File directory = new File(finalPath).getAbsoluteFile();
+        if (!directory.exists()) {
+            log.debug("Skipping local upload directory creation because files are stored in S3: {}", finalPath);
+        }
 
         String originalFilename = file.getOriginalFilename();
-        String storedFileName = UUID.randomUUID().toString() + "_" + originalFilename;
-        String filePath = directory.getAbsolutePath() + File.separator + storedFileName;
+        String storedFileName = s3FileService.upload(file);
+        String filePath = storedFileName;
 
-        file.transferTo(new File(filePath));
 
         return fileItemRepository.save(FileItem.builder()
                 .originalFileName(originalFilename)
@@ -129,6 +148,7 @@ public class FileService {
                 .filePath(filePath)
                 .fileSize(file.getSize())
                 .uploader(uploader) // 업로더 정보 저장
+                .contentType(file.getContentType())
                 .ownerId(uploader != null ? uploader.getUserId() : null)
                 .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                 .build());
@@ -136,9 +156,13 @@ public class FileService {
 
     @Transactional
     public void deletePhysicalFile(FileItem fileItem) {
-        File file = new File(fileItem.getFilePath());
-        if (file.exists()) {
-            file.delete();
+        if (isS3Key(fileItem.getFilePath())) {
+            s3FileService.delete(fileItem.getFilePath());
+        } else {
+            File file = new File(fileItem.getFilePath());
+            if (file.exists()) {
+                file.delete();
+            }
         }
         fileItemRepository.delete(fileItem);
     }
@@ -147,17 +171,29 @@ public class FileService {
     public Resource loadFileAsResource(Long fileId) {
         try {
             FileItem fileItem = fileItemRepository.findById(fileId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND)); // or a specific FILE_NOT_FOUND
+                    .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
             Path filePath = Paths.get(fileItem.getFilePath()).normalize();
             Resource resource = new UrlResource(filePath.toUri());
             if (resource.exists()) {
                 return resource;
-            } else {
-                throw new CustomException(ErrorCode.NOT_FOUND);
             }
+
+            if (isS3Key(fileItem.getFilePath())) {
+                return new ByteArrayResource(s3FileService.download(fileItem.getFilePath()));
+            }
+
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        } catch (CustomException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private boolean isS3Key(String filePath) {
+        return filePath != null
+                && filePath.matches("^uploads/\\d{4}-\\d{2}-\\d{2}/.+")
+                && !Paths.get(filePath).isAbsolute();
     }
     
     @Transactional(readOnly = true)

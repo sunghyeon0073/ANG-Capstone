@@ -16,6 +16,7 @@ import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
+import com.ang.Backend.domain.user.service.UserService;
 import com.ang.Backend.common.enums.UserStatus;
 import com.ang.Backend.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -59,12 +60,9 @@ public class AuthService {
             throw new CustomException(ErrorCode.PASSWORD_POLICY_VIOLATION);
         }
 
+        // Validate the scope code
         Scope scope = scopeRepository.findByScopeCode(req.getScopeCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
-
-        if (scope.getScopeType() != com.ang.Backend.common.enums.ScopeType.TEAM) {
-            throw new CustomException(ErrorCode.ONLY_TEAM_REGISTRATION_ALLOWED);
-        }
 
         User user = User.builder()
                 .empNo(req.getEmpNo())
@@ -77,13 +75,16 @@ public class AuthService {
         userRepository.save(user);
         fileWatchService.createUserFolder(user.getEmpNo());
 
+        // Create membership for the scope
         userMembershipRepository.save(UserMembership.builder()
                 .user(user)
                 .scope(scope)
+                .position("사원") // Default position
                 .build());
 
         Role defaultRole = roleRepository.findByRoleLevel(0)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
+        
         userRoleRepository.save(new UserRole(user, scope, defaultRole));
     }
 
@@ -99,6 +100,10 @@ public class AuthService {
         if (user.getStatus() == UserStatus.PENDING) {
             throw new CustomException(ErrorCode.USER_PENDING);
         }
+        if (user.getStatus() == UserStatus.REJECTED) {
+            throw new CustomException(ErrorCode.USER_REJECTED,
+                    "가입이 거절되었습니다. 사유: " + user.getRejectionReason());
+        }
         if (user.getStatus() == UserStatus.ANONYMIZED) {
             throw new CustomException(ErrorCode.USER_ANONYMIZED);
         }
@@ -107,7 +112,7 @@ public class AuthService {
                 .accessToken(jwtTokenProvider.createAccessToken(user.getEmpNo()))
                 .refreshToken(jwtTokenProvider.createRefreshToken(user.getEmpNo()))
                 .tokenType("Bearer")
-                .user(userService.getUser(user.getUserId()))
+                .user(userService.toDto(user))
                 .build();
     }
 }
