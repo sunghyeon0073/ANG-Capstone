@@ -30,6 +30,8 @@ public class DocumentDto {
         private String originalFileName;
         private Long fileId;
         private String fileContentType;
+        private Long previewFileId;
+        private String previewFileContentType;
         private String ownerName;
         private String scopeName;
         private LocalDateTime createdAt;
@@ -44,6 +46,8 @@ public class DocumentDto {
                     .originalFileName(entity.getFile() != null ? entity.getFile().getOriginalFileName() : null)
                     .fileId(entity.getFile() != null ? entity.getFile().getFileId() : null)
                     .fileContentType(entity.getFile() != null ? entity.getFile().getContentType() : null)
+                    .previewFileId(entity.getPreviewFile() != null ? entity.getPreviewFile().getFileId() : null)
+                    .previewFileContentType(entity.getPreviewFile() != null ? entity.getPreviewFile().getContentType() : null)
                     .ownerName(entity.getOwner() != null ? entity.getOwner().getName() : "Unknown")
                     .scopeName(entity.getScope() != null ? entity.getScope().getName() : "N/A")
                     .createdAt(entity.getCreatedAt())

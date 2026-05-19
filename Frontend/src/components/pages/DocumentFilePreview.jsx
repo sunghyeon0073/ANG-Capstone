@@ -39,6 +39,7 @@ export default function DocumentFilePreview({
   const isPdf = previewKind === 'pdf'
   const isWord = previewKind === 'word'
   const isExcel = previewKind === 'excel'
+  const hasGeneratedPdfPreview = Boolean(doc?.previewFileId)
 
   const previewClassName = [
     'doc-preview',
@@ -50,7 +51,7 @@ export default function DocumentFilePreview({
     .filter(Boolean)
     .join(' ')
 
-  if (!doc?.fileId && !doc?.mockPreviewHtml && !doc?.mockTableData) {
+  if (!doc?.fileId && !doc?.previewFileId && !doc?.mockPreviewHtml && !doc?.mockTableData) {
     return (
       <div className="doc-body">
         {doc?.originalContent || '내용이 없습니다.'}
@@ -58,7 +59,7 @@ export default function DocumentFilePreview({
     )
   }
 
-  if (!hasInlineFilePreview(doc) && !doc?.mockPreviewHtml && !doc?.mockTableData) {
+  if (!hasGeneratedPdfPreview && !hasInlineFilePreview(doc) && !doc?.mockPreviewHtml && !doc?.mockTableData) {
     return (
       <div className="doc-preview-unsupported">
         <p>
@@ -77,7 +78,7 @@ export default function DocumentFilePreview({
         <div className="doc-preview-state">미리보기를 불러오는 중...</div>
       ) : previewError ? (
         <div className="doc-preview-state error">{previewError}</div>
-      ) : isPdf && previewUrl ? (
+      ) : (isPdf || hasGeneratedPdfPreview) && previewUrl ? (
         <iframe
           src={previewUrl}
           title={`${doc.title} 미리보기`}
