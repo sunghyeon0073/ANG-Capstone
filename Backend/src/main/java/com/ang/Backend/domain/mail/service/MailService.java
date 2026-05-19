@@ -269,3 +269,4 @@ public class MailService {
                 .orElseThrow(() -> new CustomException(ErrorCode.MAIL_NOT_FOUND));
     }
 }
+
