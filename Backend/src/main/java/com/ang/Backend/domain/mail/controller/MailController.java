@@ -96,6 +96,16 @@ public class MailController {
         return ResponseEntity.ok(ApiResponse.ok("발신함에서 삭제되었습니다."));
     }
 
+    // 임시저장 삭제
+    @DeleteMapping("/{mailId}/draft")
+    public ResponseEntity<ApiResponse<Void>> deleteDraft(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        mailService.deleteDraft(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok("임시저장이 삭제되었습니다."));
+    }
+
     // 발송 취소
     @PostMapping("/{mailId}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancel(

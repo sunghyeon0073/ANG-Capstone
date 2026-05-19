@@ -15,6 +15,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -27,6 +29,14 @@ public class MailService {
     private final MailRepository mailRepository;
     private final MailRecipientRepository mailRecipientRepository;
     private final UserRepository userRepository;
+
+    // 서버 시작 시 is_favorite / is_sender_favorite 컬럼의 기존 NULL 값을 0으로 교정
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void fixNullFavoriteColumns() {
+        mailRepository.fixNullSenderFavorite();
+        mailRecipientRepository.fixNullFavorite();
+    }
 
     // 메일 발송: Mail(SENT) + MailRecipient N개 생성
     @Transactional
@@ -226,6 +236,20 @@ public class MailService {
             throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
         }
         mail.setSenderDeletedAt(null);
+    }
+
+    // 임시저장 삭제 (작성자 본인만, DB에서 완전 삭제)
+    @Transactional
+    public void deleteDraft(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        if (!mail.getSender().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        if (mail.getStatus() != MailStatus.DRAFT) {
+            throw new CustomException(ErrorCode.MAIL_CANCEL_DENIED);
+        }
+        mailRecipientRepository.deleteAll(mailRecipientRepository.findByMail(mail));
+        mailRepository.delete(mail);
     }
 
     // 수신자 저장 공통 로직
