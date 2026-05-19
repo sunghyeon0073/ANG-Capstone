@@ -4,6 +4,8 @@ import com.ang.Backend.domain.mail.entity.Mail;
 import com.ang.Backend.domain.mail.entity.MailRecipient;
 import com.ang.Backend.domain.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,4 +23,15 @@ public interface MailRecipientRepository extends JpaRepository<MailRecipient, Lo
 
     // 발송 취소 가능 여부 확인용: 아직 아무도 읽지 않았는지
     boolean existsByMailAndReadAtIsNotNull(Mail mail);
+
+    // 수신 휴지통: 삭제된 것
+    List<MailRecipient> findByRecipientAndDeletedAtIsNotNull(User recipient);
+
+    // 수신 즐겨찾기: 즐겨찾기이고 삭제 안 된 것
+    List<MailRecipient> findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(User recipient);
+
+    // 기존 NULL 행 교정
+    @Modifying
+    @Query(value = "UPDATE mail_recipients SET is_favorite = 0 WHERE is_favorite IS NULL", nativeQuery = true)
+    void fixNullFavorite();
 }

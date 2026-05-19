@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import CalendarComponent from 'react-calendar'
 import 'react-calendar/dist/Calendar.css'
+import { createSchedule, deleteSchedule, getSchedules } from '../../api/scheduleApi'
 
 const SimpleModal = ({ open, onClose, title, children }) => {
   if (!open) return null
+
   return (
     <div className="modal-overlay">
       <div className="modal-content calendar-modal">
@@ -17,87 +19,132 @@ const SimpleModal = ({ open, onClose, title, children }) => {
   )
 }
 
+const formatDate = (d) => {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const normalizeTime = (time) => time?.slice(0, 5) || ''
+
 export default function Calendar() {
   const [date, setDate] = useState(new Date())
-  const [schedules, setSchedules] = useState(() => {
-    const saved = localStorage.getItem('calendar_schedules')
-    return saved ? JSON.parse(saved) : []
+  const [activeStartDate, setActiveStartDate] = useState(() => {
+    const today = new Date()
+    return new Date(today.getFullYear(), today.getMonth(), 1)
   })
+  const [schedules, setSchedules] = useState([])
+  const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [formData, setFormData] = useState({ title: '', startTime: '09:00', endTime: '10:00', description: '' })
+  const [formData, setFormData] = useState({
+    title: '',
+    startTime: '09:00',
+    endTime: '10:00',
+    description: ''
+  })
   const [selectedDate, setSelectedDate] = useState(null)
 
-  useEffect(() => {
-    localStorage.setItem('calendar_schedules', JSON.stringify(schedules))
-  }, [schedules])
+  const monthRange = useMemo(() => {
+    const start = new Date(activeStartDate.getFullYear(), activeStartDate.getMonth(), 1)
+    const end = new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 0)
+    return { startDate: formatDate(start), endDate: formatDate(end) }
+  }, [activeStartDate])
 
-  const formatDate = (d) => {
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+  const fetchSchedules = async () => {
+    try {
+      setIsLoading(true)
+      const res = await getSchedules(monthRange)
+      setSchedules(res.data?.data || [])
+    } catch (error) {
+      console.error('일정 로드 실패', error)
+      setSchedules([])
+    } finally {
+      setIsLoading(false)
+    }
   }
+
+  useEffect(() => {
+    fetchSchedules()
+  }, [monthRange.startDate, monthRange.endDate])
 
   const getSchedulesForDate = (d) => {
     const dateStr = formatDate(d)
-    return schedules.filter(s => s.date === dateStr)
+    return schedules.filter((schedule) => schedule.date === dateStr)
+  }
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      startTime: '09:00',
+      endTime: '10:00',
+      description: ''
+    })
   }
 
   const handleAddSchedule = () => {
     setSelectedDate(new Date(date))
-    setFormData({ title: '', startTime: '09:00', endTime: '10:00', description: '' })
+    resetForm()
     setIsModalOpen(true)
   }
 
-  const handleSaveSchedule = () => {
+  const handleDateChange = (nextDate) => {
+    setDate(nextDate)
+    setActiveStartDate(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1))
+  }
+
+  const handleSaveSchedule = async () => {
     if (!formData.title.trim()) {
       alert('일정 제목을 입력하세요')
       return
     }
 
-    const newSchedule = {
-      id: Date.now(),
-      date: formatDate(selectedDate),
-      title: formData.title,
-      startTime: formData.startTime,
-      endTime: formData.endTime,
-      description: formData.description
+    try {
+      await createSchedule({
+        date: formatDate(selectedDate || date),
+        title: formData.title,
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        description: formData.description
+      })
+      setIsModalOpen(false)
+      resetForm()
+      fetchSchedules()
+    } catch (error) {
+      alert('일정 저장 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'))
     }
-
-    setSchedules(prev => [...prev, newSchedule])
-    setIsModalOpen(false)
-    setFormData({ title: '', startTime: '09:00', endTime: '10:00', description: '' })
   }
 
-  const handleDeleteSchedule = (id) => {
-    if (window.confirm('이 일정을 삭제하시겠습니까?')) {
-      setSchedules(prev => prev.filter(s => s.id !== id))
+  const handleDeleteSchedule = async (id) => {
+    if (!window.confirm('이 일정을 삭제하시겠습니까?')) return
+
+    try {
+      await deleteSchedule(id)
+      setSchedules((prev) => prev.filter((schedule) => schedule.id !== id))
+    } catch (error) {
+      alert('일정 삭제 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'))
     }
   }
 
   const tileClassName = ({ date: tileDate, view }) => {
-    if (view === 'month') {
-      const hasSchedules = getSchedulesForDate(tileDate).length > 0
-      return hasSchedules ? 'calendar-date-with-schedule' : ''
-    }
-    return ''
+    if (view !== 'month') return ''
+    return getSchedulesForDate(tileDate).length > 0 ? 'calendar-date-with-schedule' : ''
   }
 
   const tileContent = ({ date: tileDate, view }) => {
-    if (view === 'month') {
-      const daySchedules = getSchedulesForDate(tileDate)
-      if (daySchedules.length > 0) {
-        return (
-          <div className="calendar-date-content">
-            {daySchedules.slice(0, 2).map(s => (
-              <div key={s.id} className="calendar-schedule-dot" title={s.title} />
-            ))}
-            {daySchedules.length > 2 && <div className="calendar-more">+{daySchedules.length - 2}</div>}
-          </div>
-        )
-      }
-    }
-    return null
+    if (view !== 'month') return null
+
+    const daySchedules = getSchedulesForDate(tileDate)
+    if (daySchedules.length === 0) return null
+
+    return (
+      <div className="calendar-date-content">
+        {daySchedules.slice(0, 2).map((schedule) => (
+          <div key={schedule.id} className="calendar-schedule-dot" title={schedule.title} />
+        ))}
+        {daySchedules.length > 2 && <div className="calendar-more">+{daySchedules.length - 2}</div>}
+      </div>
+    )
   }
 
   const todaySchedules = getSchedulesForDate(date)
@@ -113,7 +160,11 @@ export default function Calendar() {
         <div className="calendar-wrapper">
           <CalendarComponent
             value={date}
-            onChange={setDate}
+            activeStartDate={activeStartDate}
+            onChange={handleDateChange}
+            onActiveStartDateChange={({ activeStartDate: nextActiveStartDate }) => {
+              if (nextActiveStartDate) setActiveStartDate(nextActiveStartDate)
+            }}
             tileClassName={tileClassName}
             tileContent={tileContent}
             locale="ko-KR"
@@ -123,11 +174,13 @@ export default function Calendar() {
         <div className="calendar-sidebar">
           <h2>{date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
 
-          {todaySchedules.length > 0 ? (
+          {isLoading ? (
+            <div className="schedule-empty">불러오는 중...</div>
+          ) : todaySchedules.length > 0 ? (
             <div className="schedule-list">
-              {todaySchedules.map(schedule => (
+              {todaySchedules.map((schedule) => (
                 <div key={schedule.id} className="schedule-item">
-                  <div className="schedule-time">{schedule.startTime} ~ {schedule.endTime}</div>
+                  <div className="schedule-time">{normalizeTime(schedule.startTime)} ~ {normalizeTime(schedule.endTime)}</div>
                   <div className="schedule-title">{schedule.title}</div>
                   {schedule.description && <div className="schedule-desc">{schedule.description}</div>}
                   <button
@@ -153,7 +206,7 @@ export default function Calendar() {
               type="text"
               placeholder="일정 제목을 입력하세요"
               value={formData.title}
-              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="calendar-input"
             />
           </div>
@@ -164,7 +217,7 @@ export default function Calendar() {
               <input
                 type="time"
                 value={formData.startTime}
-                onChange={(e) => setFormData({...formData, startTime: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                 className="calendar-input"
               />
             </div>
@@ -173,7 +226,7 @@ export default function Calendar() {
               <input
                 type="time"
                 value={formData.endTime}
-                onChange={(e) => setFormData({...formData, endTime: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                 className="calendar-input"
               />
             </div>
@@ -182,9 +235,9 @@ export default function Calendar() {
           <div className="form-group">
             <label>설명</label>
             <textarea
-              placeholder="설명을 입력하세요 (선택사항)"
+              placeholder="설명을 입력하세요(선택사항)"
               value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="calendar-textarea"
               rows="4"
             />
