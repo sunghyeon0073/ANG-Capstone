@@ -118,4 +118,31 @@ public class AuthService {
                 .user(userService.toDto(user))
                 .build();
     }
+
+    @Transactional(readOnly = true)
+    public LoginResponse refresh(String refreshToken) {
+        // 1. 토큰 유효성 검증
+        if (!jwtTokenProvider.validateToken(refreshToken)) {
+            throw new CustomException(ErrorCode.INVALID_TOKEN);
+        }
+
+        // 2. 사번 추출
+        String empNo = jwtTokenProvider.getEmpNoFromToken(refreshToken);
+        
+        // 3. 사용자 존재 및 상태 확인
+        User user = userRepository.findByEmpNo(empNo)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new CustomException(ErrorCode.FORBIDDEN, "활성화된 사용자가 아닙니다.");
+        }
+
+        // 4. 새로운 Access Token 발급
+        return LoginResponse.builder()
+                .accessToken(jwtTokenProvider.createAccessToken(user.getEmpNo()))
+                .refreshToken(refreshToken) // 기존 리프레시 토큰 유지
+                .tokenType("Bearer")
+                .user(userService.toDto(user))
+                .build();
+    }
 }

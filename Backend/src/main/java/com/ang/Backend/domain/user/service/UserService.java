@@ -138,15 +138,25 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
-@Transactional(readOnly = true)
-public UserDto toDto(User user) {
-    List<UserMembership> memberships = userMembershipRepository.findByUser(user);
+    @Transactional(readOnly = true)
+    public UserDto toDto(User user) {
+        List<UserMembership> memberships = userMembershipRepository.findByUser(user);
 
-    String dept = memberships.stream()
-            .map(m -> m.getScope().getName())
-            .collect(Collectors.joining(", "));
+        // 부서 이름 표시 로직 개선: COMPANY 타입을 제외한 실제 부서명을 우선 표시
+        String dept = memberships.stream()
+                .map(UserMembership::getScope)
+                .filter(s -> s.getScopeType() != com.ang.Backend.common.enums.ScopeType.COMPANY)
+                .map(com.ang.Backend.domain.scope.entity.Scope::getName)
+                .collect(Collectors.joining(", "));
+        
+        // 만약 COMPANY 소속만 있다면 (최상위 관리자 등) 그대로 표시
+        if (dept.isEmpty()) {
+            dept = memberships.stream()
+                    .map(m -> m.getScope().getName())
+                    .collect(Collectors.joining(", "));
+        }
 
-    String computedPosition = memberships.stream()
+        String computedPosition = memberships.stream()
             .map(UserMembership::getPosition)
             .filter(java.util.Objects::nonNull)
             .distinct()

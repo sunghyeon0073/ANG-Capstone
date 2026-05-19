@@ -88,11 +88,10 @@ export default function Admin({ me, currentSubPage }) {
   };
 
   const handleApprove = async (userId) => {
-    const roleLevel = selections[userId];
-    if (roleLevel === undefined) return alert('권한 레벨을 선택해주세요.');
     try {
       setApproving(prev => ({ ...prev, [userId]: true }));
-      await approveUser(userId, roleLevel, positionSelections[userId]);
+      // 레벨과 직급을 인자로 보내지 않음 (백엔드에서 일반 사용자/사원 기본값 처리)
+      await approveUser(userId);
       setPendingUsers(prev => prev.filter(u => u.id !== userId));
       alert('승인이 완료되었습니다.');
     } catch (error) {
@@ -230,30 +229,11 @@ export default function Admin({ me, currentSubPage }) {
                           <td style={tdStyle}>{user.empNo}</td>
                           <td style={tdStyle}>{user.name}</td>
                           <td style={tdStyle}>{user.dept}</td>
-                          <td style={tdStyle}>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <select
-                                onChange={e => setSelections(prev => ({ ...prev, [user.id]: parseInt(e.target.value) }))}
-                                style={selectStyle}
-                              >
-                                <option value="">레벨 선택</option>
-                                {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                              </select>
-                              <select
-                                onChange={e => setPositionSelections(prev => ({ ...prev, [user.id]: e.target.value }))}
-                                style={selectStyle}
-                                defaultValue=""
-                              >
-                                <option value="" disabled>직급 선택 (기본: 사원)</option>
-                                {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                              </select>
-                            </div>
-                          </td>
                           <td style={{ ...tdStyle, textAlign: 'center' }}>
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                               <button 
                                 onClick={() => handleApprove(user.id)}
-                                disabled={approving[user.id] || selections[user.id] === undefined}
+                                disabled={approving[user.id]}
                                 className="btn btn-primary"
                                 style={{ margin: 0, padding: '6px 16px' }}
                               >승인</button>
