@@ -3,14 +3,10 @@ import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShar
 const iconMap = {
   'home-dashboard': FiHome,
   'home-memo': FiFileText,
-  'document-AI': FiFileText,
-  'document-general': FiFileText,
-  'document-preview': FiFileText,
   'esignature-waiting': FiCheckSquare,
   'esignature-completed': FiCheckSquare,
   'esignature-rejected': FiCheckSquare,
   'esignature-my': FiCheckSquare,
-  'calendar-my': FiCalendar,
   'file-home': FiHome,
   'file-my': FiFolder,
   'file-shared': FiShare2,
@@ -23,8 +19,6 @@ const iconMap = {
   'mail-sent': FiSend,
   'mail-important': FiStar,
   'mail-trash': FiTrash2,
-  'chat-personal': FiMessageSquare,
-  'chat-groups': FiUsers,
   'org-all': FiList,
   'org-dept': FiList,
   'org-admin': FiShield
@@ -34,11 +28,6 @@ export const SIDEBAR_MENUS = {
   home: [
     { id: 'home-dashboard', label: '대시보드' },
     { id: 'home-memo', label: '메모' }
-  ],
-  document: [
-    { id: 'document-AI', label: 'AI문서작성' },
-    { id: 'document-general', label: '문서작성' },
-    { id: 'document-preview', label: '문서 미리보기' }
   ],
   esignature: [
     { id: 'esignature-waiting', label: '결재대기' },
@@ -63,10 +52,6 @@ export const SIDEBAR_MENUS = {
     { id: 'mail-sent', label: '보낸메일' },
     { id: 'mail-important', label: '중요' },
     { id: 'mail-trash', label: '휴지통' }
-  ],
-  chat: [
-    { id: 'chat-personal', label: '개인채팅' },
-    { id: 'chat-groups', label: '그룹채팅' }
   ],
   org: [
     { id: 'org-all', label: '전체조직' },

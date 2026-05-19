@@ -22,9 +22,19 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.ang.Backend.common.exception.CustomException;
+import com.ang.Backend.common.exception.ErrorCode;
+import com.ang.Backend.domain.file.service.S3FileService;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -41,6 +51,7 @@ public class DocumentService {
     private final ScopeService scopeService;
     private final RestTemplate restTemplate;
     private final com.ang.Backend.domain.user.repository.UserRepository userRepository;
+    private final S3FileService s3FileService;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
@@ -90,6 +101,8 @@ public class DocumentService {
             subPath = "Scopes" + File.separator + targetScope.getScopeCode();
         }
 
+        String originalContent = parseOriginalContent(file);
+
         var storedFile = fileService.storeFile(file, user, subPath);
 
         DocumentEntity doc = DocumentEntity.builder()
@@ -98,7 +111,7 @@ public class DocumentService {
                 .owner(user)
                 .scope(targetScope)
                 .status(DocumentStatus.DRAFT)
-                .originalContent("")
+                .originalContent(originalContent)
                 .build();
 
         return documentRepository.save(doc).getDocId();
@@ -111,12 +124,23 @@ public class DocumentService {
     }
 
     @Transactional
-    public DocumentDto.Response generateWithAi(String prompt, User user) {
+    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId) {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
 
-        Map<String, String> aiRequest = Map.of("message", prompt);
+        String finalPrompt = prompt;
+        if (sourceDocId != null) {
+            DocumentEntity source = documentRepository.findById(sourceDocId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+            String sourceContent = source.getOriginalContent();
+            if (sourceContent != null && !sourceContent.isBlank()) {
+                finalPrompt = "다음 문서 내용을 참고하여 요청에 답해주세요.\n\n[문서 내용]\n"
+                        + sourceContent + "\n\n[요청]\n" + prompt;
+            }
+        }
+
+        Map<String, String> aiRequest = Map.of("message", finalPrompt);
         @SuppressWarnings("unchecked")
         Map<String, Object> aiResponse = restTemplate.postForObject(
                 aiBaseUrl + "/chat",
@@ -128,8 +152,27 @@ public class DocumentService {
                 ? aiResponse.get("reply").toString()
                 : "";
 
+        String aiTitle = makeAiTitle(prompt);
+
+        String s3Key = null;
+        FileItem fileItem = null;
+        try {
+            s3Key = s3FileService.uploadText(answer, aiTitle + ".md");
+            fileItem = fileItemRepository.save(FileItem.builder()
+                    .originalFileName(aiTitle + ".md")
+                    .storedFileName(s3Key)
+                    .filePath(s3Key)
+                    .fileSize((long) answer.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                    .contentType("text/markdown")
+                    .uploader(user)
+                    .build());
+        } catch (Exception e) {
+            log.warn("AI 생성 문서 S3 저장 실패: {}", e.getMessage());
+        }
+
         DocumentEntity doc = DocumentEntity.builder()
-                .title(makeAiTitle(prompt))
+                .title(aiTitle)
+                .file(fileItem)
                 .owner(user)
                 .status(DocumentStatus.DRAFT)
                 .originalContent(answer)
@@ -138,6 +181,13 @@ public class DocumentService {
                 .build();
 
         return DocumentDto.Response.fromEntity(documentRepository.save(doc));
+    }
+
+    @Transactional(readOnly = true)
+    public String getOriginalContent(Long docId) {
+        return documentRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND))
+                .getOriginalContent();
     }
 
     public List<DocumentDto.Response> getMyDocuments(User user) {
@@ -290,4 +340,75 @@ public class DocumentService {
         }
         return normalized.substring(0, 40);
     }
+
+    private String parseOriginalContent(MultipartFile file) {
+        Path tempFile = null;
+        try {
+            String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+            tempFile = Files.createTempFile("kordoc-", "-" + sanitizeFileName(originalName));
+            Files.write(tempFile, file.getBytes());
+
+            KordocResult result = runKordoc(tempFile);
+            if (result.exitCode() != 0) {
+                log.warn("kordoc parsing failed with exit code {}: {}", result.exitCode(), result.output());
+                return "";
+            }
+
+            String markdown = result.output();
+            if (markdown == null || markdown.isBlank()) {
+                log.warn("kordoc parsing returned empty markdown for {}", originalName);
+                return "";
+            }
+
+            uploadParsedMarkdown(markdown, originalName);
+            return markdown;
+        } catch (Exception e) {
+            log.warn("kordoc parsing failed, upload will continue: {}", e.getMessage());
+            return "";
+        } finally {
+            if (tempFile != null) {
+                try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private KordocResult runKordoc(Path file) throws IOException, InterruptedException {
+        try {
+            return runCommand(List.of("kordoc", file.toAbsolutePath().toString()));
+        } catch (IOException e) {
+            log.debug("Direct kordoc command failed, retrying with npx: {}", e.getMessage());
+            return runCommand(List.of("npx", "--no-install", "kordoc", file.toAbsolutePath().toString()));
+        }
+    }
+
+    private KordocResult runCommand(List<String> command) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start();
+
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+        if (!finished) {
+            process.destroyForcibly();
+            return new KordocResult(-1, "kordoc timed out after 60 seconds");
+        }
+
+        return new KordocResult(process.exitValue(), output);
+    }
+
+    private void uploadParsedMarkdown(String markdown, String originalName) {
+        try {
+            String markdownName = originalName.replaceFirst("\\.[^.]+$", "") + ".md";
+            String key = s3FileService.uploadText(markdown, markdownName);
+            log.info("Uploaded parsed markdown to S3: {}", key);
+        } catch (Exception e) {
+            log.warn("Parsed markdown S3 upload failed, originalContent will still be saved: {}", e.getMessage());
+        }
+    }
+
+    private String sanitizeFileName(String fileName) {
+        return fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    private record KordocResult(int exitCode, String output) {}
 }
