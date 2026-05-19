@@ -2308,7 +2308,7 @@ body {
   .btn-add-document:active {
     transform: translateY(0);
   }
-}
+
 
 .modal-header {
   display: flex;
