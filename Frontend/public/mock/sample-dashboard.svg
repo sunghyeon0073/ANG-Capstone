@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
   <rect width="960" height="540" fill="#f0f4f8"/>
-  <rect x="24" y="24" width="200" height="492" rx="8" fill="#007FA1"/>
+  <rect x="24" y="24" width="200" height="492" rx="8" fill="#FF8C74"/>
   <rect x="248" y="24" width="688" height="80" rx="8" fill="#ffffff" stroke="#dfe5e8"/>
   <rect x="248" y="120" width="336" height="180" rx="8" fill="#ffffff" stroke="#dfe5e8"/>
   <rect x="600" y="120" width="336" height="180" rx="8" fill="#ffffff" stroke="#dfe5e8"/>
   <rect x="248" y="316" width="688" height="200" rx="8" fill="#ffffff" stroke="#dfe5e8"/>
   <text x="280" y="68" font-family="Segoe UI, sans-serif" font-size="20" fill="#333">ANG Dashboard Mock</text>
-  <text x="280" y="210" font-family="Segoe UI, sans-serif" font-size="16" fill="#666">8 · °¬ · |h</text>
+  <text x="280" y="210" font-family="Segoe UI, sans-serif" font-size="16" fill="#666">8 ï¿½ ï¿½ï¿½ ï¿½ |h</text>
 </svg>
