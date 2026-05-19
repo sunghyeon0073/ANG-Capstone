@@ -62,5 +62,6 @@ public class ChatMessageService {
                 .findByRoomOrderBySentAtDesc(room, PageRequest.of(page, size))
                 .map(ChatDto.MessageResponse::from)
                 .toList();
+
     }
 }
