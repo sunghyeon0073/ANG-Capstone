@@ -5,6 +5,7 @@ import { createSchedule, deleteSchedule, getSchedules } from '../../api/schedule
 
 const SimpleModal = ({ open, onClose, title, children }) => {
   if (!open) return null
+
   return (
     <div className="modal-overlay">
       <div className="modal-content calendar-modal">
@@ -36,7 +37,12 @@ export default function Calendar() {
   const [schedules, setSchedules] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [formData, setFormData] = useState({ title: '', startTime: '09:00', endTime: '10:00', description: '' })
+  const [formData, setFormData] = useState({
+    title: '',
+    startTime: '09:00',
+    endTime: '10:00',
+    description: ''
+  })
   const [selectedDate, setSelectedDate] = useState(null)
 
   const monthRange = useMemo(() => {
@@ -67,9 +73,18 @@ export default function Calendar() {
     return schedules.filter((schedule) => schedule.date === dateStr)
   }
 
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      startTime: '09:00',
+      endTime: '10:00',
+      description: ''
+    })
+  }
+
   const handleAddSchedule = () => {
     setSelectedDate(new Date(date))
-    setFormData({ title: '', startTime: '09:00', endTime: '10:00', description: '' })
+    resetForm()
     setIsModalOpen(true)
   }
 
@@ -86,14 +101,14 @@ export default function Calendar() {
 
     try {
       await createSchedule({
-        date: formatDate(selectedDate),
+        date: formatDate(selectedDate || date),
         title: formData.title,
         startTime: formData.startTime,
         endTime: formData.endTime,
         description: formData.description
       })
       setIsModalOpen(false)
-      setFormData({ title: '', startTime: '09:00', endTime: '10:00', description: '' })
+      resetForm()
       fetchSchedules()
     } catch (error) {
       alert('일정 저장 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'))
