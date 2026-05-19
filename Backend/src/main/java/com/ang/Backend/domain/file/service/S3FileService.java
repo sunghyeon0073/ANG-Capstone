@@ -24,6 +24,10 @@ public class S3FileService {
     private String bucket;
 
     public String upload(MultipartFile file) {
+        return upload(file, "uploads/" + LocalDate.now());
+    }
+
+    public String upload(MultipartFile file, String folder) {
         String originalName = file.getOriginalFilename();
 
         String ext = "";
@@ -32,12 +36,7 @@ public class S3FileService {
             ext = originalName.substring(originalName.lastIndexOf("."));
         }
 
-        String key =
-                "uploads/"
-                        + LocalDate.now()
-                        + "/"
-                        + UUID.randomUUID()
-                        + ext;
+        String key = folder + "/" + UUID.randomUUID() + ext;
 
         try {
             PutObjectRequest request =
