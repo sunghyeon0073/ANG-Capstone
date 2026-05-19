@@ -11,7 +11,7 @@ import {
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
 import { FiChevronRight } from 'react-icons/fi'
-import { exportDocument } from '../../utils/documentExportUtils'
+// use backend download endpoint instead of frontend export logic
 
 const parseCsvToTable = (text) => {
   const lines = text.trim().split('\n').filter(Boolean)
@@ -153,13 +153,35 @@ export default function DocumentWriter() {
 
     try {
       setIsExporting(true)
-      await exportDocument(selectedDoc, previewUrl)
+      // call backend download endpoint which returns file blob
+      const res = await api.get(`/documents/${selectedDoc.docId}/download`, {
+        responseType: 'blob',
+      })
+
+      const disposition = res.headers['content-disposition']
+      let filename = selectedDoc.originalFileName || selectedDoc.title || 'document'
+      if (disposition) {
+        const match = disposition.match(/filename\*=UTF-8''(.+)|filename="?([^;\"]+)"?/) 
+        if (match) {
+          filename = decodeURIComponent(match[1] || match[2])
+        }
+      }
+
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
         detail: { message: '문서를 내보냈어요!' },
       }))
     } catch (err) {
       console.error('문서다운로드 실패:', err)
-      alert(err.message || '문서다운로드에 실패했습니다.')
+      alert(err.response?.data?.message || err.message || '문서다운로드에 실패했습니다.')
     } finally {
       setIsExporting(false)
     }
@@ -241,7 +263,10 @@ export default function DocumentWriter() {
     try {
       setAiLoading(true)
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: '문서 읽는 중... 잠시만 기다려주세요.' },
+        detail: {
+          message: '문서 생성 중... 제가 열심히 뛰고 있어요.',
+          animation: 'run',
+        },
       }))
 
       const payload = {
@@ -266,14 +291,20 @@ export default function DocumentWriter() {
         setPrompt('')
         setAttachedDocs([])
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-          detail: { message: 'AI 문서 초안이 완성됐어요.' },
+          detail: {
+            message: 'AI 문서 초안이 완성됐어요.',
+            animation: 'idle',
+          },
         }))
         alert('문서가 생성되었습니다!')
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: 'AI 문서 생성에 실패했어요. 연결 상태를 확인해주세요.' },
+        detail: {
+          message: 'AI 문서 생성에 실패했어요. 연결 상태를 확인해주세요.',
+          animation: 'idle',
+        },
       }))
       alert(err.response?.data?.message || 'AI 문서 생성에 실패했습니다.')
     } finally {

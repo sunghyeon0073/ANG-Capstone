@@ -10,6 +10,7 @@ public class DocumentDto {
     @Getter @NoArgsConstructor
     public static class AiGenerateRequest {
         private String prompt;
+        private Long sourceDocId;
     }
 
     @Getter @NoArgsConstructor
