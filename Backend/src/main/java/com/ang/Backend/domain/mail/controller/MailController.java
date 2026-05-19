@@ -32,7 +32,7 @@ public class MailController {
         Long mailId = mailService.send(req, user);
         return ResponseEntity.ok(ApiResponse.ok("메일이 발송되었습니다.", mailId));
     }
-
+ 
     // 임시저장
     @PostMapping("/draft")
     public ResponseEntity<ApiResponse<Long>> saveDraft(

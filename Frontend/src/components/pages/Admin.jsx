@@ -294,9 +294,9 @@ export default function Admin({ me, currentSubPage }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={roleBadgeStyle(user.roleLevel)}>{user.role}</span>
                               {!isHigher && (
-                                <button 
+                                  <button 
                                   onClick={() => openUpdateRole(user.id, user.roleLevel)} 
-                                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#007fa1', padding: '2px 6px', borderRadius: 4 }}
+                                  style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--color-primary)', padding: '2px 6px', borderRadius: 4 }}
                                   onMouseOver={e => e.currentTarget.style.background = '#e6f7ff'}
                                   onMouseOut={e => e.currentTarget.style.background = 'none'}
                                 >
@@ -311,12 +311,12 @@ export default function Admin({ me, currentSubPage }) {
                                 <div key={d.scopeId} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fafafa', padding: '6px 12px', borderRadius: 6, border: '1px solid #eaeaea' }}>
                                   <span style={{ fontSize: 13, fontWeight: 500, color: '#333' }}>{d.scopeName}</span>
                                   <span style={{ width: 1, height: 12, background: '#ddd' }}></span>
-                                  <span style={{ fontSize: 13, color: '#007fa1', fontWeight: 600 }}>{d.position || '사원'}</span>
+                                  <span style={{ fontSize: 13, color: 'var(--color-primary)', fontWeight: 600 }}>{d.position || '사원'}</span>
                                   {!isHigher && (
                                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                                       <button 
                                         onClick={() => openUpdatePosition(d.scopeId, user.id, d.position)} 
-                                        style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#007fa1', padding: '2px 6px', borderRadius: 4 }}
+                                        style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--color-primary)', padding: '2px 6px', borderRadius: 4 }}
                                         onMouseOver={e => e.currentTarget.style.background = '#e6f7ff'}
                                         onMouseOut={e => e.currentTarget.style.background = 'none'}
                                       >
@@ -337,7 +337,7 @@ export default function Admin({ me, currentSubPage }) {
                               {!isHigher && (
                                 <button 
                                   onClick={() => setShowAddDept(user)} 
-                                  style={{ alignSelf: 'flex-start', border: '1px dashed #007fa1', background: '#f0f9ff', color: '#007fa1', cursor: 'pointer', fontSize: 12, padding: '4px 10px', borderRadius: 4, marginTop: 2, fontWeight: 500 }}
+                                  style={{ alignSelf: 'flex-start', border: '1px dashed var(--color-primary)', background: '#f0f9ff', color: 'var(--color-primary)', cursor: 'pointer', fontSize: 12, padding: '4px 10px', borderRadius: 4, marginTop: 2, fontWeight: 500 }}
                                   onMouseOver={e => e.currentTarget.style.background = '#e6f7ff'}
                                   onMouseOut={e => e.currentTarget.style.background = '#f0f9ff'}
                                 >
