@@ -29,6 +29,10 @@ const normalizeTime = (time) => time?.slice(0, 5) || ''
 
 export default function Calendar() {
   const [date, setDate] = useState(new Date())
+  const [activeStartDate, setActiveStartDate] = useState(() => {
+    const today = new Date()
+    return new Date(today.getFullYear(), today.getMonth(), 1)
+  })
   const [schedules, setSchedules] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -36,10 +40,10 @@ export default function Calendar() {
   const [selectedDate, setSelectedDate] = useState(null)
 
   const monthRange = useMemo(() => {
-    const start = new Date(date.getFullYear(), date.getMonth(), 1)
-    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0)
+    const start = new Date(activeStartDate.getFullYear(), activeStartDate.getMonth(), 1)
+    const end = new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 0)
     return { startDate: formatDate(start), endDate: formatDate(end) }
-  }, [date])
+  }, [activeStartDate])
 
   const fetchSchedules = async () => {
     try {
@@ -67,6 +71,11 @@ export default function Calendar() {
     setSelectedDate(new Date(date))
     setFormData({ title: '', startTime: '09:00', endTime: '10:00', description: '' })
     setIsModalOpen(true)
+  }
+
+  const handleDateChange = (nextDate) => {
+    setDate(nextDate)
+    setActiveStartDate(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1))
   }
 
   const handleSaveSchedule = async () => {
@@ -136,7 +145,11 @@ export default function Calendar() {
         <div className="calendar-wrapper">
           <CalendarComponent
             value={date}
-            onChange={setDate}
+            activeStartDate={activeStartDate}
+            onChange={handleDateChange}
+            onActiveStartDateChange={({ activeStartDate: nextActiveStartDate }) => {
+              if (nextActiveStartDate) setActiveStartDate(nextActiveStartDate)
+            }}
             tileClassName={tileClassName}
             tileContent={tileContent}
             locale="ko-KR"
