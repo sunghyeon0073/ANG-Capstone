@@ -1,20 +1,195 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getScopes, getScopeMembers } from '../../api/scopeApi';
+
+const USE_DUMMY_ORG_DATA = true;
+
+const dummyScopes = [
+  { id: 1, scopeCode: 'COMPANY01', name: 'ANG', scopeType: 'COMPANY', parentId: null },
+  { id: 2, scopeCode: 'DEPT_EDU', name: '평생교육원', scopeType: 'DEPARTMENT', parentId: 1 },
+  { id: 3, scopeCode: 'ANG-EDU-OPS', name: '운영지원팀', scopeType: 'TEAM', parentId: 2 },
+  { id: 4, scopeCode: 'ANG-EDU-HR', name: '인사담당팀', scopeType: 'TEAM', parentId: 2 },
+  { id: 5, scopeCode: 'ANG-EDU-FIN', name: '재무담당팀', scopeType: 'TEAM', parentId: 2 },
+];
+
+const dummyMembersByScope = {
+  2: [
+    {
+      id: 2,
+      empNo: 'manager',
+      name: '김원장',
+      email: 'manager@ang.com',
+      status: 'ACTIVE',
+      roleLevel: 50,
+      position: '원장',
+      departments: [
+        { scopeId: 2, scopeName: '평생교육원', scopeCode: 'DEPT_EDU', position: '원장' },
+        { scopeId: 3, scopeName: '운영지원팀', scopeCode: 'ANG-EDU-OPS', position: '팀장' },
+      ],
+    },
+  ],
+  3: [
+    {
+      id: 2,
+      empNo: 'manager',
+      name: '김원장',
+      email: 'manager@ang.com',
+      status: 'ACTIVE',
+      roleLevel: 50,
+      position: '원장, 팀장',
+      departments: [
+        { scopeId: 2, scopeName: '평생교육원', scopeCode: 'DEPT_EDU', position: '원장' },
+        { scopeId: 3, scopeName: '운영지원팀', scopeCode: 'ANG-EDU-OPS', position: '팀장' },
+      ],
+    },
+    {
+      id: 10,
+      empNo: 'ops001',
+      name: '박운영',
+      email: 'ops001@ang.com',
+      status: 'ACTIVE',
+      roleLevel: 0,
+      position: '팀원',
+      departments: [
+        { scopeId: 3, scopeName: '운영지원팀', scopeCode: 'ANG-EDU-OPS', position: '팀원' },
+      ],
+    },
+  ],
+  4: [
+    {
+      id: 11,
+      empNo: 'hr001',
+      name: '이인사',
+      email: 'hr001@ang.com',
+      status: 'ACTIVE',
+      roleLevel: 50,
+      position: '팀장',
+      departments: [
+        { scopeId: 4, scopeName: '인사담당팀', scopeCode: 'ANG-EDU-HR', position: '팀장' },
+      ],
+    },
+    {
+      id: 12,
+      empNo: 'hr002',
+      name: '최담당',
+      email: 'hr002@ang.com',
+      status: 'ACTIVE',
+      roleLevel: 0,
+      position: '팀원',
+      departments: [
+        { scopeId: 4, scopeName: '인사담당팀', scopeCode: 'ANG-EDU-HR', position: '팀원' },
+      ],
+    },
+  ],
+  5: [
+    {
+      id: 13,
+      empNo: 'fin001',
+      name: '정재무',
+      email: 'fin001@ang.com',
+      status: 'ACTIVE',
+      roleLevel: 50,
+      position: '팀장',
+      departments: [
+        { scopeId: 5, scopeName: '재무담당팀', scopeCode: 'ANG-EDU-FIN', position: '팀장' },
+      ],
+    },
+    {
+      id: 14,
+      empNo: 'fin002',
+      name: '한회계',
+      email: 'fin002@ang.com',
+      status: 'ACTIVE',
+      roleLevel: 0,
+      position: '팀원',
+      departments: [
+        { scopeId: 5, scopeName: '재무담당팀', scopeCode: 'ANG-EDU-FIN', position: '팀원' },
+      ],
+    },
+  ],
+};
+
+const positionOrder = { 원장: 1, 팀장: 2, 팀원: 3 };
+
+const getMemberId = member => member.id ?? member.userId;
+const getInitials = name => name?.charAt(0) || '?';
+
+const buildScopeTree = scopeList => {
+  const scopeMap = new Map(
+    scopeList.map(scope => [
+      scope.id,
+      {
+        ...scope,
+        type: scope.scopeType ?? scope.type,
+        children: [],
+      },
+    ])
+  );
+
+  const roots = [];
+
+  scopeMap.forEach(scope => {
+    if (scope.parentId && scopeMap.has(scope.parentId)) {
+      scopeMap.get(scope.parentId).children.push(scope);
+    } else {
+      roots.push(scope);
+    }
+  });
+
+  const sortScopes = items => {
+    items.sort((a, b) => a.id - b.id);
+    items.forEach(item => sortScopes(item.children));
+  };
+
+  sortScopes(roots);
+  return roots;
+};
+
+const getPositionInScope = (member, scopeId) => {
+  const scopedPosition = member.departments?.find(dept => dept.scopeId === scopeId)?.position;
+  return scopedPosition || member.position || '직급 미정';
+};
+
+const isVisibleOrgMember = member => (member.roleLevel ?? 0) < 100;
+const hasPosition = (member, scopeId, keyword) => getPositionInScope(member, scopeId).includes(keyword);
+
+const sortMembersByPosition = (members, scopeId) => {
+  return [...members].sort((a, b) => {
+    const aPosition = getPositionInScope(a, scopeId);
+    const bPosition = getPositionInScope(b, scopeId);
+    return (positionOrder[aPosition] || 99) - (positionOrder[bPosition] || 99);
+  });
+};
 
 const SimpleModal = ({ open, onClose, children }) => {
   if (!open) return null;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content org-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-content org-modal" onClick={event => event.stopPropagation()}>
         {children}
       </div>
     </div>
   );
 };
 
-const COLORS = ['#4A90D9', '#7B68EE', '#50C878', '#FF6B6B', '#FFD700', '#FF8C00', '#20B2AA'];
-const getColor = (id) => COLORS[id % COLORS.length];
-const getInitials = (name) => name?.charAt(0) || '?';
+const MemberCard = ({ member, scopeId, onClick, teamName }) => {
+  const memberId = getMemberId(member);
+
+  return (
+    <button
+      type="button"
+      className="profile-node profile-node-active"
+      onClick={() => onClick(member)}
+    >
+      {teamName && <div className="team-dept-label">{teamName}</div>}
+      <div className="profile-avatar">
+        {getInitials(member.name)}
+      </div>
+      <div className="profile-name">{member.name}</div>
+      <div className="profile-role">{getPositionInScope(member, scopeId)}</div>
+    </button>
+  );
+};
 
 export default function Organization({ currentSubPage = 'org-all' }) {
   const [scopes, setScopes] = useState([]);
@@ -26,72 +201,198 @@ export default function Organization({ currentSubPage = 'org-all' }) {
 
   useEffect(() => {
     const fetchScopes = async () => {
+      if (USE_DUMMY_ORG_DATA) {
+        setScopes(dummyScopes);
+        setMembersCache(dummyMembersByScope);
+        return;
+      }
+
       try {
         setIsLoading(true);
         const res = await getScopes();
         const data = res.data?.data || [];
-        setScopes(Array.isArray(data) ? data : [data]);
+        setScopes(Array.isArray(data) && data.length > 0 ? data : dummyScopes);
+        if (!Array.isArray(data) || data.length === 0) {
+          setMembersCache(dummyMembersByScope);
+        }
       } catch (error) {
         console.error('조직도 로드 실패', error);
+        setScopes(dummyScopes);
+        setMembersCache(dummyMembersByScope);
       } finally {
         setIsLoading(false);
       }
     };
+
     fetchScopes();
   }, []);
 
-  const fetchMembers = async (scopeId) => {
+  const fetchMembers = async scopeId => {
     if (membersCache[scopeId]) return;
+
+    if (USE_DUMMY_ORG_DATA) {
+      setMembersCache(prev => ({ ...prev, [scopeId]: dummyMembersByScope[scopeId] || [] }));
+      return;
+    }
+
     try {
       setLoadingMembers(true);
       const res = await getScopeMembers(scopeId);
       setMembersCache(prev => ({ ...prev, [scopeId]: res.data?.data || [] }));
     } catch (error) {
       console.error('멤버 로드 실패', error);
-      setMembersCache(prev => ({ ...prev, [scopeId]: [] }));
+      setMembersCache(prev => ({ ...prev, [scopeId]: dummyMembersByScope[scopeId] || [] }));
     } finally {
       setLoadingMembers(false);
     }
   };
 
-  const handleTabChange = (scope) => {
+  const handleTabChange = scope => {
     setActiveTab(scope);
     fetchMembers(scope.id);
   };
 
-  // 트리 렌더링 재귀 컴포넌트
-  const ScopeNode = ({ scope, depth = 0 }) => {
-    const [expanded, setExpanded] = useState(depth < 2);
-    const hasChildren = scope.children?.length > 0;
+  const scopeTree = useMemo(() => buildScopeTree(scopes), [scopes]);
+  const companyScopes = useMemo(
+    () => scopeTree.filter(scope => scope.type === 'COMPANY'),
+    [scopeTree]
+  );
+  const deptScopes = useMemo(
+    () => companyScopes
+      .flatMap(company => company.children)
+      .filter(scope => scope.type === 'DEPARTMENT'),
+    [companyScopes]
+  );
+  const orgUnits = useMemo(
+    () => deptScopes.flatMap(dept => (dept.children?.length > 0 ? dept.children : [dept])),
+    [deptScopes]
+  );
+
+  useEffect(() => {
+    if (currentSubPage !== 'org-all' || deptScopes.length === 0) return;
+
+    deptScopes.forEach(dept => {
+      fetchMembers(dept.id);
+      dept.children?.forEach(team => fetchMembers(team.id));
+    });
+  }, [currentSubPage, deptScopes]);
+
+  const selectedMembers = activeTab
+    ? sortMembersByPosition(
+        (membersCache[activeTab.id] || [])
+          .filter(isVisibleOrgMember)
+          .filter(member => {
+            const position = getPositionInScope(member, activeTab.id);
+            return position.includes('팀장') || position.includes('팀원');
+          }),
+        activeTab.id
+      )
+    : [];
+
+  const selectedLeaders = activeTab
+    ? selectedMembers.filter(member => hasPosition(member, activeTab.id, '팀장'))
+    : [];
+
+  const selectedTeamMembers = activeTab
+    ? selectedMembers.filter(member => hasPosition(member, activeTab.id, '팀원'))
+    : [];
+
+  const OrgTree = ({ dept }) => {
+    const directors = sortMembersByPosition(
+      (membersCache[dept.id] || [])
+        .filter(isVisibleOrgMember)
+        .filter(member => hasPosition(member, dept.id, '원장')),
+      dept.id
+    );
+
+    const teamLeaders = dept.children.flatMap(team => (
+      (membersCache[team.id] || [])
+        .filter(isVisibleOrgMember)
+        .filter(member => hasPosition(member, team.id, '팀장'))
+        .map(member => ({ member, team }))
+    ));
 
     return (
-      <div style={{ marginLeft: depth * 24, marginTop: 8 }}>
-        <div
-          className="org-scope-node"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
-            background: depth === 0 ? '#4A90D9' : depth === 1 ? '#7B68EE' : '#f0f4ff',
-            color: depth < 2 ? '#fff' : '#333',
-            borderRadius: 8, cursor: hasChildren ? 'pointer' : 'default',
-            fontWeight: depth === 0 ? 700 : depth === 1 ? 600 : 400,
-            fontSize: depth === 0 ? 15 : 14
-          }}
-          onClick={() => hasChildren && setExpanded(v => !v)}
-        >
-          <span>{depth === 0 ? '🏢' : depth === 1 ? '🏬' : '👥'}</span>
-          <span>{scope.name}</span>
-          <span style={{ fontSize: 11, opacity: 0.7 }}>({scope.type})</span>
-          {hasChildren && <span style={{ marginLeft: 'auto' }}>{expanded ? '▲' : '▼'}</span>}
+      <div className="org-tree">
+        <div className="tree-parent">
+          <div className="org-parent-row">
+            {directors.length === 0 ? (
+              <div className="team-empty">원장 정보가 없습니다.</div>
+            ) : (
+              directors.map(member => (
+                <MemberCard
+                  key={`${dept.id}-${getMemberId(member)}`}
+                  member={member}
+                  scopeId={dept.id}
+                  teamName={dept.name}
+                  onClick={setSelectedMember}
+                />
+              ))
+            )}
+          </div>
+
+          {teamLeaders.length > 0 && (
+            <div className={`org-children-block ${teamLeaders.length === 1 ? 'org-children-single' : 'org-children-multi'}`}>
+              <div className="org-connector-down" />
+              <div className="org-children-row">
+                {teamLeaders.map(({ member, team }) => (
+                  <div className="org-child-node" key={`${team.id}-${getMemberId(member)}`}>
+                    <MemberCard
+                      member={member}
+                      scopeId={team.id}
+                      teamName={team.name}
+                      onClick={setSelectedMember}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        {expanded && hasChildren && scope.children.map(child => (
-          <ScopeNode key={child.id} scope={child} depth={depth + 1} />
-        ))}
       </div>
     );
   };
 
-  // 부서 탭용: 최상위 아래 dept들
-  const deptScopes = scopes.flatMap(s => s.children || []);
+  const DepartmentTree = ({ scope, leaders, members }) => {
+    return (
+      <div className="org-tree org-dept-tree">
+        <div className="tree-parent">
+          <div className="org-parent-row">
+            {leaders.length === 0 ? (
+              <div className="team-empty">팀장 정보가 없습니다.</div>
+            ) : (
+              leaders.map(member => (
+                <MemberCard
+                  key={`${scope.id}-leader-${getMemberId(member)}`}
+                  member={member}
+                  scopeId={scope.id}
+                  teamName={scope.name}
+                  onClick={setSelectedMember}
+                />
+              ))
+            )}
+          </div>
+
+          {members.length > 0 && (
+            <div className={`org-children-block ${members.length === 1 ? 'org-children-single' : 'org-children-multi'}`}>
+              <div className="org-connector-down" />
+              <div className="org-children-row">
+                {members.map(member => (
+                  <div className="org-child-node" key={`${scope.id}-member-${getMemberId(member)}`}>
+                    <MemberCard
+                      member={member}
+                      scopeId={scope.id}
+                      onClick={setSelectedMember}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="org-page">
@@ -100,12 +401,12 @@ export default function Organization({ currentSubPage = 'org-all' }) {
       ) : (
         <>
           {currentSubPage === 'org-all' && (
-            <div style={{ padding: 24 }}>
-              <h2 style={{ marginBottom: 16 }}>전체 조직도</h2>
-              {scopes.length === 0 ? (
+            <div>
+              <h2>전체 조직도</h2>
+              {deptScopes.length === 0 ? (
                 <div className="file-empty">조직 데이터가 없습니다.</div>
               ) : (
-                scopes.map(scope => <ScopeNode key={scope.id} scope={scope} depth={0} />)
+                deptScopes.map(dept => <OrgTree key={dept.id} dept={dept} />)
               )}
             </div>
           )}
@@ -113,52 +414,39 @@ export default function Organization({ currentSubPage = 'org-all' }) {
           {currentSubPage === 'org-dept' && (
             <div className="org-dept-view">
               <div className="org-tabs">
-                {deptScopes.map(dept => (
+                {orgUnits.map(unit => (
                   <button
-                    key={dept.id}
-                    onClick={() => handleTabChange(dept)}
-                    className={`org-tab-btn ${activeTab?.id === dept.id ? 'active' : ''}`}
+                    key={unit.id}
+                    type="button"
+                    onClick={() => handleTabChange(unit)}
+                    className={`org-tab-btn ${activeTab?.id === unit.id ? 'active' : ''}`}
                   >
-                    {dept.name}
+                    {unit.name}
                   </button>
                 ))}
               </div>
 
               {activeTab ? (
-                <div style={{ padding: '16px 24px' }}>
-                  <h3 style={{ marginBottom: 12 }}>{activeTab.name} 구성원</h3>
+                <div>
+                  <h3>{activeTab.name} 구성원</h3>
                   {loadingMembers ? (
                     <div>불러오는 중...</div>
                   ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                      {(membersCache[activeTab.id] || []).length === 0 ? (
+                    <>
+                      {selectedMembers.length === 0 ? (
                         <div className="file-empty">구성원이 없습니다.</div>
                       ) : (
-                        (membersCache[activeTab.id] || []).map(member => (
-                          <div
-                            key={member.userId}
-                            className="profile-node profile-node-active"
-                            onClick={() => setSelectedMember(member)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <div
-                              className="profile-avatar"
-                              style={{ background: getColor(member.userId) }}
-                            >
-                              {getInitials(member.name)}
-                            </div>
-                            <div className="profile-name">{member.name}</div>
-                            <div className="profile-role" style={{ fontSize: 12, color: '#666' }}>
-                              {member.position || '직급 미정'}
-                            </div>
-                          </div>
-                        ))
+                        <DepartmentTree
+                          scope={activeTab}
+                          leaders={selectedLeaders}
+                          members={selectedTeamMembers}
+                        />
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               ) : (
-                <div className="file-empty" style={{ marginTop: 40 }}>
+                <div className="file-empty">
                   부서를 선택하면 구성원을 볼 수 있습니다.
                 </div>
               )}
@@ -171,32 +459,32 @@ export default function Organization({ currentSubPage = 'org-all' }) {
         {selectedMember && (
           <div className="org-modal-content">
             <div className="org-modal-header">
-              <div className="org-modal-avatar" style={{ background: getColor(selectedMember.userId) }}>
+              <div className="org-modal-avatar">
                 {getInitials(selectedMember.name)}
               </div>
               <div>
                 <h2 className="org-modal-name">{selectedMember.name}</h2>
                 <div className="org-modal-role-info">
-                  <span className="org-modal-role">{selectedMember.position || '직급 미정'}</span>
+                  <span className="org-modal-role">
+                    {activeTab
+                      ? getPositionInScope(selectedMember, activeTab.id)
+                      : selectedMember.position || '직급 미정'}
+                  </span>
                 </div>
               </div>
             </div>
             <div className="org-modal-details">
-              <div className="org-modal-detail-row">
-                <div className="org-modal-label">사번</div>
-                <div className="org-modal-value">{selectedMember.empNo}</div>
-              </div>
-              <div className="org-modal-detail-row">
-                <div className="org-modal-label">이메일</div>
-                <div className="org-modal-value">{selectedMember.email}</div>
-              </div>
-              <div className="org-modal-detail-row">
-                <div className="org-modal-label">상태</div>
-                <div className="org-modal-value">{selectedMember.status}</div>
-              </div>
+              <div className="org-modal-label">사번</div>
+              <div className="org-modal-value">{selectedMember.empNo}</div>
+              <div className="org-modal-label">이메일</div>
+              <div className="org-modal-value">{selectedMember.email}</div>
+              <div className="org-modal-label">상태</div>
+              <div className="org-modal-value">{selectedMember.status}</div>
             </div>
             <div className="org-modal-actions">
-              <button onClick={() => setSelectedMember(null)} className="org-modal-btn org-modal-btn-close">✕ 닫기</button>
+              <button onClick={() => setSelectedMember(null)} className="org-modal-btn org-modal-btn-close">
+                닫기
+              </button>
             </div>
           </div>
         )}
