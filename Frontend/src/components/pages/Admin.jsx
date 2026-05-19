@@ -45,8 +45,9 @@ export default function Admin({ me, currentSubPage }) {
 
   const myLevel = me?.roleLevel || 0;
 
-  // 본인 권한보다 높은 레벨은 부여할 수 없도록 필터링
-  const availableRoles = ROLE_LEVELS.filter(r => r.value <= myLevel);
+  // 최고 관리자만 권한을 부여/변경할 수 있으며, 최고 관리자 권한 자체는 부여 대상에서 제외
+  const availableRoles = ROLE_LEVELS.filter(r => r.value < 100);
+  const isSuperAdmin = myLevel >= 100;
 
   // 대시보드 사이드바와 연동하기 위해 currentSubPage를 기준으로 탭 결정
   const activeTab = currentSubPage === 'admin-users' ? 'users' : 
@@ -293,7 +294,7 @@ export default function Admin({ me, currentSubPage }) {
                           <td style={tdStyle}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={roleBadgeStyle(user.roleLevel)}>{user.role}</span>
-                              {!isHigher && (
+                              {isSuperAdmin && (
                                 <button 
                                   onClick={() => openUpdateRole(user.id, user.roleLevel)} 
                                   style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: '#007fa1', padding: '2px 6px', borderRadius: 4 }}

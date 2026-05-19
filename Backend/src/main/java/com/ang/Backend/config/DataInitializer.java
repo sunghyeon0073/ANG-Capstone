@@ -104,8 +104,8 @@ public class DataInitializer {
     }
 
     private void initUsers() {
-        // 1. 최고 관리자 (admin)
-        insertUserIfAbsent("admin", "최고관리자", "admin@ang.com", 100, "COMPANY01", "시스템운영자", "qwer1234!");
+        // 1. 최고 관리자 (admin) - 평생교육원 소속 시스템운영자로 변경
+        insertUserIfAbsent("admin", "최고관리자", "admin@ang.com", 100, "DEPT_EDU", "시스템운영자", "qwer1234!");
 
         // 2. 평생교육원 원장님 (manager)
         insertUserIfAbsent("manager", "김기종", "manager@ang.com", 50, "DEPT_EDU", "원장", "qwer1234!");
