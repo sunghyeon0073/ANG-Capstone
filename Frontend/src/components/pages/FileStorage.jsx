@@ -4,7 +4,8 @@ import {
   getDepartmentDocuments,
   uploadDocument,
   deleteDocument,
-  getDocument
+  getDocument,
+  downloadDocumentFile
 } from '../../api/documentApi';
 import { getScopes } from '../../api/scopeApi';
 
@@ -101,6 +102,34 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       alert('업로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDownload = async (fileId, fileName) => {
+    try {
+      const res = await downloadDocumentFile(fileId);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      let downloadName = fileName || 'downloaded_file';
+      const disposition = res.headers['content-disposition'];
+      if (disposition && disposition.indexOf('attachment') !== -1) {
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+        const matches = filenameRegex.exec(disposition);
+        if (matches != null && matches[1]) { 
+          downloadName = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+        }
+      }
+      
+      link.setAttribute('download', downloadName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('다운로드 실패:', error);
+      alert('파일 다운로드에 실패했습니다.');
     }
   };
 
@@ -224,6 +253,14 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
               {selectedDoc.scopeName && <div><strong>소속 부서:</strong> {selectedDoc.scopeName}</div>}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' }}>
+              {selectedDoc.fileId && (
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => handleDownload(selectedDoc.fileId, selectedDoc.originalFileName || selectedDoc.title)}
+                >
+                  다운로드
+                </button>
+              )}
               <button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>닫기</button>
             </div>
           </div>
@@ -258,6 +295,18 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                   </td>
                   <td style={{ padding: '10px 12px', color: '#888' }}>{formatDate(doc.createdAt)}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    {doc.fileId && (
+                      <button
+                        onClick={() => handleDownload(doc.fileId, doc.originalFileName || doc.title)}
+                        style={{
+                          background: '#4A90D9', color: '#fff', border: 'none',
+                          borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
+                          marginRight: 4
+                        }}
+                      >
+                        다운로드
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDelete(doc.docId)}
                       style={{

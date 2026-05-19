@@ -39,6 +39,9 @@ logs/
 ### 컴파일 결과물 ###
 *.class
 
+### Database ###
+mariadb_data/
+
 ### Frontend ###
 Frontend/node_modules/
 
