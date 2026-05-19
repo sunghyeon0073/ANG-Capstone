@@ -32,6 +32,7 @@ export default function DocumentFilePreview({
   previewUrl,
   previewLoading,
   previewError,
+  variant = 'inline',
 }) {
   const previewKind = getDocumentPreviewKind(doc)
   const isImage = previewKind === 'image'
@@ -41,6 +42,7 @@ export default function DocumentFilePreview({
 
   const previewClassName = [
     'doc-preview',
+    variant === 'fullscreen' ? 'doc-preview--fullscreen' : '',
     isImage && previewUrl ? 'doc-preview--image' : '',
     isWord ? 'doc-preview--word' : '',
     isExcel ? 'doc-preview--excel' : '',

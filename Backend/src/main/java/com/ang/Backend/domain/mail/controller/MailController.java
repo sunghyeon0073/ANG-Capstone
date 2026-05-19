@@ -32,7 +32,7 @@ public class MailController {
         Long mailId = mailService.send(req, user);
         return ResponseEntity.ok(ApiResponse.ok("메일이 발송되었습니다.", mailId));
     }
-
+ 
     // 임시저장
     @PostMapping("/draft")
     public ResponseEntity<ApiResponse<Long>> saveDraft(
@@ -96,6 +96,16 @@ public class MailController {
         return ResponseEntity.ok(ApiResponse.ok("발신함에서 삭제되었습니다."));
     }
 
+    // 임시저장 삭제
+    @DeleteMapping("/{mailId}/draft")
+    public ResponseEntity<ApiResponse<Void>> deleteDraft(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        mailService.deleteDraft(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok("임시저장이 삭제되었습니다."));
+    }
+
     // 발송 취소
     @PostMapping("/{mailId}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancel(
@@ -115,8 +125,73 @@ public class MailController {
         return ResponseEntity.ok(ApiResponse.ok(mailService.getReadStatus(mailId, user)));
     }
 
+    // 수신 즐겨찾기 토글
+    @PostMapping("/{mailId}/favorite/inbox")
+    public ResponseEntity<ApiResponse<Boolean>> toggleInboxFavorite(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        boolean result = mailService.toggleInboxFavorite(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok(result ? "즐겨찾기에 추가되었습니다." : "즐겨찾기에서 해제되었습니다.", result));
+    }
+
+    // 발신 즐겨찾기 토글
+    @PostMapping("/{mailId}/favorite/sent")
+    public ResponseEntity<ApiResponse<Boolean>> toggleSentFavorite(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        boolean result = mailService.toggleSentFavorite(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok(result ? "즐겨찾기에 추가되었습니다." : "즐겨찾기에서 해제되었습니다.", result));
+    }
+
+    // 즐겨찾기 통합 목록
+    @GetMapping("/favorites")
+    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getFavorites(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getFavorites(user)));
+    }
+
+    // 수신 휴지통 목록
+    @GetMapping("/trash/inbox")
+    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getInboxTrash(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getInboxTrash(user)));
+    }
+
+    // 발신 휴지통 목록
+    @GetMapping("/trash/sent")
+    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getSentTrash(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getSentTrash(user)));
+    }
+
+    // 수신 휴지통에서 복원
+    @PostMapping("/{mailId}/restore/inbox")
+    public ResponseEntity<ApiResponse<Void>> restoreFromInboxTrash(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        mailService.restoreFromInboxTrash(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok("수신함으로 복원되었습니다."));
+    }
+
+    // 발신 휴지통에서 복원
+    @PostMapping("/{mailId}/restore/sent")
+    public ResponseEntity<ApiResponse<Void>> restoreFromSentTrash(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        mailService.restoreFromSentTrash(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok("발신함으로 복원되었습니다."));
+    }
+
     private User resolveUser(UserDetails userDetails) {
         return userRepository.findByEmpNo(userDetails.getUsername())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        
     }
 }
