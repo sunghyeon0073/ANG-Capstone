@@ -10,7 +10,7 @@ export default defineConfig({
   ],
   // 여기에 서버 설정을 추가합니다
   server: {
-    port: 5500,
+    port: 5173,
     strictPort: true,
     open: true,
     proxy: {
