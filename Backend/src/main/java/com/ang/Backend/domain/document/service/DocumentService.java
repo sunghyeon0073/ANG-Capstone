@@ -33,9 +33,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -130,13 +133,13 @@ public class DocumentService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId) {
+    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds) {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
 
-        String finalPrompt = prompt;
-        if (sourceDocId != null) {
+        String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds);
+        if (sourceDocId != null && (attachedDocIds == null || attachedDocIds.isEmpty())) {
             String sourceContent = getOriginalContent(sourceDocId);
             if (sourceContent != null && !sourceContent.isBlank()) {
                 finalPrompt = "다음 문서 내용을 참고하여 요청에 답해주세요.\n\n[문서 내용]\n"
@@ -166,6 +169,62 @@ public class DocumentService {
         }
 
         return saveAiDocument(aiTitle, answer, s3Key, user);
+    }
+
+    private String buildAiPrompt(String prompt, Long sourceDocId, List<Long> attachedDocIds) {
+        LinkedHashSet<Long> docIds = new LinkedHashSet<>();
+        if (sourceDocId != null) {
+            docIds.add(sourceDocId);
+        }
+        if (attachedDocIds != null) {
+            attachedDocIds.stream()
+                    .filter(Objects::nonNull)
+                    .forEach(docIds::add);
+        }
+
+        if (docIds.isEmpty()) {
+            return prompt;
+        }
+
+        List<DocumentEntity> sources = transactionTemplate.execute(status -> {
+            List<DocumentEntity> docs = new ArrayList<>();
+            for (Long docId : docIds) {
+                documentRepository.findById(docId).ifPresent(docs::add);
+            }
+            return docs;
+        });
+
+        if (sources == null || sources.isEmpty()) {
+            return prompt;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("Use the parsed document content below as reference when creating the document.\n\n");
+
+        int index = 1;
+        for (DocumentEntity source : sources) {
+            String content = source.getOriginalContent();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+
+            builder.append("[Reference Document ")
+                    .append(index++)
+                    .append(": ")
+                    .append(source.getTitle() != null ? source.getTitle() : source.getDocId())
+                    .append("]\n")
+                    .append(content)
+                    .append("\n\n");
+        }
+
+        if (index == 1) {
+            return prompt;
+        }
+
+        builder.append("[User Prompt]\n")
+                .append(prompt);
+
+        return builder.toString();
     }
 
     private DocumentDto.Response saveAiDocument(String aiTitle, String answer, String s3Key, User user) {
