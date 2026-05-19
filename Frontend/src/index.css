@@ -65,6 +65,18 @@
   .floating-mascot.has-alert .floating-mascot-character {
     animation: mascot-float 3.2s ease-in-out infinite, mascot-alert 0.75s ease-in-out infinite;
   }
+
+  .floating-mascot-character.is-run {
+    animation: mascot-run-bounce 0.42s ease-in-out infinite;
+  }
+
+  .floating-mascot.has-alert .floating-mascot-character.is-run {
+    animation: mascot-run-bounce 0.42s ease-in-out infinite, mascot-alert 0.75s ease-in-out infinite;
+  }
+
+  .floating-mascot-character.is-dead {
+    animation: mascot-hit 0.28s ease-out;
+  }
   
   .floating-mascot-alert-dot {
     position: absolute;
@@ -173,6 +185,27 @@
     }
     75% {
       rotate: 3deg;
+    }
+  }
+
+  @keyframes mascot-run-bounce {
+    0%, 100% {
+      transform: translateX(0) translateY(0);
+    }
+    50% {
+      transform: translateX(-5px) translateY(-5px);
+    }
+  }
+
+  @keyframes mascot-hit {
+    0% {
+      transform: translateX(0) rotate(0deg);
+    }
+    40% {
+      transform: translateX(-8px) rotate(-5deg);
+    }
+    100% {
+      transform: translateX(0) rotate(0deg);
     }
   }
   
