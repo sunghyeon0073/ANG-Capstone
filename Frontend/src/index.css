@@ -2912,13 +2912,51 @@ body {
 
 .calendar-cell-content {
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
   margin-top: auto;
 }
 
 .calendar-date-with-schedule .calendar-cell-number {
   font-weight: 700;
+}
+
+.calendar-schedule-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255,140,116,0.10);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* type-specific styles */
+.calendar-schedule-item--my {
+  background: var(--color-primary);
+  color: white;
+}
+
+.calendar-schedule-item--department {
+  background: #00A3C4; /* teal */
+  color: white;
+}
+
+.calendar-schedule-item--ai {
+  background: #FFD54A; /* yellow */
+  color: #1a1a1a;
+}
+
+.calendar-schedule-overflow,
+.calendar-more {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  padding-left: 6px;
 }
 
 .calendar-schedule-dot {
@@ -2927,12 +2965,6 @@ body {
   border-radius: 999px;
   background: var(--color-primary);
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-}
-
-.calendar-more {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  padding-left: 6px;
 }
 
 .calendar-sidebar {

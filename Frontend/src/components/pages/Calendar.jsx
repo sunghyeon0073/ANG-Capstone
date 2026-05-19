@@ -176,16 +176,21 @@ export default function Calendar() {
 
   const tileContent = ({ date: tileDate, view }) => {
     if (view !== 'month') return null
-
     const daySchedules = getSchedulesForDate(tileDate)
     if (daySchedules.length === 0) return null
 
     return (
       <div className="calendar-date-content">
-        {daySchedules.slice(0, 2).map((schedule) => (
-          <div key={schedule.id} className="calendar-schedule-dot" title={schedule.title} />
+        {daySchedules.slice(0, 3).map((schedule) => (
+          <div
+            key={schedule.id}
+            className={`calendar-schedule-item calendar-schedule-item--${getScheduleGroup(schedule)}`}
+            title={schedule.title}
+          >
+            {schedule.title}
+          </div>
         ))}
-        {daySchedules.length > 2 && <div className="calendar-more">+{daySchedules.length - 2}</div>}
+        {daySchedules.length > 3 && <div className="calendar-schedule-overflow">+{daySchedules.length - 3}</div>}
       </div>
     )
   }
@@ -197,7 +202,6 @@ export default function Calendar() {
       <div className="calendar-container">
         <div className="calendar-wrapper">
           <div className="calendar-toolbar">
-            
             <div className="calendar-filter-group" role="group" aria-label="일정 필터">
               <button
                 type="button"
@@ -263,9 +267,10 @@ export default function Calendar() {
             <div className="calendar-cells">
               {monthGrid.map((cellDate) => {
                 const classes = ['calendar-cell']
+                const daySchedules = getSchedulesForDate(cellDate)
                 if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
                 if (formatDate(cellDate) === formatDate(date)) classes.push('calendar-cell--selected')
-                if (getSchedulesForDate(cellDate).length > 0) classes.push('calendar-date-with-schedule')
+                if (daySchedules.length > 0) classes.push('calendar-date-with-schedule')
 
                 return (
                   <div
@@ -275,11 +280,17 @@ export default function Calendar() {
                   >
                     <div className="calendar-cell-number">{cellDate.getDate()}</div>
                     <div className="calendar-cell-content">
-                      {getSchedulesForDate(cellDate).slice(0, 2).map((s) => (
-                        <div key={s.id} className="calendar-schedule-dot" title={s.title} />
+                      {daySchedules.slice(0, 3).map((s) => (
+                        <div
+                          key={s.id}
+                          className={`calendar-schedule-item calendar-schedule-item--${getScheduleGroup(s)}`}
+                          title={s.title}
+                        >
+                          {s.title}
+                        </div>
                       ))}
-                      {getSchedulesForDate(cellDate).length > 2 && (
-                        <div className="calendar-more">+{getSchedulesForDate(cellDate).length - 2}</div>
+                      {daySchedules.length > 3 && (
+                        <div className="calendar-schedule-overflow">+{daySchedules.length - 3}</div>
                       )}
                     </div>
                   </div>
