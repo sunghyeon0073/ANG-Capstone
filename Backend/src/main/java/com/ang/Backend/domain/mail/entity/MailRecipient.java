@@ -38,6 +38,10 @@ public class MailRecipient {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;        // 수신자가 수신함에서 삭제한 시각
 
+    @Column(name = "is_favorite")
+    @Builder.Default
+    private boolean isFavorite = false;
+
     // 최초 읽음 처리
     public void markAsRead() {
         if (!this.isRead) {

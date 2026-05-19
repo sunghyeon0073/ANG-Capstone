@@ -14,4 +14,10 @@ public interface MailRepository extends JpaRepository<Mail, Long> {
 
     // 임시저장함: 발신자이고 DRAFT 상태
     List<Mail> findBySenderAndStatus(User sender, MailStatus status);
+
+    // 발신 휴지통: 발신자이고 발신자 삭제된 것 (SENT + CANCELLED)
+    List<Mail> findBySenderAndSenderDeletedAtIsNotNullAndStatusIn(User sender, List<MailStatus> statuses);
+
+    // 발신 즐겨찾기: 발신자이고 즐겨찾기이고 삭제 안 된 것
+    List<Mail> findBySenderAndIsSenderFavoriteTrueAndSenderDeletedAtIsNull(User sender);
 }

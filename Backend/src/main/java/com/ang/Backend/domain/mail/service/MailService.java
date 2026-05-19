@@ -165,6 +165,69 @@ public class MailService {
                 .toList();
     }
 
+    // 수신 즐겨찾기 토글
+    @Transactional
+    public boolean toggleInboxFavorite(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        MailRecipient mr = mailRecipientRepository.findByMailAndRecipient(mail, user)
+                .orElseThrow(() -> new CustomException(ErrorCode.MAIL_ACCESS_DENIED));
+        mr.setFavorite(!mr.isFavorite());
+        return mr.isFavorite();
+    }
+
+    // 발신 즐겨찾기 토글
+    @Transactional
+    public boolean toggleSentFavorite(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        if (!mail.getSender().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        mail.setSenderFavorite(!mail.isSenderFavorite());
+        return mail.isSenderFavorite();
+    }
+
+    // 즐겨찾기 통합 목록 (수신 즐겨찾기 + 발신 즐겨찾기)
+    public List<MailDto.MailSummary> getFavorites(User user) {
+        List<MailDto.MailSummary> result = new java.util.ArrayList<>();
+        mailRecipientRepository.findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(user)
+                .stream().map(MailDto.MailSummary::fromRecipient).forEach(result::add);
+        mailRepository.findBySenderAndIsSenderFavoriteTrueAndSenderDeletedAtIsNull(user)
+                .stream().map(MailDto.MailSummary::fromMail).forEach(result::add);
+        return result;
+    }
+
+    // 수신 휴지통 목록
+    public List<MailDto.MailSummary> getInboxTrash(User user) {
+        return mailRecipientRepository.findByRecipientAndDeletedAtIsNotNull(user)
+                .stream().map(MailDto.MailSummary::fromRecipient).toList();
+    }
+
+    // 발신 휴지통 목록
+    public List<MailDto.MailSummary> getSentTrash(User user) {
+        return mailRepository.findBySenderAndSenderDeletedAtIsNotNullAndStatusIn(
+                        user, List.of(MailStatus.SENT, MailStatus.CANCELLED))
+                .stream().map(MailDto.MailSummary::fromMail).toList();
+    }
+
+    // 수신 휴지통에서 복원
+    @Transactional
+    public void restoreFromInboxTrash(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        MailRecipient mr = mailRecipientRepository.findByMailAndRecipient(mail, user)
+                .orElseThrow(() -> new CustomException(ErrorCode.MAIL_ACCESS_DENIED));
+        mr.setDeletedAt(null);
+    }
+
+    // 발신 휴지통에서 복원
+    @Transactional
+    public void restoreFromSentTrash(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        if (!mail.getSender().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        mail.setSenderDeletedAt(null);
+    }
+
     // 수신자 저장 공통 로직
     private void saveRecipients(Mail mail, List<String> empNos) {
         for (String empNo : empNos) {

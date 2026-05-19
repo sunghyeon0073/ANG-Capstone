@@ -21,4 +21,10 @@ public interface MailRecipientRepository extends JpaRepository<MailRecipient, Lo
 
     // 발송 취소 가능 여부 확인용: 아직 아무도 읽지 않았는지
     boolean existsByMailAndReadAtIsNotNull(Mail mail);
+
+    // 수신 휴지통: 삭제된 것
+    List<MailRecipient> findByRecipientAndDeletedAtIsNotNull(User recipient);
+
+    // 수신 즐겨찾기: 즐겨찾기이고 삭제 안 된 것
+    List<MailRecipient> findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(User recipient);
 }
