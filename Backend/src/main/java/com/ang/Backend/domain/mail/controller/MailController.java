@@ -192,5 +192,6 @@ public class MailController {
     private User resolveUser(UserDetails userDetails) {
         return userRepository.findByEmpNo(userDetails.getUsername())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        
     }
 }
