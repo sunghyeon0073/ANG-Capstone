@@ -37,7 +37,7 @@ admin:
     password: ${ADMIN_INIT_PASSWORD}
 
 cors:
-  allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000,http://localhost:5173,http://localhost:5500,http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:5500,http://15.168.156.224:5500}
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:3000,http://localhost:5173,http://localhost:5500,http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:5500,http://56.155.135.33:5500}
 
 file:
   upload-dir: ${FILE_UPLOAD_DIR:uploads}
