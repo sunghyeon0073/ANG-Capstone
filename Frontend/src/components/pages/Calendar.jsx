@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import CalendarComponent from 'react-calendar'
-import 'react-calendar/dist/Calendar.css'
 import { createSchedule, deleteSchedule, getSchedules } from '../../api/scheduleApi'
 
 const SimpleModal = ({ open, onClose, title, children }) => {
@@ -34,6 +32,7 @@ export default function Calendar() {
     const today = new Date()
     return new Date(today.getFullYear(), today.getMonth(), 1)
   })
+  const [selectedFilters, setSelectedFilters] = useState(['my', 'department', 'ai'])
   const [schedules, setSchedules] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -49,6 +48,23 @@ export default function Calendar() {
     const start = new Date(activeStartDate.getFullYear(), activeStartDate.getMonth(), 1)
     const end = new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 0)
     return { startDate: formatDate(start), endDate: formatDate(end) }
+  }, [activeStartDate])
+
+  const monthGrid = useMemo(() => {
+    // Build a 6x7 grid for the active month view
+    const year = activeStartDate.getFullYear()
+    const month = activeStartDate.getMonth()
+    const firstOfMonth = new Date(year, month, 1)
+    const startWeekday = firstOfMonth.getDay() // 0..6 (Sun..Sat)
+
+    // start from previous Sunday's date
+    const gridStart = new Date(year, month, 1 - startWeekday)
+    const cells = []
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i)
+      cells.push(d)
+    }
+    return cells
   }, [activeStartDate])
 
   const fetchSchedules = async () => {
@@ -68,9 +84,36 @@ export default function Calendar() {
     fetchSchedules()
   }, [monthRange.startDate, monthRange.endDate])
 
+  const getScheduleGroup = (schedule) => {
+    const content = `${schedule.title || ''} ${schedule.description || ''}`.toLowerCase()
+
+    if (/ai|추천|자동|생성|gpt/.test(content)) {
+      return 'ai'
+    }
+
+    if (/부서|팀|회의|보고|공유|운영|협의|정기/.test(content)) {
+      return 'department'
+    }
+
+    return 'my'
+  }
+
+  const toggleFilter = (filter) => {
+    setSelectedFilters((prev) => (
+      prev.includes(filter)
+        ? prev.filter((item) => item !== filter)
+        : [...prev, filter]
+    ))
+  }
+
+  const filteredSchedules = useMemo(() => {
+    if (selectedFilters.length === 0) return []
+    return schedules.filter((schedule) => selectedFilters.includes(getScheduleGroup(schedule)))
+  }, [schedules, selectedFilters])
+
   const getSchedulesForDate = (d) => {
     const dateStr = formatDate(d)
-    return schedules.filter((schedule) => schedule.date === dateStr)
+    return filteredSchedules.filter((schedule) => schedule.date === dateStr)
   }
 
   const resetForm = () => {
@@ -151,28 +194,104 @@ export default function Calendar() {
 
   return (
     <div className="calendar-page">
-      <div className="calendar-header">
-        <h1>캘린더</h1>
-        <button className="btn btn-primary" onClick={handleAddSchedule}>+ 새 일정</button>
-      </div>
-
       <div className="calendar-container">
         <div className="calendar-wrapper">
-          <CalendarComponent
-            value={date}
-            activeStartDate={activeStartDate}
-            onChange={handleDateChange}
-            onActiveStartDateChange={({ activeStartDate: nextActiveStartDate }) => {
-              if (nextActiveStartDate) setActiveStartDate(nextActiveStartDate)
-            }}
-            tileClassName={tileClassName}
-            tileContent={tileContent}
-            locale="ko-KR"
-          />
+          <div className="calendar-toolbar">
+            
+            <div className="calendar-filter-group" role="group" aria-label="일정 필터">
+              <button
+                type="button"
+                className={`calendar-filter-pill ${selectedFilters.includes('my') ? 'active' : ''}`}
+                onClick={() => toggleFilter('my')}
+                aria-pressed={selectedFilters.includes('my')}
+              >
+                <span className="calendar-filter-check" aria-hidden="true" />
+                내 일정
+              </button>
+              <button
+                type="button"
+                className={`calendar-filter-pill ${selectedFilters.includes('department') ? 'active' : ''}`}
+                onClick={() => toggleFilter('department')}
+                aria-pressed={selectedFilters.includes('department')}
+              >
+                <span className="calendar-filter-check" aria-hidden="true" />
+                부서 일정
+              </button>
+              <button
+                type="button"
+                className={`calendar-filter-pill ${selectedFilters.includes('ai') ? 'active' : ''}`}
+                onClick={() => toggleFilter('ai')}
+                aria-pressed={selectedFilters.includes('ai')}
+              >
+                <span className="calendar-filter-check" aria-hidden="true" />
+                AI추천
+              </button>
+            </div>
+            <button className="btn btn-primary calendar-add-btn" onClick={handleAddSchedule}>
+              + 새 일정
+            </button>
+
+          </div>
+
+          <div className="calendar-grid">
+            <div className="calendar-header-controls">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() - 1, 1))}
+              >
+                &lt;
+              </button>
+              <div className="calendar-current-month">
+                {activeStartDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 1))}
+              >
+                &gt;
+              </button>
+            </div>
+
+            <div className="calendar-weekdays">
+              {['일', '월', '화', '수', '목', '금', '토'].map((wd) => (
+                <div key={wd} className="calendar-weekday">{wd}</div>
+              ))}
+            </div>
+
+            <div className="calendar-cells">
+              {monthGrid.map((cellDate) => {
+                const classes = ['calendar-cell']
+                if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
+                if (formatDate(cellDate) === formatDate(date)) classes.push('calendar-cell--selected')
+                if (getSchedulesForDate(cellDate).length > 0) classes.push('calendar-date-with-schedule')
+
+                return (
+                  <div
+                    key={cellDate.toISOString()}
+                    className={classes.join(' ')}
+                    onClick={() => handleDateChange(cellDate)}
+                  >
+                    <div className="calendar-cell-number">{cellDate.getDate()}</div>
+                    <div className="calendar-cell-content">
+                      {getSchedulesForDate(cellDate).slice(0, 2).map((s) => (
+                        <div key={s.id} className="calendar-schedule-dot" title={s.title} />
+                      ))}
+                      {getSchedulesForDate(cellDate).length > 2 && (
+                        <div className="calendar-more">+{getSchedulesForDate(cellDate).length - 2}</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="calendar-sidebar">
           <h2>{date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
+          <div className="calendar-sidebar-count">총 {todaySchedules.length}개</div>
 
           {isLoading ? (
             <div className="schedule-empty">불러오는 중...</div>
