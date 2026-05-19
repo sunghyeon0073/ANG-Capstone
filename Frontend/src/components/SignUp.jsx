@@ -113,7 +113,6 @@ export default function SignUp() {
                   onChange={(e) => setScopeCode(e.target.value)}
                   placeholder="부서코드를 입력하세요 (예: DEPT01)"
                   required
-                  style={{ flex: 1 }}
                 />
               </div>
             </div>
