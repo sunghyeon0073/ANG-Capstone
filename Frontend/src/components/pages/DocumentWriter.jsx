@@ -1,12 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import { getMyDocuments, getDepartmentDocuments } from '../../api/documentApi'
-import {
-  getMockDocuments,
-  isDevMockEnabled,
-  MOCK_SCOPES,
-  mergeWithMockDocuments,
-} from '../../data/documentMockData'
+// removed mock data imports - use backend APIs only
 import {
   getDocumentPreviewKind,
   getFileTypeLabel,
@@ -15,6 +10,8 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
+import { FiChevronRight } from 'react-icons/fi'
+// use backend download endpoint instead of frontend export logic
 
 const parseCsvToTable = (text) => {
   const lines = text.trim().split('\n').filter(Boolean)
@@ -42,6 +39,9 @@ export default function DocumentWriter() {
   const [isUploading, setIsUploading] = useState(false)
   const [myScopes, setMyScopes] = useState([])
   const [selectedScopeId, setSelectedScopeId] = useState('all')
+  const [showFullView, setShowFullView] = useState(false)
+  const [promptOpen, setPromptOpen] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -49,12 +49,10 @@ export default function DocumentWriter() {
       try {
         const res = await api.get('/scopes/my')
         const scopes = res.data?.data || []
-        setMyScopes(scopes.length > 0 ? scopes : (isDevMockEnabled() ? MOCK_SCOPES : []))
+        setMyScopes(scopes)
       } catch (err) {
         console.error('소속 부서 로드 실패', err)
-        if (isDevMockEnabled()) {
-          setMyScopes(MOCK_SCOPES)
-        }
+        setMyScopes([])
       }
     }
     fetchScopes()
@@ -137,8 +135,60 @@ export default function DocumentWriter() {
     }
   }, [selectedDoc])
 
-  const fetchDocuments = async () => {
+  useEffect(() => {
+    if (!showFullView) return undefined
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setShowFullView(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showFullView])
+
+  const handleExport = async () => {
+    if (!selectedDoc) return
+
     try {
+      setIsExporting(true)
+      // call backend download endpoint which returns file blob
+      const res = await api.get(`/documents/${selectedDoc.docId}/download`, {
+        responseType: 'blob',
+      })
+
+      const disposition = res.headers['content-disposition']
+      let filename = selectedDoc.originalFileName || selectedDoc.title || 'document'
+      if (disposition) {
+        const match = disposition.match(/filename\*=UTF-8''(.+)|filename="?([^;\"]+)"?/) 
+        if (match) {
+          filename = decodeURIComponent(match[1] || match[2])
+        }
+      }
+
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: '문서를 내보냈어요!' },
+      }))
+    } catch (err) {
+      console.error('문서다운로드 실패:', err)
+      alert(err.response?.data?.message || err.message || '문서다운로드에 실패했습니다.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const fetchDocuments = async () => {
+    try { 
       setLoading(true)
       let response
       if (category === 'my') {
@@ -147,71 +197,18 @@ export default function DocumentWriter() {
         const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
         response = await getDepartmentDocuments(null, scopeParam)
       }
-
-      const data = mergeWithMockDocuments(response.data?.data || [], category, selectedScopeId)
-      setDocuments(data)
+      setDocuments(response.data?.data || [])
       setError(null)
     } catch (err) {
       console.error('문서 목록 조회 실패:', err)
-      if (isDevMockEnabled()) {
-        setDocuments(getMockDocuments(category, selectedScopeId))
-        setError(null)
-      } else {
-        setError('문서 목록을 불러올 수 없습니다.')
-        setDocuments([])
-      }
+      setError('문서 목록을 불러올 수 없습니다.')
+      setDocuments([])
     } finally {
       setLoading(false)
     }
   }
 
-  const createLocalDocFromFile = async (file) => {
-    const ext = file.name.split('.').pop()?.toLowerCase() || ''
-    const docId = `local-${Date.now()}`
-    const doc = {
-      docId,
-      title: file.name.replace(/\.[^.]+$/, '') || file.name,
-      originalFileName: file.name,
-      fileId: docId,
-      fileContentType: inferContentType(file.name),
-      source: 'uploaded',
-      createdAt: new Date().toISOString(),
-      status: 'DRAFT',
-    }
-
-    if (isImageDocument(doc)) {
-      doc.mockPreviewUrl = URL.createObjectURL(file)
-    } else if (ext === 'txt' || ext === 'md') {
-      doc.originalContent = await file.text()
-    } else if (ext === 'csv') {
-      const text = await file.text()
-      doc.originalContent = text
-      doc.mockTableData = parseCsvToTable(text)
-    } else if (ext === 'docx' || ext === 'doc') {
-      doc.originalContent = `${file.name}에서 추출한 텍스트는 서버 변환 후 표시됩니다.`
-      doc.mockPreviewHtml = `
-        <h3>${doc.title}</h3>
-        <p>업로드한 Word 문서입니다. 개발 환경에서는 HTML 미리보기 샘플로 표시됩니다.</p>
-        <p><strong>파일명:</strong> ${file.name}</p>
-      `.trim()
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      doc.originalContent = `${file.name} 스프레드시트 (서버 연동 시 표 데이터로 변환됩니다.)`
-      doc.mockTableData = {
-        headers: ['열 A', '열 B', '열 C'],
-        rows: [
-          ['샘플 1', '100', '200'],
-          ['샘플 2', '150', '250'],
-          ['샘플 3', '180', '300'],
-        ],
-      }
-    } else if (ext === 'pdf') {
-      doc.mockPreviewUrl = URL.createObjectURL(file)
-    } else {
-      doc.originalContent = `${file.name} 파일이 업로드되었습니다.`
-    }
-
-    return doc
-  }
+  // file preview generation removed; rely on backend-provided documents
 
   const handleFileSelect = async (event) => {
     const file = event.target.files?.[0]
@@ -222,37 +219,23 @@ export default function DocumentWriter() {
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
         detail: { message: '파일을 업로드 중입니다...' },
       }))
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await api.post('/documents/upload', formData)
 
-      try {
-        const formData = new FormData()
-        formData.append('file', file)
-        const response = await api.post('/documents/upload', formData)
-
-        if (response.data?.success) {
-          const newDoc = { ...response.data.data, source: 'uploaded' }
-          setDocuments([newDoc, ...documents])
-          setSelectedDoc(newDoc)
-          window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-            detail: { message: '파일이 업로드되었어요!' },
-          }))
-          return
-        }
-      } catch (uploadErr) {
-        if (!isDevMockEnabled()) {
-          throw uploadErr
-        }
-        console.warn('서버 업로드 실패, 로컬 미리보기로 대체:', uploadErr)
+      if (response.data?.success) {
+        const newDoc = { ...response.data.data, source: 'uploaded' }
+        setDocuments([newDoc, ...documents])
+        setSelectedDoc(newDoc)
+        window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+          detail: { message: '파일이 업로드되었어요!' },
+        }))
+      } else {
+        throw new Error(response.data?.message || '파일 업로드에 실패했습니다.')
       }
-
-      const localDoc = await createLocalDocFromFile(file)
-      setDocuments([localDoc, ...documents])
-      setSelectedDoc(localDoc)
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: '파일이 추가되었어요! (로컬 미리보기)' },
-      }))
     } catch (err) {
       console.error('파일 업로드 실패:', err)
-      alert(err.response?.data?.message || '파일 업로드에 실패했습니다.')
+      alert(err.response?.data?.message || err.message || '파일 업로드에 실패했습니다.')
     } finally {
       setIsUploading(false)
       if (fileInputRef.current) {
@@ -411,17 +394,19 @@ export default function DocumentWriter() {
         </div>
       </div>
 
-      <div className="document-main">
+      <div className={`document-main ${promptOpen ? '' : 'document-main--prompt-collapsed'}`}>
         <div className="main-header">
           <h1>AI 문서작성</h1>
-          <button
-            type="button"
-            className="btn-add-document"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-          >
-            {isUploading ? '업로드 중...' : '+ 파일 추가'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              className="btn-add-document"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+            >
+              {isUploading ? '업로드 중...' : '+ 파일 추가'}
+            </button>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -434,20 +419,41 @@ export default function DocumentWriter() {
         <div className="document-content">
           {selectedDoc ? (
             <div className="selected-document">
-              <div className="selected-document-header">
-                <h2 className="selected-document-title">{selectedDoc.title}</h2>
-                <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
-                  {getFileTypeLabel(selectedDoc)}
-                </span>
-                {selectedDoc.scopeName && (
-                  <span className="doc-scope-badge">{selectedDoc.scopeName}</span>
-                )}
-              </div>
-              <div className="doc-meta">
-                <span>작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
-                {selectedDoc.originalFileName && (
-                  <span>파일: {selectedDoc.originalFileName}</span>
-                )}
+              <div className="doc-viewer-header">
+                <div className="doc-viewer-header-left">
+                  <h2 className="selected-document-title">{selectedDoc.title}</h2>
+                  <div className="doc-viewer-tags">
+                    <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
+                      {getFileTypeLabel(selectedDoc)}
+                    </span>
+                    {selectedDoc.scopeName && (
+                      <span className="doc-scope-badge">{selectedDoc.scopeName}</span>
+                    )}
+                  </div>
+                  <div className="doc-meta doc-meta--compact">
+                    <span>작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
+                    {selectedDoc.originalFileName && (
+                      <span>파일: {selectedDoc.originalFileName}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="doc-viewer-header-actions">
+                  <button
+                    type="button"
+                    className="btn-viewer-action"
+                    onClick={() => setShowFullView(true)}
+                  >
+                    전체보기
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-viewer-action btn-viewer-action--primary"
+                    onClick={handleExport}
+                    disabled={isExporting}
+                  >
+                    {isExporting ? '다운로드 중...' : '다운로드'}
+                  </button>
+                </div>
               </div>
 
               <DocumentFilePreview
@@ -466,6 +472,16 @@ export default function DocumentWriter() {
 
         <div className="ai-prompt-section">
           <div className="prompt-tabs">
+            <button
+              type="button"
+              className={`prompt-toggle-compact prompt-toggle-left ${promptOpen ? 'open' : ''}`}
+              onClick={() => setPromptOpen((open) => !open)}
+              aria-expanded={promptOpen}
+              aria-label={promptOpen ? '프롬프트 닫기' : '프롬프트 열기'}
+              title={promptOpen ? '프롬프트 닫기' : '프롬프트 열기'}
+            >
+              <FiChevronRight />
+            </button>
             {attachedDocs.map((doc) => (
               <div key={doc.docId} className="prompt-tab prompt-tab-added">
                 <button
@@ -499,6 +515,7 @@ export default function DocumentWriter() {
             )}
           </div>
 
+          {promptOpen && (
           <div className="prompt-input-group">
             <textarea
               value={prompt}
@@ -519,8 +536,41 @@ export default function DocumentWriter() {
               </button>
             </div>
           </div>
+          )}
         </div>
       </div>
+
+      {showFullView && selectedDoc && (
+        <div
+          className="modal-overlay doc-fullview-overlay"
+          onClick={() => setShowFullView(false)}
+          role="presentation"
+        >
+          <div
+            className="doc-fullview-modal doc-fullview-modal--plain"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="doc-fullview-title"
+          >
+            <DocumentFilePreview
+              doc={selectedDoc}
+              previewUrl={previewUrl}
+              previewLoading={previewLoading}
+              previewError={previewError}
+              variant="fullscreen"
+            />
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setShowFullView(false)}
+              aria-label="닫기"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
