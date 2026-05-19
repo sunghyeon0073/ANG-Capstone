@@ -31,6 +31,8 @@ public class DocumentDto {
         private Long fileId;
         private String fileContentType;
         private Long fileSize;
+        private Long previewFileId;
+        private String previewFileContentType;
         private String ownerName;
         private Integer ownerId;
         private String scopeName;
@@ -49,6 +51,8 @@ public class DocumentDto {
                     .fileId(entity.getFile() != null ? entity.getFile().getFileId() : null)
                     .fileContentType(entity.getFile() != null ? entity.getFile().getContentType() : null)
                     .fileSize(entity.getFile() != null ? entity.getFile().getFileSize() : null)
+                    .previewFileId(entity.getPreviewFile() != null ? entity.getPreviewFile().getFileId() : null)
+                    .previewFileContentType(entity.getPreviewFile() != null ? entity.getPreviewFile().getContentType() : null)
                     .ownerName(entity.getOwner() != null ? entity.getOwner().getName() : "Unknown")
                     .ownerId(entity.getOwner() != null ? entity.getOwner().getUserId() : null)
                     .scopeName(entity.getScope() != null ? entity.getScope().getName() : "N/A")
