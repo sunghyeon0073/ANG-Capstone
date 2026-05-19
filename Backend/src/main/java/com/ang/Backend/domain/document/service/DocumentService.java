@@ -18,7 +18,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -52,6 +54,7 @@ public class DocumentService {
     private final RestTemplate restTemplate;
     private final com.ang.Backend.domain.user.repository.UserRepository userRepository;
     private final S3FileService s3FileService;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
@@ -123,7 +126,7 @@ public class DocumentService {
                 .collect(Collectors.toList());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId) {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
@@ -131,9 +134,7 @@ public class DocumentService {
 
         String finalPrompt = prompt;
         if (sourceDocId != null) {
-            DocumentEntity source = documentRepository.findById(sourceDocId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
-            String sourceContent = source.getOriginalContent();
+            String sourceContent = getOriginalContent(sourceDocId);
             if (sourceContent != null && !sourceContent.isBlank()) {
                 finalPrompt = "다음 문서 내용을 참고하여 요청에 답해주세요.\n\n[문서 내용]\n"
                         + sourceContent + "\n\n[요청]\n" + prompt;
@@ -155,32 +156,41 @@ public class DocumentService {
         String aiTitle = makeAiTitle(prompt);
 
         String s3Key = null;
-        FileItem fileItem = null;
         try {
             s3Key = s3FileService.uploadText(answer, aiTitle + ".md");
-            fileItem = fileItemRepository.save(FileItem.builder()
-                    .originalFileName(aiTitle + ".md")
-                    .storedFileName(s3Key)
-                    .filePath(s3Key)
-                    .fileSize((long) answer.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
-                    .contentType("text/markdown")
-                    .uploader(user)
-                    .build());
         } catch (Exception e) {
             log.warn("AI 생성 문서 S3 저장 실패: {}", e.getMessage());
         }
 
-        DocumentEntity doc = DocumentEntity.builder()
-                .title(aiTitle)
-                .file(fileItem)
-                .owner(user)
-                .status(DocumentStatus.DRAFT)
-                .originalContent(answer)
-                .aiSummary(answer)
-                .isAiGenerated(true)
-                .build();
+        return saveAiDocument(aiTitle, answer, s3Key, user);
+    }
 
-        return DocumentDto.Response.fromEntity(documentRepository.save(doc));
+    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, String s3Key, User user) {
+        return transactionTemplate.execute(status -> {
+            FileItem fileItem = null;
+            if (s3Key != null) {
+                fileItem = fileItemRepository.save(FileItem.builder()
+                        .originalFileName(aiTitle + ".md")
+                        .storedFileName(s3Key)
+                        .filePath(s3Key)
+                        .fileSize((long) answer.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                        .contentType("text/markdown")
+                        .uploader(user)
+                        .build());
+            }
+
+            DocumentEntity doc = DocumentEntity.builder()
+                    .title(aiTitle)
+                    .file(fileItem)
+                    .owner(user)
+                    .status(DocumentStatus.DRAFT)
+                    .originalContent(answer)
+                    .aiSummary(answer)
+                    .isAiGenerated(true)
+                    .build();
+
+            return DocumentDto.Response.fromEntity(documentRepository.save(doc));
+        });
     }
 
     @Transactional(readOnly = true)
