@@ -66,7 +66,12 @@ public class DocumentController {
         if (userDetails != null && userDetails.getUsername() != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.generateWithAi(request.getPrompt(), user, request.getSourceDocId()));
+        return ApiResponse.ok(documentService.generateWithAi(
+                request.getPrompt(),
+                user,
+                request.getSourceDocId(),
+                request.getAttachedDocIds()
+        ));
     }
 
     @GetMapping("/my")
