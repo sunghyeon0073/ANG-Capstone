@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -107,10 +108,12 @@ public class DocumentService {
         String originalContent = parseOriginalContent(file);
 
         var storedFile = fileService.storeFile(file, user, subPath);
+        FileItem previewFile = createPreviewFile(file, user, storedFile);
 
         DocumentEntity doc = DocumentEntity.builder()
                 .title(title)
                 .file(storedFile)
+                .previewFile(previewFile)
                 .owner(user)
                 .scope(targetScope)
                 .status(DocumentStatus.DRAFT)
@@ -340,6 +343,10 @@ public class DocumentService {
         if (doc.getFile() != null) {
             fileService.deletePhysicalFile(doc.getFile());
         }
+        if (doc.getPreviewFile() != null
+                && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
+            fileService.deletePhysicalFile(doc.getPreviewFile());
+        }
         documentRepository.delete(doc);
     }
 
@@ -413,6 +420,134 @@ public class DocumentService {
             log.info("Uploaded parsed markdown to S3: {}", key);
         } catch (Exception e) {
             log.warn("Parsed markdown S3 upload failed, originalContent will still be saved: {}", e.getMessage());
+        }
+    }
+
+    private FileItem createPreviewFile(MultipartFile file, User user, FileItem originalFile) {
+        if (originalFile == null || file == null || file.isEmpty()) {
+            return null;
+        }
+
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : originalFile.getOriginalFileName();
+        String lowerName = originalName != null ? originalName.toLowerCase() : "";
+        String contentType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+
+        if (contentType.contains("pdf") || lowerName.endsWith(".pdf")) {
+            return originalFile;
+        }
+
+        if (!isConvertibleToPdf(lowerName, contentType)) {
+            return null;
+        }
+
+        Path tempDir = null;
+        Path tempFile = null;
+        try {
+            tempDir = Files.createTempDirectory("doc-preview-");
+            tempFile = tempDir.resolve(sanitizeFileName(originalName));
+            Files.write(tempFile, file.getBytes());
+
+            KordocResult result = runLibreOffice(tempFile, tempDir);
+            if (result.exitCode() != 0) {
+                log.warn("Preview PDF conversion failed with exit code {}: {}", result.exitCode(), result.output());
+                return null;
+            }
+
+            Path pdfFile = findConvertedPdf(tempDir, tempFile);
+            if (pdfFile == null || !Files.exists(pdfFile)) {
+                log.warn("Preview PDF conversion finished but no PDF was created for {}", originalName);
+                return null;
+            }
+
+            byte[] pdfBytes = Files.readAllBytes(pdfFile);
+            String previewName = originalName.replaceFirst("\\.[^.]+$", "") + ".pdf";
+            String s3Key = s3FileService.uploadBytes(pdfBytes, previewName, "application/pdf", "previews");
+
+            return fileItemRepository.save(FileItem.builder()
+                    .originalFileName(previewName)
+                    .storedFileName(s3Key)
+                    .filePath(s3Key)
+                    .fileSize((long) pdfBytes.length)
+                    .contentType("application/pdf")
+                    .uploader(user)
+                    .ownerId(user != null ? user.getUserId() : null)
+                    .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Preview PDF generation failed, falling back to extracted text: {}", e.getMessage());
+            return null;
+        } finally {
+            deleteQuietly(tempFile);
+            deleteDirectoryQuietly(tempDir);
+        }
+    }
+
+    private boolean isConvertibleToPdf(String lowerName, String contentType) {
+        return lowerName.endsWith(".doc")
+                || lowerName.endsWith(".docx")
+                || lowerName.endsWith(".xls")
+                || lowerName.endsWith(".xlsx")
+                || lowerName.endsWith(".csv")
+                || lowerName.endsWith(".hwp")
+                || contentType.contains("word")
+                || contentType.contains("excel")
+                || contentType.contains("spreadsheet")
+                || contentType.contains("hwp");
+    }
+
+    private KordocResult runLibreOffice(Path file, Path outputDir) throws IOException, InterruptedException {
+        try {
+            return runCommand(List.of(
+                    "libreoffice",
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    outputDir.toAbsolutePath().toString(),
+                    file.toAbsolutePath().toString()
+            ));
+        } catch (IOException e) {
+            log.debug("libreoffice command failed, retrying with soffice: {}", e.getMessage());
+            return runCommand(List.of(
+                    "soffice",
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    outputDir.toAbsolutePath().toString(),
+                    file.toAbsolutePath().toString()
+            ));
+        }
+    }
+
+    private Path findConvertedPdf(Path outputDir, Path sourceFile) throws IOException {
+        String sourceName = sourceFile.getFileName().toString().replaceFirst("\\.[^.]+$", ".pdf");
+        Path expected = outputDir.resolve(sourceName);
+        if (Files.exists(expected)) {
+            return expected;
+        }
+
+        try (var files = Files.list(outputDir)) {
+            return files
+                    .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".pdf"))
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
+
+    private void deleteQuietly(Path path) {
+        if (path == null) return;
+        try {
+            Files.deleteIfExists(path);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void deleteDirectoryQuietly(Path directory) {
+        if (directory == null || !Files.exists(directory)) return;
+        try (var paths = Files.walk(directory)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(this::deleteQuietly);
+        } catch (Exception ignored) {
         }
     }
 

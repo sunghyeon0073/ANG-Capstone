@@ -92,4 +92,22 @@ public class S3FileService {
         s3Client.putObject(request, RequestBody.fromBytes(bytes));
         return key;
     }
+
+    public String uploadBytes(byte[] bytes, String fileName, String contentType, String prefix) {
+        String ext = "";
+        if (fileName != null && fileName.contains(".")) {
+            ext = fileName.substring(fileName.lastIndexOf("."));
+        }
+
+        String key = prefix + "/" + LocalDate.now() + "/" + UUID.randomUUID() + ext;
+
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(contentType)
+                .build();
+
+        s3Client.putObject(request, RequestBody.fromBytes(bytes));
+        return key;
+    }
 }

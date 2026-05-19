@@ -45,7 +45,7 @@ export const isExcelDocument = (doc) => {
 /** @returns {'pdf'|'image'|'word'|'excel'|'file'|'text'} */
 export const getDocumentPreviewKind = (doc) => {
   const hasFile =
-    doc?.fileId || doc?.mockPreviewUrl || doc?.mockPreviewHtml || doc?.mockTableData
+    doc?.fileId || doc?.previewFileId || doc?.mockPreviewUrl || doc?.mockPreviewHtml || doc?.mockTableData
 
   if (!hasFile) return 'text'
   if (isPdfDocument(doc)) return 'pdf'
