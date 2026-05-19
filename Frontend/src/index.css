@@ -1053,19 +1053,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 36px 0 56px;
+  padding: 46px 0 66px;
   overflow-x: auto;
 }
 
 .org-tree > .tree-parent {
-  min-width: 720px;
+  min-width: 920px;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
 .org-dept-tree > .tree-parent {
-  min-width: 360px;
+  min-width: 520px;
 }
 
 .org-dept-view {
@@ -1075,18 +1075,22 @@
 .org-tabs {
   display: flex;
   justify-content: center;
-  gap: 10px;
-  margin-bottom: 40px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 48px;
 }
 
 .org-tab-btn {
-  padding: 8px 16px;
+  min-width: 116px;
+  padding: 10px 18px;
   border-radius: 6px;
   cursor: pointer;
   border: none;
   font-weight: bold;
   background: #eee;
   color: #333;
+  font-size: 14px;
+  white-space: nowrap;
   transition: all 0.2s;
 }
 
@@ -1099,11 +1103,11 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   position: relative;
   z-index: 2;
-  width: 150px;
+  width: 190px;
   border: 0;
   background: transparent;
   font: inherit;
@@ -1114,17 +1118,17 @@
 }
 
 .org-page .profile-avatar {
-  width: 42px;
-  height: 42px;
-  font-size: 18px;
+  width: 50px;
+  height: 50px;
+  font-size: 20px;
 }
 
 .org-page .profile-role {
-  padding: 4px 13px;
+  padding: 5px 15px;
   background: #00798c;
   color: #fff;
-  border-radius: 12px;
-  font-size: 13px;
+  border-radius: 14px;
+  font-size: 14px;
   font-weight: bold;
 }
 
@@ -1151,7 +1155,7 @@
 }
 
 .org-page .profile-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: bold;
   color: #333;
 }
@@ -1169,9 +1173,9 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  gap: 64px;
+  gap: 72px;
   position: relative;
-  margin-top: 24px;
+  margin-top: 30px;
 }
 
 .org-children-block {
@@ -1183,7 +1187,7 @@
 
 .org-connector-down {
   width: 2px;
-  height: 32px;
+  height: 38px;
   background: #c8d3e0;
 }
 
@@ -1191,7 +1195,7 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  gap: 64px;
+  gap: 72px;
   position: relative;
 }
 
@@ -1199,8 +1203,8 @@
   content: "";
   position: absolute;
   top: 0;
-  left: 75px;
-  right: 75px;
+  left: 95px;
+  right: 95px;
   height: 2px;
   background: #c8d3e0;
   z-index: 0;
@@ -1211,7 +1215,7 @@
 }
 
 .org-child-node {
-  width: 150px;
+  width: 190px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1223,9 +1227,9 @@
   content: "";
   display: block;
   width: 2px;
-  height: 24px;
+  height: 28px;
   background: #c8d3e0;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .tree-level {
@@ -1260,13 +1264,16 @@
 
 .team-dept-label {
   background: #f0f0f0;
-  padding: 4px 16px;
-  border-radius: 16px;
-  font-size: 12px;
+  max-width: 230px;
+  padding: 5px 18px;
+  border-radius: 18px;
+  font-size: 13px;
   font-weight: bold;
   color: #555;
   margin-bottom: 4px;
   z-index: 2;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .team-empty {
@@ -3094,12 +3101,48 @@
 }
 
 .mail-compose-footer .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
-  min-width: 86px;
-  height: 36px;
-  padding: 0 14px;
+  min-width: 78px;
+  height: 34px;
+  padding: 0 13px;
   border-radius: 6px;
   font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transform: none;
+}
+
+.mail-compose-footer .btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.mail-compose-footer .btn-primary {
+  border: 1px solid #00798c;
+  background: #00798c;
+  color: #fff;
+}
+
+.mail-compose-footer .btn-primary:hover {
+  border-color: #006879;
+  background: #006879;
+}
+
+.mail-compose-footer .btn-secondary {
+  border: 1px solid #d7dfdc;
+  background: #fff;
+  color: #53625e;
+}
+
+.mail-compose-footer .btn-secondary:hover {
+  border-color: #b9c6c2;
+  background: #f3f7f5;
+  color: #2f3d39;
 }
 
 .mail-compose-row {
@@ -3129,6 +3172,75 @@
 .mail-compose-panel input::placeholder,
 .mail-compose-panel textarea::placeholder {
   color: #a2aaa7;
+}
+
+.mail-recipient-dropdown {
+  max-height: 240px;
+  margin: -1px 16px 10px 112px;
+  overflow-y: auto;
+  border: 1px solid #dce3e0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(38, 45, 42, 0.14);
+  z-index: 20;
+}
+
+.mail-recipient-empty {
+  padding: 14px 12px;
+  color: #8a918d;
+  font-size: 13px;
+  text-align: center;
+}
+
+.mail-recipient-option {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #eef2f0;
+  padding: 10px 12px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mail-recipient-option:hover {
+  background: #e3f8f7;
+}
+
+.mail-recipient-option:last-child {
+  border-bottom: 0;
+}
+
+.mail-recipient-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #4db8c4;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mail-recipient-option strong,
+.mail-recipient-option em {
+  display: block;
+}
+
+.mail-recipient-option strong {
+  color: #253330;
+  font-size: 13px;
+}
+
+.mail-recipient-option em {
+  margin-top: 2px;
+  color: #7d8985;
+  font-size: 12px;
+  font-style: normal;
 }
 
 .mail-compose-panel textarea {
