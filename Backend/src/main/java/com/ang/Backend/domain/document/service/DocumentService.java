@@ -26,12 +26,15 @@ import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.file.service.S3FileService;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -98,30 +101,7 @@ public class DocumentService {
             subPath = "Scopes" + File.separator + targetScope.getScopeCode();
         }
 
-        String originalContent = "";
-        Path tempFile = null;
-        try {
-            String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
-            tempFile = Files.createTempFile("parse-", "-" + originalName);
-            // transferTo() 대신 getBytes()로 기록 — getInputStream()이 소진되지 않아 이후 S3 업로드에서도 사용 가능
-            Files.write(tempFile, file.getBytes());
-
-            Map<String, String> parseReq = Map.of("file_path", tempFile.toAbsolutePath().toString());
-            @SuppressWarnings("unchecked")
-            Map<String, Object> parseRes = restTemplate.postForObject(
-                    aiBaseUrl + "/parse-document", parseReq, Map.class);
-
-            if (parseRes != null && Boolean.TRUE.equals(parseRes.get("success"))) {
-                Object md = parseRes.get("markdown");
-                if (md != null) originalContent = md.toString();
-            }
-        } catch (Exception e) {
-            log.warn("kordoc 파싱 실패 (업로드는 계속 진행): {}", e.getMessage());
-        } finally {
-            if (tempFile != null) {
-                try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
-            }
-        }
+        String originalContent = parseOriginalContent(file);
 
         var storedFile = fileService.storeFile(file, user, subPath);
 
@@ -360,4 +340,75 @@ public class DocumentService {
         }
         return normalized.substring(0, 40);
     }
+
+    private String parseOriginalContent(MultipartFile file) {
+        Path tempFile = null;
+        try {
+            String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+            tempFile = Files.createTempFile("kordoc-", "-" + sanitizeFileName(originalName));
+            Files.write(tempFile, file.getBytes());
+
+            KordocResult result = runKordoc(tempFile);
+            if (result.exitCode() != 0) {
+                log.warn("kordoc parsing failed with exit code {}: {}", result.exitCode(), result.output());
+                return "";
+            }
+
+            String markdown = result.output();
+            if (markdown == null || markdown.isBlank()) {
+                log.warn("kordoc parsing returned empty markdown for {}", originalName);
+                return "";
+            }
+
+            uploadParsedMarkdown(markdown, originalName);
+            return markdown;
+        } catch (Exception e) {
+            log.warn("kordoc parsing failed, upload will continue: {}", e.getMessage());
+            return "";
+        } finally {
+            if (tempFile != null) {
+                try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private KordocResult runKordoc(Path file) throws IOException, InterruptedException {
+        try {
+            return runCommand(List.of("kordoc", file.toAbsolutePath().toString()));
+        } catch (IOException e) {
+            log.debug("Direct kordoc command failed, retrying with npx: {}", e.getMessage());
+            return runCommand(List.of("npx", "--no-install", "kordoc", file.toAbsolutePath().toString()));
+        }
+    }
+
+    private KordocResult runCommand(List<String> command) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start();
+
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+        if (!finished) {
+            process.destroyForcibly();
+            return new KordocResult(-1, "kordoc timed out after 60 seconds");
+        }
+
+        return new KordocResult(process.exitValue(), output);
+    }
+
+    private void uploadParsedMarkdown(String markdown, String originalName) {
+        try {
+            String markdownName = originalName.replaceFirst("\\.[^.]+$", "") + ".md";
+            String key = s3FileService.uploadText(markdown, markdownName);
+            log.info("Uploaded parsed markdown to S3: {}", key);
+        } catch (Exception e) {
+            log.warn("Parsed markdown S3 upload failed, originalContent will still be saved: {}", e.getMessage());
+        }
+    }
+
+    private String sanitizeFileName(String fileName) {
+        return fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    private record KordocResult(int exitCode, String output) {}
 }
