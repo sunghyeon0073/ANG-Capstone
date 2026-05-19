@@ -35,6 +35,10 @@ public class DocumentEntity {
     @JoinColumn(name = "file_id")
     private FileItem file; // 원본 물리 파일
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "preview_file_id")
+    private FileItem previewFile;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id") // User의 userId와 연결
     private User owner;
