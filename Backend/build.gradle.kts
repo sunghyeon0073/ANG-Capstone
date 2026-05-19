@@ -42,6 +42,9 @@ dependencies {
     // MariaDB
     runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
 
+    // AWS S3
+    implementation("io.awspring.cloud:spring-cloud-aws-starter-s3:3.1.1")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
