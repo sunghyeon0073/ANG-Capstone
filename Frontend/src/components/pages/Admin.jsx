@@ -155,11 +155,11 @@ export default function Admin({ me, currentSubPage }) {
   };
 
   const openUpdateRole = (userId, currentRoleLevel) => {
-    setEditingRole({ userId, roleLevel: currentRoleLevel });
+    setEditingRole({ userId, roleLevel: '', currentRoleLevel });
   };
 
   const submitUpdateRole = async () => {
-    if (!editingRole || !editingRole.roleLevel) return alert('권한을 선택해주세요.');
+    if (!editingRole || editingRole.roleLevel === '' || editingRole.roleLevel === undefined) return alert('권한을 선택해주세요.');
     try {
       await updateUserRole(editingRole.userId, editingRole.roleLevel);
       alert('권한이 변경되었습니다.');
@@ -461,7 +461,7 @@ export default function Admin({ me, currentSubPage }) {
               style={{ ...selectStyle, width: '100%', marginBottom: 20 }}
             >
               <option value="">권한 선택</option>
-              {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              {availableRoles.filter(r => r.value !== editingRole.currentRoleLevel).map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setEditingRole(null)}>취소</button>
@@ -490,25 +490,3 @@ const roleBadgeStyle = (level) => ({
   color: level >= 100 ? '#cf1322' : level >= 50 ? '#096dd9' : '#389e0d',
   border: level >= 100 ? '1px solid #ffa39e' : level >= 50 ? '1px solid #91d5ff' : '1px solid #b7eb8f'
 });
-
-const deptBadgeStyle = {
-  background: '#f0f0f0',
-  padding: '2px 8px',
-  borderRadius: 4,
-  fontSize: 12,
-  color: '#666'
-};
-
-const addBtnStyle = {
-  width: 24,
-  height: 24,
-  borderRadius: '50%',
-  border: '1px dashed #4A90D9',
-  background: 'white',
-  color: '#4A90D9',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontWeight: 'bold'
-};

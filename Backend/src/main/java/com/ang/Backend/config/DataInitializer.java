@@ -86,7 +86,7 @@ public class DataInitializer {
     }
 
     private void initRoles() {
-        insertRoleIfAbsent(0,   "일반",      "일반 사용자 (팀원, 실무자)");
+        insertRoleIfAbsent(1,   "일반",      "일반 사용자 (팀원, 실무자)");
         insertRoleIfAbsent(50,  "관리자",     "부서 관리자 (팀장)");
         insertRoleIfAbsent(100, "최고관리자", "시스템 전체 운영자");
     }

@@ -81,7 +81,7 @@ public class AuthService {
                 .position("사원") // Default position
                 .build());
 
-        Role defaultRole = roleRepository.findByRoleLevel(0)
+        Role defaultRole = roleRepository.findByRoleLevel(1)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
         
         userRoleRepository.save(new UserRole(user, scope, defaultRole));

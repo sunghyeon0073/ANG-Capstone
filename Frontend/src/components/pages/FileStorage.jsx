@@ -307,15 +307,17 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                         다운로드
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDelete(doc.docId)}
-                      style={{
-                        background: '#ff4d4f', color: '#fff', border: 'none',
-                        borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12
-                      }}
-                    >
-                      삭제
-                    </button>
+                    {doc.canDelete && (
+                      <button
+                        onClick={() => handleDelete(doc.docId)}
+                        style={{
+                          background: '#ff4d4f', color: '#fff', border: 'none',
+                          borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12
+                        }}
+                      >
+                        삭제
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
