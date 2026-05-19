@@ -237,6 +237,11 @@ export default function DocumentWriter() {
         const newDoc = { ...response.data.data, source: 'uploaded' }
         setDocuments([newDoc, ...documents])
         setSelectedDoc(newDoc)
+        setAttachedDocs((prev) => (
+          prev.some((doc) => doc.docId === newDoc.docId)
+            ? prev
+            : [...prev, newDoc]
+        ))
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
           detail: { message: '파일이 업로드되었어요!' },
         }))

@@ -5,12 +5,14 @@ import com.ang.Backend.domain.document.entity.DocumentEntity;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class DocumentDto {
     @Getter @NoArgsConstructor
     public static class AiGenerateRequest {
         private String prompt;
         private Long sourceDocId;
+        private List<Long> attachedDocIds;
     }
 
     @Getter @NoArgsConstructor
