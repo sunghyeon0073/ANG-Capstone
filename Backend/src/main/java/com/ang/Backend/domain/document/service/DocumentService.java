@@ -18,7 +18,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -31,8 +33,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -52,6 +58,7 @@ public class DocumentService {
     private final RestTemplate restTemplate;
     private final com.ang.Backend.domain.user.repository.UserRepository userRepository;
     private final S3FileService s3FileService;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
@@ -104,10 +111,12 @@ public class DocumentService {
         String originalContent = parseOriginalContent(file);
 
         var storedFile = fileService.storeFile(file, user, subPath);
+        FileItem previewFile = createPreviewFile(file, user, storedFile);
 
         DocumentEntity doc = DocumentEntity.builder()
                 .title(title)
                 .file(storedFile)
+                .previewFile(previewFile)
                 .owner(user)
                 .scope(targetScope)
                 .status(DocumentStatus.DRAFT)
@@ -117,23 +126,23 @@ public class DocumentService {
         return documentRepository.save(doc).getDocId();
     }
 
-    public List<DocumentDto.Response> getAllDocuments() {
-        return documentRepository.findAll().stream()
+    public List<DocumentDto.Response> getAllDocuments(User requester) {
+        List<DocumentDto.Response> list = documentRepository.findAll().stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+        setCanDeleteFlags(list, requester);
+        return list;
     }
 
-    @Transactional
-    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId) {
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds) {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
 
-        String finalPrompt = prompt;
-        if (sourceDocId != null) {
-            DocumentEntity source = documentRepository.findById(sourceDocId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
-            String sourceContent = source.getOriginalContent();
+        String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds);
+        if (sourceDocId != null && (attachedDocIds == null || attachedDocIds.isEmpty())) {
+            String sourceContent = getOriginalContent(sourceDocId);
             if (sourceContent != null && !sourceContent.isBlank()) {
                 finalPrompt = "다음 문서 내용을 참고하여 요청에 답해주세요.\n\n[문서 내용]\n"
                         + sourceContent + "\n\n[요청]\n" + prompt;
@@ -155,32 +164,99 @@ public class DocumentService {
         String aiTitle = makeAiTitle(prompt);
 
         String s3Key = null;
-        FileItem fileItem = null;
         try {
             s3Key = s3FileService.uploadText(answer, aiTitle + ".md");
-            fileItem = fileItemRepository.save(FileItem.builder()
-                    .originalFileName(aiTitle + ".md")
-                    .storedFileName(s3Key)
-                    .filePath(s3Key)
-                    .fileSize((long) answer.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
-                    .contentType("text/markdown")
-                    .uploader(user)
-                    .build());
         } catch (Exception e) {
             log.warn("AI 생성 문서 S3 저장 실패: {}", e.getMessage());
         }
 
-        DocumentEntity doc = DocumentEntity.builder()
-                .title(aiTitle)
-                .file(fileItem)
-                .owner(user)
-                .status(DocumentStatus.DRAFT)
-                .originalContent(answer)
-                .aiSummary(answer)
-                .isAiGenerated(true)
-                .build();
+        return saveAiDocument(aiTitle, answer, s3Key, user);
+    }
 
-        return DocumentDto.Response.fromEntity(documentRepository.save(doc));
+    private String buildAiPrompt(String prompt, Long sourceDocId, List<Long> attachedDocIds) {
+        LinkedHashSet<Long> docIds = new LinkedHashSet<>();
+        if (sourceDocId != null) {
+            docIds.add(sourceDocId);
+        }
+        if (attachedDocIds != null) {
+            attachedDocIds.stream()
+                    .filter(Objects::nonNull)
+                    .forEach(docIds::add);
+        }
+
+        if (docIds.isEmpty()) {
+            return prompt;
+        }
+
+        List<DocumentEntity> sources = transactionTemplate.execute(status -> {
+            List<DocumentEntity> docs = new ArrayList<>();
+            for (Long docId : docIds) {
+                documentRepository.findById(docId).ifPresent(docs::add);
+            }
+            return docs;
+        });
+
+        if (sources == null || sources.isEmpty()) {
+            return prompt;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("Use the parsed document content below as reference when creating the document.\n\n");
+
+        int index = 1;
+        for (DocumentEntity source : sources) {
+            String content = source.getOriginalContent();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+
+            builder.append("[Reference Document ")
+                    .append(index++)
+                    .append(": ")
+                    .append(source.getTitle() != null ? source.getTitle() : source.getDocId())
+                    .append("]\n")
+                    .append(content)
+                    .append("\n\n");
+        }
+
+        if (index == 1) {
+            return prompt;
+        }
+
+        builder.append("[User Prompt]\n")
+                .append(prompt);
+
+        return builder.toString();
+    }
+
+    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, String s3Key, User user) {
+        return transactionTemplate.execute(status -> {
+            FileItem fileItem = null;
+            if (s3Key != null) {
+                fileItem = fileItemRepository.save(FileItem.builder()
+                        .originalFileName(aiTitle + ".md")
+                        .storedFileName(s3Key)
+                        .filePath(s3Key)
+                        .fileSize((long) answer.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                        .contentType("text/markdown")
+                        .uploader(user)
+                        .build());
+            }
+
+            DocumentEntity doc = DocumentEntity.builder()
+                    .title(aiTitle)
+                    .file(fileItem)
+                    .owner(user)
+                    .status(DocumentStatus.DRAFT)
+                    .originalContent(answer)
+                    .aiSummary(answer)
+                    .isAiGenerated(true)
+                    .build();
+
+            DocumentDto.Response res = DocumentDto.Response.fromEntity(documentRepository.save(doc));
+            res.setCanDelete(true); // AI로 본인이 생성한 것이므로 삭제 가능
+            return res;
+        });
     }
 
     @Transactional(readOnly = true)
@@ -191,10 +267,12 @@ public class DocumentService {
     }
 
     public List<DocumentDto.Response> getMyDocuments(User user) {
-        return documentRepository.findByOwner(user).stream()
+        List<DocumentDto.Response> list = documentRepository.findByOwner(user).stream()
                 .filter(d -> d.getScope() == null)
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+        setCanDeleteFlags(list, user);
+        return list;
     }
 
     public List<DocumentDto.Response> getDepartmentDocuments(User user, Integer targetScopeId, String keyword) {
@@ -271,9 +349,11 @@ public class DocumentService {
             }
         }
 
-        return documentRepository.searchByScopes(scopeIds, keyword).stream()
+        List<DocumentDto.Response> list = documentRepository.searchByScopes(scopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+        setCanDeleteFlags(list, user);
+        return list;
     }
 
     private Scope getLevel2Ancestor(Scope scope) {
@@ -307,10 +387,15 @@ public class DocumentService {
         return false;
     }
 
-    public DocumentDto.Response getDocument(Long id) {
-        return documentRepository.findById(id)
+    public DocumentDto.Response getDocument(Long id, User requester) {
+        DocumentDto.Response res = documentRepository.findById(id)
                 .map(DocumentDto.Response::fromEntity)
                 .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
+        
+        if (requester != null) {
+            setCanDeleteFlags(List.of(res), requester);
+        }
+        return res;
     }
 
     @Transactional
@@ -323,14 +408,75 @@ public class DocumentService {
     }
 
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, User requester) {
         DocumentEntity doc = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 삭제 권한 체크
+        if (!canUserDelete(doc, requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 삭제할 권한이 없습니다.");
+        }
 
         if (doc.getFile() != null) {
             fileService.deletePhysicalFile(doc.getFile());
         }
+        if (doc.getPreviewFile() != null
+                && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
+            fileService.deletePhysicalFile(doc.getPreviewFile());
+        }
         documentRepository.delete(doc);
+    }
+
+    private boolean canUserDelete(DocumentEntity doc, User requester) {
+        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(requester);
+        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
+
+        // 1. 최고 관리자 (Lv 100): 모든 파일 삭제 가능
+        if (maxLevel >= 100) return true;
+
+        // 2. 본인 파일인 경우: 삭제 가능
+        if (doc.getOwner() != null && doc.getOwner().getUserId().equals(requester.getUserId())) return true;
+
+        // 3. 중간 관리자 (Lv 50): 본인 팀(소속된 부서 및 하위 부서)의 파일 삭제 가능
+        if (maxLevel >= 50) {
+            if (doc.getScope() == null) return false;
+            
+            // 매니저가 관리하는 모든 부서(하위 포함) ID 목록
+            List<Integer> managedScopeIds = roles.stream()
+                    .filter(r -> r.getRole().getRoleLevel() >= 50)
+                    .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
+                    .distinct()
+                    .collect(Collectors.toList());
+            
+            return managedScopeIds.contains(doc.getScope().getScopeId());
+        }
+
+        return false;
+    }
+
+    private void setCanDeleteFlags(List<DocumentDto.Response> responses, User requester) {
+        if (responses == null || requester == null) return;
+        
+        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(requester);
+        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
+        
+        List<Integer> managedScopeIds = roles.stream()
+                .filter(r -> r.getRole().getRoleLevel() >= 50)
+                .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
+                .distinct()
+                .collect(Collectors.toList());
+
+        for (DocumentDto.Response res : responses) {
+            boolean canDelete = false;
+            if (maxLevel >= 100) {
+                canDelete = true;
+            } else if (res.getOwnerId() != null && res.getOwnerId().equals(requester.getUserId())) {
+                canDelete = true;
+            } else if (maxLevel >= 50 && res.getScopeId() != null) {
+                canDelete = managedScopeIds.contains(res.getScopeId());
+            }
+            res.setCanDelete(canDelete);
+        }
     }
 
     private String makeAiTitle(String prompt) {
@@ -403,6 +549,134 @@ public class DocumentService {
             log.info("Uploaded parsed markdown to S3: {}", key);
         } catch (Exception e) {
             log.warn("Parsed markdown S3 upload failed, originalContent will still be saved: {}", e.getMessage());
+        }
+    }
+
+    private FileItem createPreviewFile(MultipartFile file, User user, FileItem originalFile) {
+        if (originalFile == null || file == null || file.isEmpty()) {
+            return null;
+        }
+
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : originalFile.getOriginalFileName();
+        String lowerName = originalName != null ? originalName.toLowerCase() : "";
+        String contentType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+
+        if (contentType.contains("pdf") || lowerName.endsWith(".pdf")) {
+            return originalFile;
+        }
+
+        if (!isConvertibleToPdf(lowerName, contentType)) {
+            return null;
+        }
+
+        Path tempDir = null;
+        Path tempFile = null;
+        try {
+            tempDir = Files.createTempDirectory("doc-preview-");
+            tempFile = tempDir.resolve(sanitizeFileName(originalName));
+            Files.write(tempFile, file.getBytes());
+
+            KordocResult result = runLibreOffice(tempFile, tempDir);
+            if (result.exitCode() != 0) {
+                log.warn("Preview PDF conversion failed with exit code {}: {}", result.exitCode(), result.output());
+                return null;
+            }
+
+            Path pdfFile = findConvertedPdf(tempDir, tempFile);
+            if (pdfFile == null || !Files.exists(pdfFile)) {
+                log.warn("Preview PDF conversion finished but no PDF was created for {}", originalName);
+                return null;
+            }
+
+            byte[] pdfBytes = Files.readAllBytes(pdfFile);
+            String previewName = originalName.replaceFirst("\\.[^.]+$", "") + ".pdf";
+            String s3Key = s3FileService.uploadBytes(pdfBytes, previewName, "application/pdf", "previews");
+
+            return fileItemRepository.save(FileItem.builder()
+                    .originalFileName(previewName)
+                    .storedFileName(s3Key)
+                    .filePath(s3Key)
+                    .fileSize((long) pdfBytes.length)
+                    .contentType("application/pdf")
+                    .uploader(user)
+                    .ownerId(user != null ? user.getUserId() : null)
+                    .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Preview PDF generation failed, falling back to extracted text: {}", e.getMessage());
+            return null;
+        } finally {
+            deleteQuietly(tempFile);
+            deleteDirectoryQuietly(tempDir);
+        }
+    }
+
+    private boolean isConvertibleToPdf(String lowerName, String contentType) {
+        return lowerName.endsWith(".doc")
+                || lowerName.endsWith(".docx")
+                || lowerName.endsWith(".xls")
+                || lowerName.endsWith(".xlsx")
+                || lowerName.endsWith(".csv")
+                || lowerName.endsWith(".hwp")
+                || contentType.contains("word")
+                || contentType.contains("excel")
+                || contentType.contains("spreadsheet")
+                || contentType.contains("hwp");
+    }
+
+    private KordocResult runLibreOffice(Path file, Path outputDir) throws IOException, InterruptedException {
+        try {
+            return runCommand(List.of(
+                    "libreoffice",
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    outputDir.toAbsolutePath().toString(),
+                    file.toAbsolutePath().toString()
+            ));
+        } catch (IOException e) {
+            log.debug("libreoffice command failed, retrying with soffice: {}", e.getMessage());
+            return runCommand(List.of(
+                    "soffice",
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    outputDir.toAbsolutePath().toString(),
+                    file.toAbsolutePath().toString()
+            ));
+        }
+    }
+
+    private Path findConvertedPdf(Path outputDir, Path sourceFile) throws IOException {
+        String sourceName = sourceFile.getFileName().toString().replaceFirst("\\.[^.]+$", ".pdf");
+        Path expected = outputDir.resolve(sourceName);
+        if (Files.exists(expected)) {
+            return expected;
+        }
+
+        try (var files = Files.list(outputDir)) {
+            return files
+                    .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".pdf"))
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
+
+    private void deleteQuietly(Path path) {
+        if (path == null) return;
+        try {
+            Files.deleteIfExists(path);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void deleteDirectoryQuietly(Path directory) {
+        if (directory == null || !Files.exists(directory)) return;
+        try (var paths = Files.walk(directory)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(this::deleteQuietly);
+        } catch (Exception ignored) {
         }
     }
 

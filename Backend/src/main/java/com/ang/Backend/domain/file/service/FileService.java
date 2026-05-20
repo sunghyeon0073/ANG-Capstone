@@ -192,7 +192,7 @@ public class FileService {
 
     private boolean isS3Key(String filePath) {
         return filePath != null
-                && filePath.matches("^uploads/\\d{4}-\\d{2}-\\d{2}/.+")
+                && filePath.matches("^(uploads|documents|previews)/\\d{4}-\\d{2}-\\d{2}/.+")
                 && !Paths.get(filePath).isAbsolute();
     }
     

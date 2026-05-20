@@ -7,3 +7,7 @@ export const login = (loginData) => {
 export const signUp = (userData) => {
   return api.post('/auth/register', userData);
 };
+
+export const refreshToken = (token) => {
+  return api.post('/auth/refresh', { refreshToken: token });
+};

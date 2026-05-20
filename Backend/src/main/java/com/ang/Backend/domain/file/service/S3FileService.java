@@ -24,6 +24,10 @@ public class S3FileService {
     private String bucket;
 
     public String upload(MultipartFile file) {
+        return upload(file, "uploads/" + LocalDate.now());
+    }
+
+    public String upload(MultipartFile file, String folder) {
         String originalName = file.getOriginalFilename();
 
         String ext = "";
@@ -32,12 +36,7 @@ public class S3FileService {
             ext = originalName.substring(originalName.lastIndexOf("."));
         }
 
-        String key =
-                "uploads/"
-                        + LocalDate.now()
-                        + "/"
-                        + UUID.randomUUID()
-                        + ext;
+        String key = folder + "/" + UUID.randomUUID() + ext;
 
         try {
             PutObjectRequest request =
@@ -87,6 +86,24 @@ public class S3FileService {
                 .bucket(bucket)
                 .key(key)
                 .contentType("text/markdown; charset=UTF-8")
+                .build();
+
+        s3Client.putObject(request, RequestBody.fromBytes(bytes));
+        return key;
+    }
+
+    public String uploadBytes(byte[] bytes, String fileName, String contentType, String prefix) {
+        String ext = "";
+        if (fileName != null && fileName.contains(".")) {
+            ext = fileName.substring(fileName.lastIndexOf("."));
+        }
+
+        String key = prefix + "/" + LocalDate.now() + "/" + UUID.randomUUID() + ext;
+
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(contentType)
                 .build();
 
         s3Client.putObject(request, RequestBody.fromBytes(bytes));
