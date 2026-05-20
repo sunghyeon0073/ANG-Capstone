@@ -3,9 +3,12 @@ package com.ang.Backend.domain.mail.service;
 import com.ang.Backend.common.enums.MailStatus;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
+import com.ang.Backend.domain.file.service.S3FileService;
 import com.ang.Backend.domain.mail.dto.MailDto;
 import com.ang.Backend.domain.mail.entity.Mail;
+import com.ang.Backend.domain.mail.entity.MailAttachment;
 import com.ang.Backend.domain.mail.entity.MailRecipient;
+import com.ang.Backend.domain.mail.repository.MailAttachmentRepository;
 import com.ang.Backend.domain.mail.repository.MailRecipientRepository;
 import com.ang.Backend.domain.mail.repository.MailRepository;
 import com.ang.Backend.domain.user.entity.User;
@@ -14,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -28,7 +32,9 @@ public class MailService {
 
     private final MailRepository mailRepository;
     private final MailRecipientRepository mailRecipientRepository;
+    private final MailAttachmentRepository mailAttachmentRepository;
     private final UserRepository userRepository;
+    private final S3FileService s3FileService;
 
     // 서버 시작 시 is_favorite / is_sender_favorite 컬럼의 기존 NULL 값을 0으로 교정
     @EventListener(ApplicationReadyEvent.class)
@@ -120,7 +126,8 @@ public class MailService {
                     .ifPresent(MailRecipient::markAsRead);
         }
 
-        return MailDto.MailDetail.fromMail(mail, recipients);
+        List<MailAttachment> attachments = mailAttachmentRepository.findByMail(mail);
+        return MailDto.MailDetail.fromMail(mail, recipients, attachments);
     }
 
     // 수신함에서 삭제 (수신자 소프트 삭제)
@@ -250,6 +257,107 @@ public class MailService {
         }
         mailRecipientRepository.deleteAll(mailRecipientRepository.findByMail(mail));
         mailRepository.delete(mail);
+    }
+
+    // 파일 다운로드
+    public MailDto.FileDownloadData downloadFile(Long attachmentId, User user) {
+        MailAttachment attachment = mailAttachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> new CustomException(ErrorCode.MAIL_NOT_FOUND));
+        Mail mail = attachment.getMail();
+
+        boolean isSender = mail.getSender().getUserId().equals(user.getUserId());
+        boolean isRecipient = mailRecipientRepository.findByMail(mail).stream()
+                .anyMatch(r -> r.getRecipient().getUserId().equals(user.getUserId()));
+
+        if (!isSender && !isRecipient) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+
+        byte[] bytes = s3FileService.download(attachment.getFileUrl());
+        return new MailDto.FileDownloadData(attachment.getFileName(), bytes);
+    }
+
+    // 파일 업로드 (S3 저장 후 MailAttachment 생성)
+    @Transactional
+    public MailDto.FileUploadResponse uploadFile(Long mailId, MultipartFile file, User user) {
+        Mail mail = findMailById(mailId);
+        if (!mail.getSender().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        String fileUrl = s3FileService.upload(file, "mail/" + mailId);
+        MailAttachment attachment = mailAttachmentRepository.save(MailAttachment.builder()
+                .mail(mail)
+                .fileUrl(fileUrl)
+                .fileName(file.getOriginalFilename())
+                .build());
+        return MailDto.FileUploadResponse.from(attachment);
+    }
+
+    // 임시저장 수정
+    @Transactional
+    public Long updateDraft(Long mailId, MailDto.UpdateDraftRequest req, User user) {
+        Mail mail = findMailById(mailId);
+        if (!mail.getSender().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        if (mail.getStatus() != MailStatus.DRAFT) {
+            throw new CustomException(ErrorCode.MAIL_NOT_DRAFT);
+        }
+        mail.setTitle(req.getTitle() != null ? req.getTitle() : "");
+        mail.setBody(req.getBody());
+
+        mailRecipientRepository.deleteAll(mailRecipientRepository.findByMail(mail));
+        if (req.getRecipientEmpNos() != null && !req.getRecipientEmpNos().isEmpty()) {
+            saveRecipients(mail, req.getRecipientEmpNos());
+        }
+        return mail.getMailId();
+    }
+
+    // 임시저장에서 발송
+    @Transactional
+    public Long sendDraft(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        if (!mail.getSender().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        if (mail.getStatus() != MailStatus.DRAFT) {
+            throw new CustomException(ErrorCode.MAIL_NOT_DRAFT);
+        }
+        List<MailRecipient> recipients = mailRecipientRepository.findByMail(mail);
+        if (recipients.isEmpty()) {
+            throw new CustomException(ErrorCode.MAIL_NO_RECIPIENT);
+        }
+        mail.setStatus(MailStatus.SENT);
+        mail.setSentAt(LocalDateTime.now());
+        return mail.getMailId();
+    }
+
+    // 답장
+    @Transactional
+    public Long reply(Long mailId, MailDto.ReplyRequest req, User user) {
+        Mail original = findMailById(mailId);
+        List<MailRecipient> recipients = mailRecipientRepository.findByMail(original);
+
+        boolean isRecipient = recipients.stream()
+                .anyMatch(r -> r.getRecipient().getUserId().equals(user.getUserId()));
+        if (!isRecipient) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+
+        String replyTitle = original.getTitle().startsWith("Re: ")
+                ? original.getTitle()
+                : "Re: " + original.getTitle();
+
+        Mail reply = Mail.builder()
+                .sender(user)
+                .title(replyTitle)
+                .body(req.getBody())
+                .status(MailStatus.SENT)
+                .sentAt(LocalDateTime.now())
+                .build();
+        mailRepository.save(reply);
+        saveRecipients(reply, List.of(original.getSender().getEmpNo()));
+        return reply.getMailId();
     }
 
     // 수신자 저장 공통 로직

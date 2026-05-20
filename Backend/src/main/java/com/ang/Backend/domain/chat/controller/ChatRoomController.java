@@ -4,12 +4,17 @@ import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
 import com.ang.Backend.domain.chat.dto.ChatDto;
+import com.ang.Backend.domain.chat.entity.ChatRoom;
+import com.ang.Backend.domain.chat.repository.ChatMemberRepository;
+import com.ang.Backend.domain.chat.repository.ChatRoomRepository;
 import com.ang.Backend.domain.chat.service.ChatMessageService;
 import com.ang.Backend.domain.chat.service.ChatRoomService;
 import com.ang.Backend.domain.file.service.S3FileService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -26,6 +31,8 @@ public class ChatRoomController {
     private final ChatRoomService chatRoomService;
     private final ChatMessageService chatMessageService;
     private final S3FileService s3FileService;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ChatMemberRepository chatMemberRepository;
     private final UserRepository userRepository;
 
     // 1:1 채팅방 생성 (이미 있으면 기존 방 반환)
@@ -103,6 +110,35 @@ public class ChatRoomController {
         User user = resolveUser(userDetails);
         chatRoomService.markAsRead(roomId, user);
         return ResponseEntity.ok(ApiResponse.ok("읽음 처리되었습니다."));
+    }
+
+    // 파일 다운로드
+    @GetMapping("/files")
+    public ResponseEntity<byte[]> downloadFile(
+            @RequestParam String key,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+
+        String[] parts = key.split("/");
+        if (parts.length < 2) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+        Long roomId = Long.parseLong(parts[1]);
+
+        ChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+
+        chatMemberRepository.findByRoomAndUser(room, user)
+                .filter(m -> m.getLeftAt() == null)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_CHAT_MEMBER));
+
+        byte[] bytes = s3FileService.download(key);
+        String fileName = key.substring(key.lastIndexOf("/") + 1);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(bytes);
     }
 
     // 파일 업로드 → S3 저장 후 URL 반환
