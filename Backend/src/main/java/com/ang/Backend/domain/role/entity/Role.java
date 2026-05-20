@@ -21,7 +21,7 @@ public class Role {
 
     @Column(name = "role_level", nullable = false)
     @Builder.Default
-    private int roleLevel = 0;
+    private int roleLevel = 1;
 
     @Column(name = "description", length = 255)
     private String description;

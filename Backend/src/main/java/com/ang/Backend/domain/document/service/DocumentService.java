@@ -126,10 +126,12 @@ public class DocumentService {
         return documentRepository.save(doc).getDocId();
     }
 
-    public List<DocumentDto.Response> getAllDocuments() {
-        return documentRepository.findAll().stream()
+    public List<DocumentDto.Response> getAllDocuments(User requester) {
+        List<DocumentDto.Response> list = documentRepository.findAll().stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+        setCanDeleteFlags(list, requester);
+        return list;
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -251,7 +253,9 @@ public class DocumentService {
                     .isAiGenerated(true)
                     .build();
 
-            return DocumentDto.Response.fromEntity(documentRepository.save(doc));
+            DocumentDto.Response res = DocumentDto.Response.fromEntity(documentRepository.save(doc));
+            res.setCanDelete(true); // AI로 본인이 생성한 것이므로 삭제 가능
+            return res;
         });
     }
 
@@ -263,10 +267,12 @@ public class DocumentService {
     }
 
     public List<DocumentDto.Response> getMyDocuments(User user) {
-        return documentRepository.findByOwner(user).stream()
+        List<DocumentDto.Response> list = documentRepository.findByOwner(user).stream()
                 .filter(d -> d.getScope() == null)
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+        setCanDeleteFlags(list, user);
+        return list;
     }
 
     public List<DocumentDto.Response> getDepartmentDocuments(User user, Integer targetScopeId, String keyword) {
@@ -343,9 +349,11 @@ public class DocumentService {
             }
         }
 
-        return documentRepository.searchByScopes(scopeIds, keyword).stream()
+        List<DocumentDto.Response> list = documentRepository.searchByScopes(scopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
+        setCanDeleteFlags(list, user);
+        return list;
     }
 
     private Scope getLevel2Ancestor(Scope scope) {
@@ -379,10 +387,15 @@ public class DocumentService {
         return false;
     }
 
-    public DocumentDto.Response getDocument(Long id) {
-        return documentRepository.findById(id)
+    public DocumentDto.Response getDocument(Long id, User requester) {
+        DocumentDto.Response res = documentRepository.findById(id)
                 .map(DocumentDto.Response::fromEntity)
                 .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
+        
+        if (requester != null) {
+            setCanDeleteFlags(List.of(res), requester);
+        }
+        return res;
     }
 
     @Transactional
@@ -395,9 +408,14 @@ public class DocumentService {
     }
 
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, User requester) {
         DocumentEntity doc = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 삭제 권한 체크
+        if (!canUserDelete(doc, requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 삭제할 권한이 없습니다.");
+        }
 
         if (doc.getFile() != null) {
             fileService.deletePhysicalFile(doc.getFile());
@@ -407,6 +425,58 @@ public class DocumentService {
             fileService.deletePhysicalFile(doc.getPreviewFile());
         }
         documentRepository.delete(doc);
+    }
+
+    private boolean canUserDelete(DocumentEntity doc, User requester) {
+        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(requester);
+        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
+
+        // 1. 최고 관리자 (Lv 100): 모든 파일 삭제 가능
+        if (maxLevel >= 100) return true;
+
+        // 2. 본인 파일인 경우: 삭제 가능
+        if (doc.getOwner() != null && doc.getOwner().getUserId().equals(requester.getUserId())) return true;
+
+        // 3. 중간 관리자 (Lv 50): 본인 팀(소속된 부서 및 하위 부서)의 파일 삭제 가능
+        if (maxLevel >= 50) {
+            if (doc.getScope() == null) return false;
+            
+            // 매니저가 관리하는 모든 부서(하위 포함) ID 목록
+            List<Integer> managedScopeIds = roles.stream()
+                    .filter(r -> r.getRole().getRoleLevel() >= 50)
+                    .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
+                    .distinct()
+                    .collect(Collectors.toList());
+            
+            return managedScopeIds.contains(doc.getScope().getScopeId());
+        }
+
+        return false;
+    }
+
+    private void setCanDeleteFlags(List<DocumentDto.Response> responses, User requester) {
+        if (responses == null || requester == null) return;
+        
+        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(requester);
+        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
+        
+        List<Integer> managedScopeIds = roles.stream()
+                .filter(r -> r.getRole().getRoleLevel() >= 50)
+                .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
+                .distinct()
+                .collect(Collectors.toList());
+
+        for (DocumentDto.Response res : responses) {
+            boolean canDelete = false;
+            if (maxLevel >= 100) {
+                canDelete = true;
+            } else if (res.getOwnerId() != null && res.getOwnerId().equals(requester.getUserId())) {
+                canDelete = true;
+            } else if (maxLevel >= 50 && res.getScopeId() != null) {
+                canDelete = managedScopeIds.contains(res.getScopeId());
+            }
+            res.setCanDelete(canDelete);
+        }
     }
 
     private String makeAiTitle(String prompt) {

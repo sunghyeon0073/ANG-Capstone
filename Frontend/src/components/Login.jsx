@@ -14,6 +14,7 @@ export default function Login() {
       const { data } = response.data
       localStorage.setItem('user', JSON.stringify(data.user))
       localStorage.setItem('token', data.accessToken)
+      localStorage.setItem('refreshToken', data.refreshToken)
       navigate('/dashboard')
     } catch (error) {
       const message = error.response?.data?.message || '로그인에 실패했습니다.'

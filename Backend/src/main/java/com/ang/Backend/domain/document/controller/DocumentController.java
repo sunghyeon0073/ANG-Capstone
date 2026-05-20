@@ -54,8 +54,12 @@ public class DocumentController {
     }
 
     @GetMapping
-    public ApiResponse<List<DocumentDto.Response>> getDocuments() {
-        return ApiResponse.ok(documentService.getAllDocuments());
+    public ApiResponse<List<DocumentDto.Response>> getDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = null;
+        if (userDetails != null) {
+            user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
+        }
+        return ApiResponse.ok(documentService.getAllDocuments(user));
     }
 
     @PostMapping("/ai-generate")
@@ -96,8 +100,12 @@ public class DocumentController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<DocumentDto.Response> getDocument(@PathVariable Long id) {
-        return ApiResponse.ok(documentService.getDocument(id));
+    public ApiResponse<DocumentDto.Response> getDocument(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        User user = null;
+        if (userDetails != null) {
+            user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
+        }
+        return ApiResponse.ok(documentService.getDocument(id, user));
     }
 
     @GetMapping("/{id}/original-content")
@@ -112,8 +120,12 @@ public class DocumentController {
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
-        documentService.delete(id);
+    public ApiResponse<Void> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        documentService.delete(id, user);
         return ApiResponse.ok(null);
     }
 }
