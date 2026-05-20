@@ -23,13 +23,9 @@ public class ScheduleService {
     public List<ScheduleDto.Response> getSchedules(User owner, LocalDate startDate, LocalDate endDate) {
         List<Schedule> schedules;
         if (startDate != null && endDate != null) {
-            schedules = scheduleRepository.findByOwnerAndScheduleDateBetweenOrderByScheduleDateAscStartTimeAsc(
-                    owner,
-                    startDate,
-                    endDate
-            );
+            schedules = scheduleRepository.findByOwnerAndDateRangeOverlap(owner, startDate, endDate);
         } else {
-            schedules = scheduleRepository.findByOwnerOrderByScheduleDateAscStartTimeAsc(owner);
+            schedules = scheduleRepository.findByOwnerOrderByStartDateAscStartTimeAsc(owner);
         }
 
         return schedules.stream()
@@ -41,7 +37,8 @@ public class ScheduleService {
     public ScheduleDto.Response create(ScheduleDto.SaveRequest request, User owner) {
         Schedule schedule = Schedule.builder()
                 .owner(owner)
-                .scheduleDate(request.getDate())
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
                 .title(request.getTitle().trim())
                 .startTime(request.getStartTime())
                 .endTime(request.getEndTime())
@@ -55,7 +52,8 @@ public class ScheduleService {
     public ScheduleDto.Response update(Long scheduleId, ScheduleDto.SaveRequest request, User owner) {
         Schedule schedule = getOwnedSchedule(scheduleId, owner);
         schedule.update(
-                request.getDate(),
+                request.getStartDate(),
+                request.getEndDate(),
                 request.getTitle().trim(),
                 request.getStartTime(),
                 request.getEndTime(),

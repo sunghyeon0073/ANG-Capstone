@@ -19,7 +19,10 @@ public class ScheduleDto {
     @NoArgsConstructor
     public static class SaveRequest {
         @NotNull
-        private LocalDate date;
+        private LocalDate startDate;
+
+        @NotNull
+        private LocalDate endDate;
 
         @NotBlank
         private String title;
@@ -37,7 +40,8 @@ public class ScheduleDto {
     @Builder
     public static class Response {
         private Long id;
-        private LocalDate date;
+        private LocalDate startDate;
+        private LocalDate endDate;
         private String title;
         private LocalTime startTime;
         private LocalTime endTime;
@@ -48,7 +52,8 @@ public class ScheduleDto {
         public static Response from(Schedule schedule) {
             return Response.builder()
                     .id(schedule.getScheduleId())
-                    .date(schedule.getScheduleDate())
+                    .startDate(schedule.getStartDate())
+                    .endDate(schedule.getEndDate())
                     .title(schedule.getTitle())
                     .startTime(schedule.getStartTime())
                     .endTime(schedule.getEndTime())

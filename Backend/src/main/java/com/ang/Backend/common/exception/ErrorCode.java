@@ -76,6 +76,8 @@ public enum ErrorCode {
     MAIL_NOT_FOUND(HttpStatus.NOT_FOUND, "메일을 찾을 수 없습니다."),
     MAIL_ACCESS_DENIED(HttpStatus.FORBIDDEN, "메일에 접근 권한이 없습니다."),
     MAIL_CANCEL_DENIED(HttpStatus.CONFLICT, "이미 읽은 수신자가 있어 발송을 취소할 수 없습니다."),
+    MAIL_NOT_DRAFT(HttpStatus.CONFLICT, "임시저장 상태의 메일이 아닙니다."),
+    MAIL_NO_RECIPIENT(HttpStatus.BAD_REQUEST, "수신자가 없어 발송할 수 없습니다."),
 
     // 알림
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다.");
