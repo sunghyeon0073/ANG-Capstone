@@ -157,7 +157,11 @@ export default function Organization({ currentSubPage = 'org-all' }) {
     try {
       setLoadingMembers(true);
       const res = await getScopeMembers(scopeId);
-      setMembersCache(prev => ({ ...prev, [scopeId]: res.data?.data || [] }));
+      const data = res.data?.data || [];
+      setMembersCache(prev => ({
+        ...prev,
+        [scopeId]: Array.isArray(data) ? data.filter(isVisibleOrgMember) : [],
+      }));
     } catch (error) {
       console.error('조직 구성원 로드 실패', error);
       setMembersCache(prev => ({ ...prev, [scopeId]: [] }));

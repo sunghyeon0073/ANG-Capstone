@@ -1,0 +1,27 @@
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    container_name: ang-db
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-ang}
+      MARIADB_USER: ${DB_USERNAME:-ang}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-ang_local_password}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-ang_root_password}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - ang-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-p${MARIADB_ROOT_PASSWORD:-ang_root_password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  ang-db-data:
