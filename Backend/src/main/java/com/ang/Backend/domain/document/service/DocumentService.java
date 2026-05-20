@@ -141,13 +141,6 @@ public class DocumentService {
         }
 
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds);
-        if (sourceDocId != null && (attachedDocIds == null || attachedDocIds.isEmpty())) {
-            String sourceContent = getOriginalContent(sourceDocId);
-            if (sourceContent != null && !sourceContent.isBlank()) {
-                finalPrompt = "다음 문서 내용을 참고하여 요청에 답해주세요.\n\n[문서 내용]\n"
-                        + sourceContent + "\n\n[요청]\n" + prompt;
-            }
-        }
 
         Map<String, String> aiRequest = Map.of("message", finalPrompt);
         @SuppressWarnings("unchecked")
