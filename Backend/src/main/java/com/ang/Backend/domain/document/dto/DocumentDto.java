@@ -11,6 +11,7 @@ public class DocumentDto {
     @Getter @NoArgsConstructor
     public static class AiGenerateRequest {
         private String prompt;
+        private String outputFormat;
         private Long sourceDocId;
         private List<Long> attachedDocIds;
     }
