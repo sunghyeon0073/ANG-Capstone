@@ -232,7 +232,7 @@ public class ScopeService {
                 .anyMatch(r -> isSameOrParent(r.getScope(), targetScope));
     }
 
-    private boolean isSameOrParent(Scope potentialParent, Scope target) {
+    public boolean isSameOrParent(Scope potentialParent, Scope target) {
         if (potentialParent.getScopeId().equals(target.getScopeId())) return true;
         Scope current = target.getParentScope();
         while (current != null) {

@@ -301,7 +301,7 @@ public class DocumentService {
                         break;
                     }
                     // 혹은 기존처럼 직계 부모-자식 관계인 경우도 허용
-                    if (isSameOrChild(myScope, targetScope)) {
+                    if (scopeService.isSameOrParent(myScope, targetScope)) {
                         hasAccess = true;
                         break;
                     }
