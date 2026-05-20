@@ -34,7 +34,7 @@ public class UserService {
     @Transactional(readOnly = true)
     public List<UserDto> getAllUsers() {
         return userRepository.findAll().stream()
-                .filter(u -> u.getStatus() != UserStatus.ANONYMIZED)
+                .filter(u -> u.getStatus() == UserStatus.ACTIVE)
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -58,27 +58,57 @@ public class UserService {
         return toDto(userRepository.save(user));
     }
 
+    /**
+     * 퇴사(익명화) 처리: 
+     * 히스토리는 유지하되 개인정보를 삭제함.
+     * 사번(empNo)을 그대로 유지하여 동일 사번으로의 재가입을 차단함.
+     */
     @Transactional
     public void anonymize(Integer userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        
+        String originalEmpNo = user.getEmpNo();
         String anonymizedName = anonymizeName(user.getName());
+        
         user.setName(anonymizedName);
         user.setEmail(null);
         user.setPhone(null);
         user.setBirthdate(null);
         user.setStatus(UserStatus.ANONYMIZED);
         user.setDeletedAt(LocalDateTime.now());
+        
         userRepository.save(user);
+
+        log.info("User {} ({}) anonymized for retirement. Re-registration with this ID is blocked.", originalEmpNo, user.getUserId());
     }
 
+    /**
+     * 가입 거절 처리:
+     * 거절된 사용자는 시스템 데이터가 없으므로 DB에서 완전히 삭제함.
+     * 이를 통해 동일한 사번으로 다시 가입 신청을 할 수 있도록 함.
+     */
+    @Transactional
+    public void rejectUser(Integer userId, String reason) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        
+        // 1. 소속 정보 및 권한 삭제
+        userRoleRepository.deleteByUser(user);
+        userMembershipRepository.deleteByUser(user);
+        
+        // 2. 사용자 본인 레코드 삭제
+        userRepository.delete(user);
+        
+        log.info("User {} signup rejected and record deleted to allow re-registration. Reason: {}", user.getEmpNo(), reason);
+    }
 
     @Transactional
     public void approveUser(Integer userId, Integer roleLevel, String position) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         
-        // 1. 상태 활성화 (직급은 기존 가입 시 설정된 값 유지)
+        // 1. 상태 활성화
         user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
 
@@ -95,22 +125,9 @@ public class UserService {
             com.ang.Backend.domain.role.entity.Role role = roleRepository.findByRoleLevel(roleLevel)
                     .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
             
-            // 기존 권한 삭제 후 새로운 권한 부여
             userRoleRepository.deleteByUserAndScope(user, membership.getScope());
             userRoleRepository.save(new UserRole(user, membership.getScope(), role));
         }
-    }
-
-    @Transactional
-    public void rejectUser(Integer userId, String reason) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-        
-        user.setStatus(UserStatus.REJECTED);
-        user.setRejectionReason(reason);
-        userRepository.save(user);
-        
-        log.info("User {} signup rejected. Reason: {}", user.getEmpNo(), reason);
     }
 
     @Transactional(readOnly = true)
@@ -129,7 +146,6 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
-    // 이름 또는 사번 키워드로 ACTIVE 사용자 검색 (메일 수신자 선택용)
     @Transactional(readOnly = true)
     public List<UserDto.RecipientSearchResult> searchUsers(String keyword) {
         return userRepository.searchByKeyword(keyword, UserStatus.ACTIVE).stream()
@@ -142,14 +158,12 @@ public class UserService {
     public UserDto toDto(User user) {
         List<UserMembership> memberships = userMembershipRepository.findByUser(user);
 
-        // 부서 이름 표시 로직 개선: COMPANY 타입을 제외한 실제 부서명을 우선 표시
         String dept = memberships.stream()
                 .map(UserMembership::getScope)
                 .filter(s -> s.getScopeType() != com.ang.Backend.common.enums.ScopeType.COMPANY)
                 .map(com.ang.Backend.domain.scope.entity.Scope::getName)
                 .collect(Collectors.joining(", "));
         
-        // 만약 COMPANY 소속만 있다면 (최상위 관리자 등) 그대로 표시
         if (dept.isEmpty()) {
             dept = memberships.stream()
                     .map(m -> m.getScope().getName())
@@ -161,45 +175,45 @@ public class UserService {
             .filter(java.util.Objects::nonNull)
             .distinct()
             .collect(Collectors.joining(", "));
-    if (computedPosition.isEmpty()) {
-        computedPosition = user.getPosition(); // Fallback to legacy
+        if (computedPosition.isEmpty()) {
+            computedPosition = user.getPosition();
+        }
+
+        List<UserDto.DepartmentInfo> departmentInfos = memberships.stream()
+                .map(m -> UserDto.DepartmentInfo.builder()
+                        .scopeId(m.getScope().getScopeId())
+                        .scopeName(m.getScope().getName())
+                        .scopeCode(m.getScope().getScopeCode())
+                        .position(m.getPosition())
+                        .build())
+                .collect(Collectors.toList());
+
+        List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
+        int maxLevel = roles.stream().mapToInt(ur -> ur.getRole().getRoleLevel()).max().orElse(0);
+        String roleLabel = maxLevel >= 100 ? "최고관리자" : maxLevel >= 50 ? "관리자" : "일반 사용자";
+
+        String avatar = user.getName() != null && user.getName().length() >= 2
+                ? user.getName().substring(0, 2).toUpperCase()
+                : (user.getName() != null ? user.getName().toUpperCase() : "");
+
+        return UserDto.builder()
+                .id(user.getUserId())
+                .empNo(user.getEmpNo())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .birthdate(user.getBirthdate())
+                .profileImageUrl(user.getProfileImageUrl())
+                .position(computedPosition)
+                .status(user.getStatus())
+                .dept(dept)
+                .role(roleLabel)
+                .roleLevel(maxLevel)
+                .avatar(avatar)
+                .rejectionReason(user.getRejectionReason())
+                .departments(departmentInfos)
+                .build();
     }
-
-    List<UserDto.DepartmentInfo> departmentInfos = memberships.stream()
-            .map(m -> UserDto.DepartmentInfo.builder()
-                    .scopeId(m.getScope().getScopeId())
-                    .scopeName(m.getScope().getName())
-                    .scopeCode(m.getScope().getScopeCode())
-                    .position(m.getPosition())
-                    .build())
-            .collect(Collectors.toList());
-
-    List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
-    int maxLevel = roles.stream().mapToInt(ur -> ur.getRole().getRoleLevel()).max().orElse(0);
-    String roleLabel = maxLevel >= 100 ? "최고관리자" : maxLevel >= 50 ? "관리자" : "일반 사용자";
-
-    String avatar = user.getName() != null && user.getName().length() >= 2
-            ? user.getName().substring(0, 2).toUpperCase()
-            : (user.getName() != null ? user.getName().toUpperCase() : "");
-
-    return UserDto.builder()
-            .id(user.getUserId())
-            .empNo(user.getEmpNo())
-            .name(user.getName())
-            .email(user.getEmail())
-            .phone(user.getPhone())
-            .birthdate(user.getBirthdate())
-            .profileImageUrl(user.getProfileImageUrl())
-            .position(computedPosition)
-            .status(user.getStatus())
-            .dept(dept)
-            .role(roleLabel)
-            .roleLevel(maxLevel)
-            .avatar(avatar)
-            .rejectionReason(user.getRejectionReason())
-            .departments(departmentInfos)
-            .build();
-}
 
     private String anonymizeName(String name) {
         if (name == null || name.isEmpty()) return "@";

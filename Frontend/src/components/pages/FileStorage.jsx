@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import api from '../../api/axios';
 import {
   getMyDocuments,
   getDepartmentDocuments,
@@ -40,7 +41,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       setIsLoading(true);
       const res = isMy
         ? await getMyDocuments()
-        : await getDepartmentDocuments(keyword);
+        : await getDepartmentDocuments({ keyword, scopeId: targetScopeId });
       setDocs(res.data?.data || []);
     } catch (error) {
       console.error('문서 로드 실패', error);
@@ -52,18 +53,50 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
 
   const fetchMyScopes = async () => {
     try {
-      const res = await getScopes();
-      // 조직도 API는 트리 구조이므로 평탄화하거나 현재 사용자가 속한 부서만 필터링해야 함
+      // /scopes/my 엔드포인트를 사용하여 본인이 접근 가능한(L2 이하) 부서 목록만 가져옴
+      const res = await api.get('/scopes/my');
       const data = res.data?.data || [];
-      const flatScopes = [];
-      const flatten = (items) => {
-        items.forEach(item => {
-          flatScopes.push({ id: item.id, name: item.name });
-          if (item.children) flatten(item.children);
+      
+      const map = {};
+      const roots = [];
+      data.forEach(item => { map[item.id] = { ...item, children: [] }; });
+      data.forEach(item => {
+        if (item.parentId && map[item.parentId]) {
+          map[item.parentId].children.push(map[item.id]);
+        } else {
+          roots.push(map[item.id]);
+        }
+      });
+
+      // 1단계(영진전문대학교)를 제외한 2단계 노드들을 최상위로 설정하거나, 
+      // /scopes/my 결과가 이미 필터링되어 있으므로 roots를 그대로 사용하되 depth 조정
+      const secondLevelNodes = [];
+      roots.forEach(root => {
+        // 만약 root가 1단계(대학교)면 그 자식들을 씀
+        if (root.parentId === null && root.children && root.children.length > 0 && data.length > 5) {
+             secondLevelNodes.push(...root.children);
+        } else {
+             secondLevelNodes.push(root);
+        }
+      });
+
+      const flatResult = [];
+      const flattenWithIndent = (nodes, depth = 0) => {
+        nodes.forEach(node => {
+          flatResult.push({
+            id: node.id,
+            name: (depth > 0 ? '　'.repeat(depth) + '└ ' : '') + node.name
+          });
+          if (node.children && node.children.length > 0) {
+            flattenWithIndent(node.children, depth + 1);
+          }
         });
       };
-      flatten(Array.isArray(data) ? data : [data]);
-      setMyScopes(flatScopes);
+      
+      // 중복 제거 및 계층형 표시
+      const finalNodes = roots.length > 0 ? roots : data;
+      flattenWithIndent(finalNodes);
+      setMyScopes(flatResult);
     } catch (error) {
       console.error('부서 목록 로드 실패', error);
     }
@@ -71,8 +104,8 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
 
   useEffect(() => {
     fetchDocs();
-    if (isMy) fetchMyScopes();
-  }, [currentSubPage]);
+    if (showList) fetchMyScopes();
+  }, [currentSubPage, targetScopeId]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -179,15 +212,27 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
         <h1>{getPageTitle()}</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {isShared && (
-            <form onSubmit={handleSearch} style={{ display: 'flex', gap: 4 }}>
-              <input
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                placeholder="검색어 입력"
-                style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd' }}
-              />
-              <button type="submit" className="btn btn-secondary" style={{ padding: '4px 12px' }}>검색</button>
-            </form>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <select
+                value={targetScopeId}
+                onChange={e => setTargetScopeId(e.target.value)}
+                style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 13 }}
+              >
+                <option value="">전체 부서</option>
+                {myScopes.map(scope => (
+                  <option key={scope.id} value={scope.id}>{scope.name}</option>
+                ))}
+              </select>
+              <form onSubmit={handleSearch} style={{ display: 'flex', gap: 4 }}>
+                <input
+                  value={keyword}
+                  onChange={e => setKeyword(e.target.value)}
+                  placeholder="검색어 입력"
+                  style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd' }}
+                />
+                <button type="submit" className="btn btn-secondary" style={{ padding: '4px 12px' }}>검색</button>
+              </form>
+            </div>
           )}
           {isMy && (
             <button className="btn btn-primary" onClick={() => setShowUpload(true)} style={{ padding: '4px 12px' }}>

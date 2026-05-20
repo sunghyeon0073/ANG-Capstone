@@ -48,6 +48,65 @@ public class ScopeService {
     }
 
     /**
+     * 자신을 포함한 모든 하위 스코프 목록을 재귀적으로 조회합니다.
+     */
+    public List<Scope> getAllSubScopes(Scope scope) {
+        List<Scope> scopes = new ArrayList<>();
+        scopes.add(scope);
+        
+        List<Scope> children = scopeRepository.findByParentScope(scope);
+        for (Scope child : children) {
+            scopes.addAll(getAllSubScopes(child));
+        }
+        return scopes;
+    }
+
+    public Scope getLevel2Ancestor(Scope scope) {
+        if (scope == null) return null;
+        
+        // Root (Level 1)
+        if (scope.getParentScope() == null) return null;
+        
+        // Level 2 (Parent is root)
+        if (scope.getParentScope().getParentScope() == null) return scope;
+        
+        // Level 3 (Parent is Level 2)
+        if (scope.getParentScope().getParentScope().getParentScope() == null) return scope.getParentScope();
+        
+        // 그 이상 깊이가 있다면 계속 위로 올라가서 Level 2를 찾음
+        Scope current = scope;
+        while (current.getParentScope() != null && current.getParentScope().getParentScope() != null) {
+            current = current.getParentScope();
+        }
+        return current;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Scope> getAccessibleScopes(User user) {
+        List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
+        boolean isSuperAdmin = roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100);
+        
+        if (isSuperAdmin) {
+            return scopeRepository.findAll();
+        }
+
+        List<Scope> myScopes = userMembershipRepository.findByUser(user).stream()
+                .map(UserMembership::getScope)
+                .toList();
+        
+        if (myScopes.isEmpty()) {
+            return List.of();
+        }
+
+        return myScopes.stream()
+                .map(this::getLevel2Ancestor)
+                .filter(java.util.Objects::nonNull)
+                .flatMap(l2 -> getAllSubScopes(l2).stream())
+                .distinct()
+                .toList();
+    }
+
+    /**
      * 새로운 조직(Scope)을 생성합니다.
      */
     @Transactional
@@ -173,7 +232,7 @@ public class ScopeService {
                 .anyMatch(r -> isSameOrParent(r.getScope(), targetScope));
     }
 
-    private boolean isSameOrParent(Scope potentialParent, Scope target) {
+    public boolean isSameOrParent(Scope potentialParent, Scope target) {
         if (potentialParent.getScopeId().equals(target.getScopeId())) return true;
         Scope current = target.getParentScope();
         while (current != null) {

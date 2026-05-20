@@ -53,21 +53,10 @@ public class ScopeController {
         }
         com.ang.Backend.domain.user.entity.User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         
-        // 최고관리자(100)면 전체 부서 조회, 아니면 본인 소속 부서만 조회
-        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
-        
-        boolean isSuperAdmin = roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100);
-        
-        List<ScopeDto> scopes;
-        if (isSuperAdmin) {
-            scopes = scopeRepository.findAll().stream()
-                    .map(ScopeDto::from)
-                    .collect(Collectors.toList());
-        } else {
-            scopes = userMembershipRepository.findByUser(user).stream()
-                    .map(m -> ScopeDto.from(m.getScope()))
-                    .collect(Collectors.toList());
-        }
+        List<ScopeDto> scopes = scopeService.getAccessibleScopes(user).stream()
+                .map(ScopeDto::from)
+                .collect(Collectors.toList());
+                
         return ResponseEntity.ok(ApiResponse.ok(scopes));
     }
 

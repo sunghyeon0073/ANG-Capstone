@@ -334,8 +334,8 @@ public class DocumentService {
                 
                 boolean hasAccess = false;
                 for (Scope myScope : myScopes) {
-                    Scope myLevel2 = getLevel2Ancestor(myScope);
-                    Scope targetLevel2 = getLevel2Ancestor(targetScope);
+                    Scope myLevel2 = scopeService.getLevel2Ancestor(myScope);
+                    Scope targetLevel2 = scopeService.getLevel2Ancestor(targetScope);
                     
                     if (myLevel2 != null && targetLevel2 != null && 
                         myLevel2.getScopeId().equals(targetLevel2.getScopeId())) {
@@ -343,7 +343,7 @@ public class DocumentService {
                         break;
                     }
                     // 혹은 기존처럼 직계 부모-자식 관계인 경우도 허용
-                    if (isSameOrChild(myScope, targetScope)) {
+                    if (scopeService.isSameOrParent(myScope, targetScope)) {
                         hasAccess = true;
                         break;
                     }
@@ -367,7 +367,7 @@ public class DocumentService {
 
                 // 사용자가 속한 모든 L2 조상들의 모든 하위 부서 ID를 모음
                 scopeIds = myScopes.stream()
-                        .map(this::getLevel2Ancestor)
+                        .map(scopeService::getLevel2Ancestor)
                         .filter(java.util.Objects::nonNull)
                         .flatMap(l2 -> scopeService.getAllSubScopeIds(l2).stream())
                         .distinct()
@@ -389,37 +389,6 @@ public class DocumentService {
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
         return list;
-    }
-
-    private Scope getLevel2Ancestor(Scope scope) {
-        if (scope == null) return null;
-        
-        // Root (Level 1)
-        if (scope.getParentScope() == null) return null;
-        
-        // Level 2 (Parent is root)
-        if (scope.getParentScope().getParentScope() == null) return scope;
-        
-        // Level 3 (Parent is Level 2)
-        if (scope.getParentScope().getParentScope().getParentScope() == null) return scope.getParentScope();
-        
-        // 그 이상 깊이가 있다면 계속 위로 올라가서 Level 2를 찾음
-        Scope current = scope;
-        while (current.getParentScope() != null && current.getParentScope().getParentScope() != null) {
-            current = current.getParentScope();
-        }
-        return current;
-    }
-
-    private boolean isSameOrChild(Scope parent, Scope target) {
-        if (parent.getScopeId().equals(target.getScopeId())) return true;
-        
-        Scope current = target.getParentScope();
-        while (current != null) {
-            if (current.getScopeId().equals(parent.getScopeId())) return true;
-            current = current.getParentScope();
-        }
-        return false;
     }
 
     public DocumentDto.Response getDocument(Long id, User requester) {
