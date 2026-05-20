@@ -206,13 +206,8 @@ export default function DocumentWriter() {
       setError(null)
     } catch (err) {
       console.error('문서 목록 조회 실패:', err)
-      if (isDevMockEnabled()) {
-        setDocuments(getMockDocuments(category, selectedScopeId))
-        setError(null)
-      } else {
-        setError('문서 목록을 불러올 수 없습니다.')
-        setDocuments([])
-      }
+      setError('문서 목록을 불러올 수 없습니다.')
+      setDocuments([])
     } finally {
       setLoading(false)
     }
