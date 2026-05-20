@@ -69,6 +69,8 @@ public enum ErrorCode {
     // 채팅
     CHAT_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "채팅방을 찾을 수 없습니다."),
     NOT_CHAT_MEMBER(HttpStatus.FORBIDDEN, "채팅방 멤버가 아닙니다."),
+    CHAT_ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 채팅방 멤버입니다."),
+    CHAT_PRIVATE_INVITE_DENIED(HttpStatus.BAD_REQUEST, "개인 채팅방에는 초대할 수 없습니다."),
 
     // 메일
     MAIL_NOT_FOUND(HttpStatus.NOT_FOUND, "메일을 찾을 수 없습니다."),
