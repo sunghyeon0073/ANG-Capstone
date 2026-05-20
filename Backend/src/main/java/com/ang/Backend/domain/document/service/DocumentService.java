@@ -502,7 +502,7 @@ public class DocumentService {
                 return "";
             }
 
-            String markdown = result.output();
+            String markdown = cleanParsedContent(result.output());
             if (markdown == null || markdown.isBlank()) {
                 log.warn("kordoc parsing returned empty markdown for {}", originalName);
                 return "";
@@ -552,6 +552,30 @@ public class DocumentService {
         } catch (Exception e) {
             log.warn("Parsed markdown S3 upload failed, originalContent will still be saved: {}", e.getMessage());
         }
+    }
+
+    private String cleanParsedContent(String content) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+
+        return content
+                .replaceAll("(?i)<\\s*br\\s*/?\\s*>", "\n")
+                .replaceAll("(?i)</\\s*(p|div|li|h[1-6])\\s*>", "\n")
+                .replaceAll("(?i)</\\s*tr\\s*>", "\n")
+                .replaceAll("(?i)</\\s*(td|th)\\s*>", "\t")
+                .replaceAll("(?is)<\\s*(script|style)\\b[^>]*>.*?</\\s*\\1\\s*>", "")
+                .replaceAll("(?is)<[^>]+>", "")
+                .replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
+                .replaceAll(" *\\n *", "\n")
+                .replaceAll("\\n{3,}", "\n\n")
+                .strip();
     }
 
     private FileItem createPreviewFile(MultipartFile file, User user, FileItem originalFile, String parsedContent) {
@@ -667,10 +691,15 @@ public class DocumentService {
                 <head>
                   <meta charset="UTF-8">
                   <style>
-                    body { font-family: 'Noto Sans CJK KR', sans-serif; font-size: 12pt; line-height: 1.55; white-space: pre-wrap; }
+                    body { font-family: 'Noto Sans CJK KR', sans-serif; font-size: 12pt; line-height: 1.55; }
+                    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+                    th, td { border: 1px solid #888; padding: 6px 8px; vertical-align: top; }
+                    th { background: #f2f2f2; font-weight: 700; }
+                    p { margin: 0 0 8px; }
+                    body.plain-text { white-space: pre-wrap; }
                   </style>
                 </head>
-                <body>""" + escapeHtml(content) + "</body></html>";
+                <body class="plain-text">""" + escapeHtml(cleanParsedContent(content)) + "</body></html>";
     }
 
     private String escapeHtml(String text) {
