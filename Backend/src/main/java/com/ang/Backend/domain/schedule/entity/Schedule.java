@@ -28,8 +28,11 @@ public class Schedule {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
-    @Column(name = "schedule_date", nullable = false)
-    private LocalDate scheduleDate;
+    @Column(name = "start_date", nullable = false)
+    private LocalDate startDate;
+
+    @Column(name = "end_date", nullable = false)
+    private LocalDate endDate;
 
     @Column(name = "title", nullable = false, length = 200)
     private String title;
@@ -51,8 +54,9 @@ public class Schedule {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public void update(LocalDate scheduleDate, String title, LocalTime startTime, LocalTime endTime, String description) {
-        this.scheduleDate = scheduleDate;
+    public void update(LocalDate startDate, LocalDate endDate, String title, LocalTime startTime, LocalTime endTime, String description) {
+        this.startDate = startDate;
+        this.endDate = endDate;
         this.title = title;
         this.startTime = startTime;
         this.endTime = endTime;

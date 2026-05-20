@@ -74,6 +74,16 @@ export default function Board({ me, currentSubPage = 'board' }) {
     setIsEdit(true);
   };
 
+  const handleOpenPost = (post) => {
+    // increment view count and set selected post
+    setPosts(prev => {
+      const updated = prev.map(p => p.id === post.id ? { ...p, views: (p.views || 0) + 1 } : p);
+      const updatedPost = updated.find(p => p.id === post.id);
+      setSelected(updatedPost);
+      return updated;
+    });
+  };
+
   const handleOpenEdit = () => {
     if (!selected) return;
     setFormData({ 
@@ -101,6 +111,7 @@ export default function Board({ me, currentSubPage = 'board' }) {
         author: myName,
         authorId: myId,
         date: new Date().toLocaleDateString(),
+        views: 0,
       };
       setPosts(prev => [newPost, ...prev]);
       showMsg("새 글이 등록되었습니다.");
@@ -131,27 +142,36 @@ export default function Board({ me, currentSubPage = 'board' }) {
         </div>
       )}
 
-      <div className="board-header">
-        <div>
-          <h1>{getBoardTitle()}</h1>
-        </div>
-        <button className="btn btn-primary" onClick={handleOpenCompose}>글쓰기</button>
-      </div>
-
       <div className="board-container">
         <div className="board-top">
-          <span className="board-count">총 {displayList.length}건</span>
-          <input type="text" placeholder="검색어를 입력하세요..." value={q} onChange={(e) => setQ(e.target.value)} className="board-search" />
+          <div className="board-left">
+            <span className="board-category">{getBoardTitle()}</span>
+            <span className="board-count">총 {displayList.length}건</span>
+          </div>
+          <div className="board-right">
+            <input type="text" placeholder="검색어를 입력하세요..." value={q} onChange={(e) => setQ(e.target.value)} className="board-search" />
+            <button className="btn btn-primary board-write-btn" onClick={handleOpenCompose}>글쓰기</button>
+          </div>
         </div>
 
         <div className="board-list">
+          {/* header labels */}
+          <div className="board-list-header">
+            <div></div>
+            <div className="board-list-label">제목</div>
+            <div className="board-list-label">작성자</div>
+            <div className="board-list-label">작성일</div>
+            <div className="board-list-label">조회수</div>
+          </div>
+
           {displayList.length > 0 ? (
             displayList.map((post) => (
-              <div key={post.id} onClick={() => setSelected(post)} className="board-item">
+              <div key={post.id} onClick={() => handleOpenPost(post)} className="board-item">
                 <div className="board-item-pin">{post.pinned ? '📌' : '·'}</div>
                 <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }}>{post.title}</div>
                 <div className="board-item-author">{post.author}</div>
                 <div className="board-item-date">{post.date}</div>
+                <div className="board-item-views">{post.views || 0}</div>
               </div>
             ))
           ) : (

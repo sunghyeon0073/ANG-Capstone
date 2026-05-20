@@ -26,7 +26,10 @@ const formatDate = (d) => {
 
 const normalizeTime = (time) => time?.slice(0, 5) || ''
 
-export default function Calendar() {
+const sortByTime = (list) => {
+  return [...list].sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'))
+}
+export default function Calendar({ showSidebar = true }) {
   const [date, setDate] = useState(new Date())
   const [activeStartDate, setActiveStartDate] = useState(() => {
     const today = new Date()
@@ -38,6 +41,8 @@ export default function Calendar() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
+    startDate: '',
+    endDate: '',
     startTime: '09:00',
     endTime: '10:00',
     description: ''
@@ -113,12 +118,24 @@ export default function Calendar() {
 
   const getSchedulesForDate = (d) => {
     const dateStr = formatDate(d)
-    return filteredSchedules.filter((schedule) => schedule.date === dateStr)
+    return filteredSchedules.filter((schedule) => {
+      // 단일 날짜 일정
+      if (schedule.date === dateStr) return true
+      
+      // 다중 날짜 일정 (startDate ~ endDate 범위)
+      if (schedule.startDate && schedule.endDate) {
+        return dateStr >= schedule.startDate && dateStr <= schedule.endDate
+      }
+      
+      return false
+    })
   }
 
   const resetForm = () => {
     setFormData({
       title: '',
+      startDate: formatDate(selectedDate || date),
+      endDate: formatDate(selectedDate || date),
       startTime: '09:00',
       endTime: '10:00',
       description: ''
@@ -141,10 +158,16 @@ export default function Calendar() {
       alert('일정 제목을 입력하세요')
       return
     }
+    
+    if (!formData.startDate || !formData.endDate) {
+      alert('시작일과 종료일을 선택하세요')
+      return
+    }
 
     try {
       await createSchedule({
-        date: formatDate(selectedDate || date),
+        startDate: formData.startDate,
+        endDate: formData.endDate,
         title: formData.title,
         startTime: formData.startTime,
         endTime: formData.endTime,
@@ -176,28 +199,32 @@ export default function Calendar() {
 
   const tileContent = ({ date: tileDate, view }) => {
     if (view !== 'month') return null
-
-    const daySchedules = getSchedulesForDate(tileDate)
+    const daySchedules = sortByTime(getSchedulesForDate(tileDate))
     if (daySchedules.length === 0) return null
 
     return (
       <div className="calendar-date-content">
-        {daySchedules.slice(0, 2).map((schedule) => (
-          <div key={schedule.id} className="calendar-schedule-dot" title={schedule.title} />
+        {daySchedules.slice(0, 3).map((schedule) => (
+          <div
+            key={schedule.id}
+            className={`calendar-schedule-item calendar-schedule-item--${getScheduleGroup(schedule)}`}
+            title={schedule.title}
+          >
+            {schedule.title}
+          </div>
         ))}
-        {daySchedules.length > 2 && <div className="calendar-more">+{daySchedules.length - 2}</div>}
+        {daySchedules.length > 3 && <div className="calendar-schedule-overflow">+{daySchedules.length - 3}</div>}
       </div>
     )
   }
 
-  const todaySchedules = getSchedulesForDate(date)
+  const todaySchedules = sortByTime(getSchedulesForDate(date))
 
   return (
     <div className="calendar-page">
       <div className="calendar-container">
         <div className="calendar-wrapper">
           <div className="calendar-toolbar">
-            
             <div className="calendar-filter-group" role="group" aria-label="일정 필터">
               <button
                 type="button"
@@ -263,9 +290,12 @@ export default function Calendar() {
             <div className="calendar-cells">
               {monthGrid.map((cellDate) => {
                 const classes = ['calendar-cell']
+                const daySchedules = sortByTime(getSchedulesForDate(cellDate))
+                const cellDateStr = formatDate(cellDate)
+                
                 if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
-                if (formatDate(cellDate) === formatDate(date)) classes.push('calendar-cell--selected')
-                if (getSchedulesForDate(cellDate).length > 0) classes.push('calendar-date-with-schedule')
+                if (cellDateStr === formatDate(date)) classes.push('calendar-cell--selected')
+                if (daySchedules.length > 0) classes.push('calendar-date-with-schedule')
 
                 return (
                   <div
@@ -275,11 +305,38 @@ export default function Calendar() {
                   >
                     <div className="calendar-cell-number">{cellDate.getDate()}</div>
                     <div className="calendar-cell-content">
-                      {getSchedulesForDate(cellDate).slice(0, 2).map((s) => (
-                        <div key={s.id} className="calendar-schedule-dot" title={s.title} />
-                      ))}
-                      {getSchedulesForDate(cellDate).length > 2 && (
-                        <div className="calendar-more">+{getSchedulesForDate(cellDate).length - 2}</div>
+                      {daySchedules.slice(0, 3).map((s) => {
+                        let itemClasses = `calendar-schedule-item calendar-schedule-item--${getScheduleGroup(s)}`
+                        
+                        // 다중 날짜 일정인 경우 위치 표시
+                        if (s.startDate && s.endDate) {
+                          if (cellDateStr === s.startDate && cellDateStr === s.endDate) {
+                            // 단일 날짜
+                            itemClasses += ' calendar-schedule-single'
+                          } else if (cellDateStr === s.startDate) {
+                            // 시작 날짜
+                            itemClasses += ' calendar-schedule-start'
+                          } else if (cellDateStr === s.endDate) {
+                            // 종료 날짜
+                            itemClasses += ' calendar-schedule-end'
+                          } else {
+                            // 중간 날짜
+                            itemClasses += ' calendar-schedule-middle'
+                          }
+                        }
+                        
+                        return (
+                          <div
+                            key={s.id}
+                            className={itemClasses}
+                            title={s.title}
+                          >
+                            {s.title}
+                          </div>
+                        )
+                      })}
+                      {daySchedules.length > 3 && (
+                        <div className="calendar-schedule-overflow">+{daySchedules.length - 3}</div>
                       )}
                     </div>
                   </div>
@@ -289,32 +346,34 @@ export default function Calendar() {
           </div>
         </div>
 
-        <div className="calendar-sidebar">
-          <h2>{date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
-          <div className="calendar-sidebar-count">총 {todaySchedules.length}개</div>
+        {showSidebar && (
+          <div className="calendar-sidebar">
+            <h2>{date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
+            <div className="calendar-sidebar-count">총 {todaySchedules.length}개</div>
 
-          {isLoading ? (
-            <div className="schedule-empty">불러오는 중...</div>
-          ) : todaySchedules.length > 0 ? (
-            <div className="schedule-list">
-              {todaySchedules.map((schedule) => (
-                <div key={schedule.id} className="schedule-item">
-                  <div className="schedule-time">{normalizeTime(schedule.startTime)} ~ {normalizeTime(schedule.endTime)}</div>
-                  <div className="schedule-title">{schedule.title}</div>
-                  {schedule.description && <div className="schedule-desc">{schedule.description}</div>}
-                  <button
-                    className="schedule-delete-btn"
-                    onClick={() => handleDeleteSchedule(schedule.id)}
-                  >
-                    삭제
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="schedule-empty">이 날짜에 일정이 없습니다</div>
-          )}
-        </div>
+            {isLoading ? (
+              <div className="schedule-empty">불러오는 중...</div>
+            ) : todaySchedules.length > 0 ? (
+              <div className="schedule-list">
+                {todaySchedules.map((schedule) => (
+                  <div key={schedule.id} className="schedule-item">
+                    <div className="schedule-time">{normalizeTime(schedule.startTime)} ~ {normalizeTime(schedule.endTime)}</div>
+                    <div className="schedule-title">{schedule.title}</div>
+                    {schedule.description && <div className="schedule-desc">{schedule.description}</div>}
+                    <button
+                      className="schedule-delete-btn"
+                      onClick={() => handleDeleteSchedule(schedule.id)}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="schedule-empty">이 날짜에 일정이 없습니다</div>
+            )}
+          </div>
+        )}
       </div>
 
       <SimpleModal open={isModalOpen} onClose={() => setIsModalOpen(false)} title="새 일정 추가">
@@ -328,6 +387,27 @@ export default function Calendar() {
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="calendar-input"
             />
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>시작일</label>
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                className="calendar-input"
+              />
+            </div>
+            <div className="form-group">
+              <label>종료일</label>
+              <input
+                type="date"
+                value={formData.endDate}
+                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                className="calendar-input"
+              />
+            </div>
           </div>
 
           <div className="form-row">

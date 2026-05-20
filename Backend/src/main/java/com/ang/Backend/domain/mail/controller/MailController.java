@@ -8,10 +8,13 @@ import com.ang.Backend.domain.mail.service.MailService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -104,6 +107,59 @@ public class MailController {
         User user = resolveUser(userDetails);
         mailService.deleteDraft(mailId, user);
         return ResponseEntity.ok(ApiResponse.ok("임시저장이 삭제되었습니다."));
+    }
+
+    // 파일 다운로드
+    @GetMapping("/files/{attachmentId}")
+    public ResponseEntity<byte[]> downloadFile(
+            @PathVariable Long attachmentId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        MailDto.FileDownloadData data = mailService.downloadFile(attachmentId, user);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + data.getFileName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(data.getBytes());
+    }
+
+    // 파일 업로드
+    @PostMapping("/files")
+    public ResponseEntity<ApiResponse<MailDto.FileUploadResponse>> uploadFile(
+            @RequestParam("mailId") Long mailId,
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok("파일이 업로드되었습니다.", mailService.uploadFile(mailId, file, user)));
+    }
+
+    // 임시저장 수정
+    @PutMapping("/{mailId}/draft")
+    public ResponseEntity<ApiResponse<Long>> updateDraft(
+            @PathVariable Long mailId,
+            @RequestBody MailDto.UpdateDraftRequest req,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok("임시저장이 수정되었습니다.", mailService.updateDraft(mailId, req, user)));
+    }
+
+    // 임시저장에서 발송
+    @PostMapping("/{mailId}/send")
+    public ResponseEntity<ApiResponse<Long>> sendDraft(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok("메일이 발송되었습니다.", mailService.sendDraft(mailId, user)));
+    }
+
+    // 답장
+    @PostMapping("/{mailId}/reply")
+    public ResponseEntity<ApiResponse<Long>> reply(
+            @PathVariable Long mailId,
+            @RequestBody MailDto.ReplyRequest req,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok("답장이 발송되었습니다.", mailService.reply(mailId, req, user)));
     }
 
     // 발송 취소

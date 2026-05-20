@@ -92,9 +92,6 @@ export default function Dashboard() {
     return null
   }
 
-  const mainCategory = getMainCategory(currentPage)
-  const hideSidebar = currentPage === 'mypage' || mainCategory === 'calendar' || mainCategory === 'document'
-
   return (
     <div className="dashboard">
       <TopNavBar
@@ -103,8 +100,8 @@ export default function Dashboard() {
         currentPage={currentPage}
         onPageChange={handlePageChange}
       />
-      <div className={`dashboard-content ${hideSidebar ? 'full-width' : ''}`}>
-        {!hideSidebar && (
+      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document') ? 'full-width' : ''}`}>
+        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && (
           <Sidebar
             currentPage={currentPage}
             onPageChange={handlePageChange}
