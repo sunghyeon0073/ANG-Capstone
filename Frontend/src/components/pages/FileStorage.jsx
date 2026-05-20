@@ -54,7 +54,6 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
     try {
       const res = await getScopes();
       // 조직도 API는 트리 구조이므로 평탄화하거나 현재 사용자가 속한 부서만 필터링해야 함
-      // 여기서는 일단 모든 부서 목록을 가져오는 것으로 가정 (또는 /scopes/my API가 있다면 좋음)
       const data = res.data?.data || [];
       const flatScopes = [];
       const flatten = (items) => {
@@ -307,15 +306,17 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                         다운로드
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDelete(doc.docId)}
-                      style={{
-                        background: '#ff4d4f', color: '#fff', border: 'none',
-                        borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12
-                      }}
-                    >
-                      삭제
-                    </button>
+                    {doc.canDelete && (
+                      <button
+                        onClick={() => handleDelete(doc.docId)}
+                        style={{
+                          background: '#ff4d4f', color: '#fff', border: 'none',
+                          borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12
+                        }}
+                      >
+                        삭제
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
