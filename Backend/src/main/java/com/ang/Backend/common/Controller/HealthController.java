@@ -17,6 +17,7 @@ public class HealthController {
             "status", "ok",
             "message", "연동 성공인가요?!",
             "timestamp", LocalDateTime.now().toString()
+
         );
     }
 }

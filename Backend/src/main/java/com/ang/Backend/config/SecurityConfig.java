@@ -70,6 +70,7 @@ public class SecurityConfig {
                                 "/api/health",
                                 "/documents/**",
                                 "/api/documents/**",
+                                "/ws/**",
                                 "/error"
                         ).permitAll()
                         .anyRequest().authenticated()

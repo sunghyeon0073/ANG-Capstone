@@ -37,11 +37,20 @@
 
 ## 📡 API 상세 명세서
 
-### 🔓 인증 (Authentication)
+### 🔓 인증 및 토큰 관리 (Authentication & JWT Refresh)
 | Method | Endpoint | Description | Payload | 비고 |
 | :--- | :--- | :--- | :--- | :--- |
 | `POST` | `/auth/login` | 로그인 | `{ "empNo": "admin", "password": "..." }` | JWT(AccessToken, RefreshToken) 반환 |
 | `POST` | `/auth/register` | 회원가입 | `{ "name", "empNo", "birthdate", "email", "password", "passwordConfirm", "scopeCode" }` | `scopeCode`는 조직도 내 고유 코드 |
+| `POST` | `/auth/refresh` | 토큰 재발급 | `{ "refreshToken": "..." }` | 만료된 AccessToken 갱신용 |
+
+#### 🔄 토큰 자동 갱신(Auto-Refresh) 프론트엔드 로직
+사용자가 로그인 상태를 끊김 없이 유지할 수 있도록 프론트엔드(`axios.js` Interceptor)에 자동 갱신 로직이 적용되어 있습니다.
+1. **정상 요청:** 프론트엔드는 발급받은 `AccessToken`을 헤더에 담아 API를 호출합니다.
+2. **토큰 만료 감지:** `AccessToken`(수명 30분)이 만료되면 백엔드는 **401 Unauthorized** 예외 응답을 반환합니다.
+3. **가로채기(Intercept):** 프론트엔드의 Axios 응답 인터셉터가 401 에러를 감지하고, 기존 API 요청을 잠시 보류합니다.
+4. **재발급 요청:** 브라우저(LocalStorage)에 저장된 `RefreshToken`을 사용하여 백엔드의 `/api/auth/refresh`로 새 토큰을 요청합니다.
+5. **재시도:** 새로운 `AccessToken`을 성공적으로 발급받으면 이를 저장하고, 방금 실패했던 원래의 API 요청을 새로운 토큰으로 **자동 재시도**합니다. 이 과정은 백그라운드에서 찰나의 순간에 이루어지므로 사용자는 오류를 인지하지 못합니다. (단, 리프레시 토큰마저 만료된 경우 로그아웃 처리)
 
 ### 👑 관리자 (Admin Management)
 | Method | Endpoint | Description | Payload / Params | 비고 |

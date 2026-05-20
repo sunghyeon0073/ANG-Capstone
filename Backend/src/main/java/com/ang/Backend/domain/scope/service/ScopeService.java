@@ -102,7 +102,7 @@ public class ScopeService {
                 .position(position != null && !position.trim().isEmpty() ? position : "사원")
                 .build());
 
-        Role defaultRole = roleRepository.findByRoleLevel(0)
+        Role defaultRole = roleRepository.findByRoleLevel(1)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
 
         userRoleRepository.save(new UserRole(targetUser, targetScope, defaultRole));

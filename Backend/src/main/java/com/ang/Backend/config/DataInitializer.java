@@ -86,7 +86,7 @@ public class DataInitializer {
     }
 
     private void initRoles() {
-        insertRoleIfAbsent(0,   "일반",      "일반 사용자 (팀원, 실무자)");
+        insertRoleIfAbsent(1,   "일반",      "일반 사용자 (팀원, 실무자)");
         insertRoleIfAbsent(50,  "관리자",     "부서 관리자 (팀장)");
         insertRoleIfAbsent(100, "최고관리자", "시스템 전체 운영자");
     }
@@ -104,8 +104,8 @@ public class DataInitializer {
     }
 
     private void initUsers() {
-        // 1. 최고 관리자 (admin)
-        insertUserIfAbsent("admin", "최고관리자", "admin@ang.com", 100, "COMPANY01", "시스템운영자", "qwer1234!");
+        // 1. 최고 관리자 (admin) - 평생교육원 소속 시스템운영자로 변경
+        insertUserIfAbsent("admin", "최고관리자", "admin@ang.com", 100, "DEPT_EDU", "시스템운영자", "qwer1234!");
 
         // 2. 평생교육원 원장님 (manager)
         insertUserIfAbsent("manager", "김기종", "manager@ang.com", 50, "DEPT_EDU", "원장", "qwer1234!");

@@ -28,4 +28,9 @@ public class AuthController {
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok(authService.login(request));
     }
+
+    @PostMapping("/refresh")
+    public ApiResponse<LoginResponse> refresh(@Valid @RequestBody com.ang.Backend.domain.auth.dto.RefreshRequest request) {
+        return ApiResponse.ok(authService.refresh(request.getRefreshToken()));
+    }
 }

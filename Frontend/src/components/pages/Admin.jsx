@@ -45,8 +45,9 @@ export default function Admin({ me, currentSubPage }) {
 
   const myLevel = me?.roleLevel || 0;
 
-  // 본인 권한보다 높은 레벨은 부여할 수 없도록 필터링
-  const availableRoles = ROLE_LEVELS.filter(r => r.value <= myLevel);
+  // 최고 관리자만 권한을 부여/변경할 수 있으며, 최고 관리자 권한 자체는 부여 대상에서 제외
+  const availableRoles = ROLE_LEVELS.filter(r => r.value < 100);
+  const isSuperAdmin = myLevel >= 100;
 
   // 대시보드 사이드바와 연동하기 위해 currentSubPage를 기준으로 탭 결정
   const activeTab = currentSubPage === 'admin-users' ? 'users' : 
@@ -87,11 +88,10 @@ export default function Admin({ me, currentSubPage }) {
   };
 
   const handleApprove = async (userId) => {
-    const roleLevel = selections[userId];
-    if (roleLevel === undefined) return alert('권한 레벨을 선택해주세요.');
     try {
       setApproving(prev => ({ ...prev, [userId]: true }));
-      await approveUser(userId, roleLevel, positionSelections[userId]);
+      // 레벨과 직급을 인자로 보내지 않음 (백엔드에서 일반 사용자/사원 기본값 처리)
+      await approveUser(userId);
       setPendingUsers(prev => prev.filter(u => u.id !== userId));
       alert('승인이 완료되었습니다.');
     } catch (error) {
@@ -155,11 +155,11 @@ export default function Admin({ me, currentSubPage }) {
   };
 
   const openUpdateRole = (userId, currentRoleLevel) => {
-    setEditingRole({ userId, roleLevel: currentRoleLevel });
+    setEditingRole({ userId, roleLevel: '', currentRoleLevel });
   };
 
   const submitUpdateRole = async () => {
-    if (!editingRole || !editingRole.roleLevel) return alert('권한을 선택해주세요.');
+    if (!editingRole || editingRole.roleLevel === '' || editingRole.roleLevel === undefined) return alert('권한을 선택해주세요.');
     try {
       await updateUserRole(editingRole.userId, editingRole.roleLevel);
       alert('권한이 변경되었습니다.');
@@ -229,30 +229,11 @@ export default function Admin({ me, currentSubPage }) {
                           <td style={tdStyle}>{user.empNo}</td>
                           <td style={tdStyle}>{user.name}</td>
                           <td style={tdStyle}>{user.dept}</td>
-                          <td style={tdStyle}>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <select
-                                onChange={e => setSelections(prev => ({ ...prev, [user.id]: parseInt(e.target.value) }))}
-                                style={selectStyle}
-                              >
-                                <option value="">레벨 선택</option>
-                                {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                              </select>
-                              <select
-                                onChange={e => setPositionSelections(prev => ({ ...prev, [user.id]: e.target.value }))}
-                                style={selectStyle}
-                                defaultValue=""
-                              >
-                                <option value="" disabled>직급 선택 (기본: 사원)</option>
-                                {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                              </select>
-                            </div>
-                          </td>
                           <td style={{ ...tdStyle, textAlign: 'center' }}>
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                               <button 
                                 onClick={() => handleApprove(user.id)}
-                                disabled={approving[user.id] || selections[user.id] === undefined}
+                                disabled={approving[user.id]}
                                 className="btn btn-primary"
                                 style={{ margin: 0, padding: '6px 16px' }}
                               >승인</button>
@@ -293,8 +274,8 @@ export default function Admin({ me, currentSubPage }) {
                           <td style={tdStyle}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <span style={roleBadgeStyle(user.roleLevel)}>{user.role}</span>
-                              {!isHigher && (
-                                  <button 
+                              {isSuperAdmin && (
+                                <button 
                                   onClick={() => openUpdateRole(user.id, user.roleLevel)} 
                                   style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--color-primary)', padding: '2px 6px', borderRadius: 4 }}
                                   onMouseOver={e => e.currentTarget.style.background = '#e6f7ff'}
@@ -461,7 +442,7 @@ export default function Admin({ me, currentSubPage }) {
               style={{ ...selectStyle, width: '100%', marginBottom: 20 }}
             >
               <option value="">권한 선택</option>
-              {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              {availableRoles.filter(r => r.value !== editingRole.currentRoleLevel).map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setEditingRole(null)}>취소</button>
@@ -490,25 +471,3 @@ const roleBadgeStyle = (level) => ({
   color: level >= 100 ? '#cf1322' : level >= 50 ? '#096dd9' : '#389e0d',
   border: level >= 100 ? '1px solid #ffa39e' : level >= 50 ? '1px solid #91d5ff' : '1px solid #b7eb8f'
 });
-
-const deptBadgeStyle = {
-  background: '#f0f0f0',
-  padding: '2px 8px',
-  borderRadius: 4,
-  fontSize: 12,
-  color: '#666'
-};
-
-const addBtnStyle = {
-  width: 24,
-  height: 24,
-  borderRadius: '50%',
-  border: '1px dashed #4A90D9',
-  background: 'white',
-  color: '#4A90D9',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontWeight: 'bold'
-};
