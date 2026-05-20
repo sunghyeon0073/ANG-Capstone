@@ -42,7 +42,19 @@ export const isExcelDocument = (doc) => {
   )
 }
 
-/** @returns {'pdf'|'image'|'word'|'excel'|'file'|'text'} */
+export const isTextDocument = (doc) => {
+  const contentType = doc?.fileContentType?.toLowerCase() || ''
+  const ext = getFileExtension(doc)
+  return contentType.startsWith('text/') || ['txt', 'md'].includes(ext)
+}
+
+export const isHwpDocument = (doc) => {
+  const contentType = doc?.fileContentType?.toLowerCase() || ''
+  const ext = getFileExtension(doc)
+  return contentType.includes('hwp') || ext === 'hwp'
+}
+
+/** @returns {'pdf'|'image'|'word'|'excel'|'hwp'|'file'|'text'} */
 export const getDocumentPreviewKind = (doc) => {
   const hasFile =
     doc?.fileId || doc?.previewFileId || doc?.mockPreviewUrl || doc?.mockPreviewHtml || doc?.mockTableData
@@ -52,6 +64,8 @@ export const getDocumentPreviewKind = (doc) => {
   if (isImageDocument(doc)) return 'image'
   if (isWordDocument(doc)) return 'word'
   if (isExcelDocument(doc)) return 'excel'
+  if (isHwpDocument(doc)) return 'hwp'
+  if (isTextDocument(doc)) return 'text'
   if (doc?.fileId || doc?.mockPreviewUrl) return 'file'
   return 'text'
 }
@@ -68,6 +82,7 @@ export const getFileTypeLabel = (doc) => {
     image: 'IMG',
     word: 'DOCX',
     excel: 'XLSX',
+    hwp: 'HWP',
     file: 'FILE',
     text: 'TXT',
   }
@@ -93,6 +108,7 @@ export const inferContentType = (fileName) => {
     csv: 'text/csv',
     txt: 'text/plain',
     md: 'text/markdown',
+    hwp: 'application/x-hwp',
   }
   return map[ext] || 'application/octet-stream'
 }
