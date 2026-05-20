@@ -2,7 +2,9 @@ package com.ang.Backend.domain.mail.dto;
 
 import com.ang.Backend.common.enums.MailStatus;
 import com.ang.Backend.domain.mail.entity.Mail;
+import com.ang.Backend.domain.mail.entity.MailAttachment;
 import com.ang.Backend.domain.mail.entity.MailRecipient;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,6 +30,30 @@ public class MailDto {
         private String title;
         private String body;
         private List<String> recipientEmpNos;
+    }
+
+    // 임시저장 수정 요청
+    @Getter
+    @NoArgsConstructor
+    public static class UpdateDraftRequest {
+        private String title;
+        private String body;
+        private List<String> recipientEmpNos;
+    }
+
+    // 답장 요청
+    @Getter
+    @NoArgsConstructor
+    public static class ReplyRequest {
+        private String body;
+    }
+
+    // 파일 다운로드 데이터 (내부 전달용)
+    @Getter
+    @AllArgsConstructor
+    public static class FileDownloadData {
+        private String fileName;
+        private byte[] bytes;
     }
 
     // 목록 조회용 (수신함/발신함)
@@ -71,6 +97,40 @@ public class MailDto {
         }
     }
 
+    // 첨부파일 정보 (상세 조회 응답용)
+    @Getter
+    @Builder
+    public static class AttachmentInfo {
+        private Long attachmentId;
+        private String fileUrl;
+        private String fileName;
+
+        public static AttachmentInfo from(MailAttachment attachment) {
+            return AttachmentInfo.builder()
+                    .attachmentId(attachment.getAttachmentId())
+                    .fileUrl(attachment.getFileUrl())
+                    .fileName(attachment.getFileName())
+                    .build();
+        }
+    }
+
+    // 파일 업로드 응답
+    @Getter
+    @Builder
+    public static class FileUploadResponse {
+        private Long attachmentId;
+        private String fileUrl;
+        private String fileName;
+
+        public static FileUploadResponse from(MailAttachment attachment) {
+            return FileUploadResponse.builder()
+                    .attachmentId(attachment.getAttachmentId())
+                    .fileUrl(attachment.getFileUrl())
+                    .fileName(attachment.getFileName())
+                    .build();
+        }
+    }
+
     // 메일 상세 조회용
     @Getter
     @Builder
@@ -85,8 +145,9 @@ public class MailDto {
         private LocalDateTime cancelledAt;
         private LocalDateTime createdAt;
         private List<RecipientInfo> recipients;
+        private List<AttachmentInfo> attachments;
 
-        public static MailDetail fromMail(Mail mail, List<MailRecipient> recipients) {
+        public static MailDetail fromMail(Mail mail, List<MailRecipient> recipients, List<MailAttachment> attachments) {
             return MailDetail.builder()
                     .mailId(mail.getMailId())
                     .title(mail.getTitle())
@@ -98,6 +159,7 @@ public class MailDto {
                     .cancelledAt(mail.getCancelledAt())
                     .createdAt(mail.getCreatedAt())
                     .recipients(recipients.stream().map(RecipientInfo::from).toList())
+                    .attachments(attachments.stream().map(AttachmentInfo::from).toList())
                     .build();
         }
     }
