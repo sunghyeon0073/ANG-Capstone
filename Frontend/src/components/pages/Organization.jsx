@@ -30,7 +30,28 @@ export default function Organization({ currentSubPage = 'org-all' }) {
         setIsLoading(true);
         const res = await getScopes();
         const data = res.data?.data || [];
-        setScopes(Array.isArray(data) ? data : [data]);
+        
+        // 트리 구조 생성
+        const map = {};
+        const roots = [];
+        data.forEach(item => { map[item.id] = { ...item, children: [] }; });
+        data.forEach(item => {
+          if (item.parentId && map[item.parentId]) {
+            map[item.parentId].children.push(map[item.id]);
+          } else {
+            roots.push(map[item.id]);
+          }
+        });
+
+        // 1단계(영진전문대학교)를 제외한 2단계 노드들을 최상위로 설정
+        const secondLevelNodes = [];
+        roots.forEach(root => {
+          if (root.children && root.children.length > 0) {
+            secondLevelNodes.push(...root.children);
+          }
+        });
+
+        setScopes(secondLevelNodes);
       } catch (error) {
         console.error('조직도 로드 실패', error);
       } finally {
@@ -80,7 +101,7 @@ export default function Organization({ currentSubPage = 'org-all' }) {
         >
           <span>{depth === 0 ? '🏢' : depth === 1 ? '🏬' : '👥'}</span>
           <span>{scope.name}</span>
-          <span style={{ fontSize: 11, opacity: 0.7 }}>({scope.type})</span>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>({scope.scopeType})</span>
           {hasChildren && <span style={{ marginLeft: 'auto' }}>{expanded ? '▲' : '▼'}</span>}
         </div>
         {expanded && hasChildren && scope.children.map(child => (
@@ -90,8 +111,8 @@ export default function Organization({ currentSubPage = 'org-all' }) {
     );
   };
 
-  // 부서 탭용: 최상위 아래 dept들
-  const deptScopes = scopes.flatMap(s => s.children || []);
+  // 부서 탭용: 2단계 부서(평생교육원 등) 목록
+  const deptScopes = scopes;
 
   return (
     <div className="org-page">

@@ -67,18 +67,47 @@ export default function Admin({ me, currentSubPage }) {
         const [userRes, scopeRes] = await Promise.all([getAllUsers(), getScopes()]);
         setAllUsers(userRes.data?.data || []);
         
-        const flat = [];
-        const flatten = (items) => {
-          items.forEach(i => {
-            flat.push({ id: i.id, name: i.name });
-            if (i.children) flatten(i.children);
+        const scopeData = scopeRes.data?.data || [];
+        
+        // 평면 구조의 데이터를 트리 구조로 변환하는 함수
+        const buildTree = (list) => {
+          const map = {};
+          const roots = [];
+          list.forEach(item => { map[item.id] = { ...item, children: [] }; });
+          list.forEach(item => {
+            if (item.parentId && map[item.parentId]) {
+              map[item.parentId].children.push(map[item.id]);
+            } else {
+              roots.push(map[item.id]);
+            }
+          });
+          return roots;
+        };
+
+        const tree = buildTree(scopeData);
+        // 1단계(영진전문대학교)를 제외하고 그 자식들(2단계)부터 시작
+        const secondLevelNodes = [];
+        tree.forEach(root => {
+          if (root.children && root.children.length > 0) {
+            secondLevelNodes.push(...root.children);
+          }
+        });
+
+        const flatResult = [];
+        const flattenWithIndent = (nodes, depth = 0) => {
+          nodes.forEach(node => {
+            flatResult.push({
+              id: node.id,
+              name: (depth > 0 ? '　'.repeat(depth) + '└ ' : '') + node.name
+            });
+            if (node.children && node.children.length > 0) {
+              flattenWithIndent(node.children, depth + 1);
+            }
           });
         };
-        const scopeData = scopeRes.data?.data;
-        if (scopeData) {
-          flatten(Array.isArray(scopeData) ? scopeData : [scopeData]);
-        }
-        setScopes(flat);
+        
+        flattenWithIndent(secondLevelNodes);
+        setScopes(flatResult);
       }
     } catch (error) {
       console.error('데이터 로드 실패', error);
@@ -180,10 +209,10 @@ export default function Admin({ me, currentSubPage }) {
       return;
     }
 
-    if (!window.confirm(`정말 [${targetUser.name}] 사용자를 퇴사(익명화) 처리하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`정말 [${targetUser.name}] 사용자를 퇴사(익명화) 처리하시겠습니까?\n사번이 유지되어 보안을 위해 해당 사번으로는 재가입이 불가능해집니다.`)) return;
     try {
       await deleteUser(targetUser.id);
-      alert('탈퇴 처리되었습니다.');
+      alert('퇴사 처리되었습니다.');
       loadData();
     } catch (error) {
       alert('처리 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
@@ -333,7 +362,7 @@ export default function Admin({ me, currentSubPage }) {
                                 onClick={() => handleUserDelete(user)}
                                 className="btn btn-danger"
                                 style={{ margin: 0, padding: '4px 10px', fontSize: 12 }}
-                              >강제퇴사</button>
+                              >퇴사</button>
                             )}
                           </td>
                         </tr>
@@ -359,7 +388,7 @@ export default function Admin({ me, currentSubPage }) {
             <h3>가입 승인 거절</h3>
             <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>
               <strong>[{rejectingUser.name}]</strong> 사용자의 가입 요청을 거절하시겠습니까?<br/>
-              거절 사유를 입력해주세요. 이 사유는 사용자에게 노출됩니다.
+              거절 시 해당 가입 정보는 삭제되며, 사용자는 동일한 사번으로 다시 가입할 수 있게 됩니다.
             </p>
             <textarea
               placeholder="거절 사유를 입력하세요..."

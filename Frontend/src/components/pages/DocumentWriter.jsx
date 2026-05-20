@@ -200,7 +200,7 @@ export default function DocumentWriter() {
         response = await getMyDocuments()
       } else {
         const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
-        response = await getDepartmentDocuments(null, scopeParam)
+        response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam })
       }
       setDocuments(response.data?.data || [])
       setError(null)
