@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 import { useCallback, useEffect, useMemo, useState } from 'react'
+=======
+import { useMemo, useState } from 'react'
+>>>>>>> Stashed changes
 import {
   FiArchive,
   FiCornerUpLeft,
@@ -8,10 +12,15 @@ import {
   FiPaperclip,
   FiRefreshCcw,
   FiSearch,
+<<<<<<< Updated upstream
+=======
+  FiSend,
+>>>>>>> Stashed changes
   FiStar,
   FiTrash2,
   FiX,
 } from 'react-icons/fi'
+<<<<<<< Updated upstream
 import {
   deleteInboxMail,
   deleteSentMail,
@@ -268,11 +277,54 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
   }, [mails, query])
 
   // 선택된 메일이 없으면 첫 번째 메일을 기본 상세 대상으로 잡습니다.
+=======
+
+const mailboxConfig = {
+  'mail-inbox': { title: '받은 메일함', empty: '받은 메일이 없습니다.' },
+  'mail-sent': { title: '보낸 메일함', empty: '보낸 메일이 없습니다.' },
+  'mail-important': { title: '즐겨찾기', empty: '즐겨찾기한 메일이 없습니다.' },
+  'mail-trash': { title: '휴지통', empty: '휴지통이 비어 있습니다.' },
+}
+
+const getInitial = (name) => name?.charAt(0) || '?'
+
+export default function Mail({ currentSubPage = 'mail-inbox', user }) {
+  const [mails, setMails] = useState([])
+  const [selectedId, setSelectedId] = useState(null)
+  const [query, setQuery] = useState('')
+  const [isComposerOpen, setIsComposerOpen] = useState(false)
+  const [draft, setDraft] = useState({ to: '', subject: '', body: '' })
+
+  const currentBox = currentSubPage || 'mail-inbox'
+  const config = mailboxConfig[currentBox] || mailboxConfig['mail-inbox']
+
+  const visibleMails = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+
+    return mails
+      .filter(mail => {
+        if (currentBox === 'mail-inbox') return mail.box === 'inbox'
+        if (currentBox === 'mail-sent') return mail.box === 'sent'
+        if (currentBox === 'mail-important') return mail.important && mail.box !== 'trash'
+        if (currentBox === 'mail-trash') return mail.box === 'trash'
+        return mail.box === 'inbox'
+      })
+      .filter(mail => {
+        if (!normalizedQuery) return true
+        return [mail.subject, mail.from, mail.to, mail.preview]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery)
+      })
+  }, [mails, currentBox, query])
+
+>>>>>>> Stashed changes
   const selectedMail = useMemo(() => {
     const currentSelected = visibleMails.find(mail => mail.id === selectedId)
     return currentSelected || visibleMails[0] || null
   }, [visibleMails, selectedId])
 
+<<<<<<< Updated upstream
   // 메일을 클릭하면 상세 API를 호출해서 오른쪽 본문 영역에 보여줄 데이터를 가져옵니다.
   const selectMail = async (id) => {
     setSelectedId(id)
@@ -309,11 +361,22 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
       : [...importantIds, key]
 
     persistImportantIds(nextIds)
+=======
+  const selectMail = (id) => {
+    setSelectedId(id)
+    setMails(prev => prev.map(mail => (
+      mail.id === id ? { ...mail, unread: false } : mail
+    )))
+  }
+
+  const toggleImportant = (id) => {
+>>>>>>> Stashed changes
     setMails(prev => prev.map(mail => (
       mail.id === id ? { ...mail, important: !mail.important } : mail
     )))
   }
 
+<<<<<<< Updated upstream
   // 임시저장 목록에서 다시 작성할 때, 저장된 내용을 작성 폼으로 옮깁니다.
   const openDraft = (mail) => {
     setDraft({
@@ -487,6 +550,45 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
     } finally {
       setIsReadStatusLoading(false)
     }
+=======
+  const moveToTrash = (id) => {
+    setMails(prev => prev.map(mail => (
+      mail.id === id
+        ? { ...mail, box: 'trash', deletedFrom: mail.box === 'trash' ? mail.deletedFrom : mail.box }
+        : mail
+    )))
+  }
+
+  const restoreMail = (id) => {
+    setMails(prev => prev.map(mail => (
+      mail.id === id ? { ...mail, box: mail.deletedFrom || 'inbox' } : mail
+    )))
+  }
+
+  const submitDraft = (event) => {
+    event.preventDefault()
+    if (!draft.to.trim() || !draft.subject.trim()) return
+
+    const newMail = {
+      id: Date.now(),
+      box: 'sent',
+      from: user?.name || '나',
+      to: draft.to,
+      subject: draft.subject,
+      preview: draft.body || '내용 없음',
+      body: draft.body || '내용 없음',
+      time: '방금',
+      date: '오늘',
+      important: false,
+      unread: false,
+      attachments: [],
+    }
+
+    setMails(prev => [newMail, ...prev])
+    setDraft({ to: '', subject: '', body: '' })
+    setIsComposerOpen(false)
+    setSelectedId(newMail.id)
+>>>>>>> Stashed changes
   }
 
   return (
@@ -494,6 +596,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
       <div className="mail-header">
         <div>
           <div className="mail-eyebrow">MAIL</div>
+<<<<<<< Updated upstream
           <h1>{config.title}</h1>
         </div>
       </div>
@@ -785,6 +888,176 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
         </>
       )}
 
+=======
+          <h1>메일함</h1>
+        </div>
+        <button className="mail-compose-btn" onClick={() => setIsComposerOpen(true)}>
+          <FiEdit3 />
+          메일 작성
+        </button>
+      </div>
+
+      <div className="mail-toolbar">
+        <div className="mail-search">
+          <FiSearch />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="메일 검색"
+          />
+        </div>
+        <button className="mail-icon-btn" aria-label="새로고침">
+          <FiRefreshCcw />
+        </button>
+      </div>
+
+      <div className="mail-shell">
+        <section className="mail-list-panel">
+          <div className="mail-list-title">
+            <h2>{config.title}</h2>
+            <span>{visibleMails.length}</span>
+          </div>
+
+          {visibleMails.length === 0 ? (
+            <div className="mail-empty">{config.empty}</div>
+          ) : (
+            <div className="mail-list">
+              {visibleMails.map(mail => (
+                <button
+                  key={mail.id}
+                  className={`mail-list-item ${selectedMail?.id === mail.id ? 'active' : ''} ${mail.unread ? 'unread' : ''}`}
+                  onClick={() => selectMail(mail.id)}
+                >
+                  <div className="mail-list-avatar">{getInitial(mail.box === 'sent' ? mail.to : mail.from)}</div>
+                  <div className="mail-list-main">
+                    <div className="mail-list-top">
+                      <strong>{mail.box === 'sent' ? mail.to : mail.from}</strong>
+                      <span>{mail.time}</span>
+                    </div>
+                    <div className="mail-list-subject">{mail.subject}</div>
+                    <p>{mail.preview}</p>
+                    <div className="mail-list-meta">
+                      {mail.attachments.length > 0 && <FiPaperclip />}
+                      {mail.important && <FiStar />}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="mail-detail-panel">
+          {selectedMail ? (
+            <>
+              <div className="mail-detail-head">
+                <div>
+                  <h2>{selectedMail.subject}</h2>
+                  <div className="mail-sender">
+                    <div className="mail-detail-avatar">
+                      {getInitial(selectedMail.box === 'sent' ? selectedMail.to : selectedMail.from)}
+                    </div>
+                    <div>
+                      <strong>{selectedMail.box === 'sent' ? selectedMail.to : selectedMail.from}</strong>
+                      <span>
+                        {selectedMail.box === 'sent' ? `받는 사람: ${selectedMail.to}` : `To ${selectedMail.to}`} · {selectedMail.date} · {selectedMail.time}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mail-actions">
+                  <button onClick={() => toggleImportant(selectedMail.id)} aria-label="즐겨찾기">
+                    <FiStar className={selectedMail.important ? 'mail-star-active' : ''} />
+                  </button>
+                  {currentBox === 'mail-trash' ? (
+                    <button onClick={() => restoreMail(selectedMail.id)} aria-label="복원">
+                      <FiArchive />
+                    </button>
+                  ) : (
+                    <button onClick={() => moveToTrash(selectedMail.id)} aria-label="삭제">
+                      <FiTrash2 />
+                    </button>
+                  )}
+                  <button aria-label="답장">
+                    <FiCornerUpLeft />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mail-body">{selectedMail.body}</div>
+
+              {selectedMail.attachments.length > 0 && (
+                <div className="mail-attachments">
+                  {selectedMail.attachments.map(file => (
+                    <div className="mail-attachment" key={file.name}>
+                      <div className="mail-file-icon">
+                        <FiFileText />
+                      </div>
+                      <div>
+                        <strong>{file.name}</strong>
+                        <span>{file.size}</span>
+                      </div>
+                      <button>
+                        <FiDownload />
+                        다운로드
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="mail-detail-empty">확인할 메일을 선택해주세요.</div>
+          )}
+        </section>
+      </div>
+
+      {isComposerOpen && (
+        <div className="mail-compose-overlay">
+          <form className="mail-compose-modal" onSubmit={submitDraft}>
+            <div className="mail-compose-header">
+              <h2>메일 작성</h2>
+              <button type="button" onClick={() => setIsComposerOpen(false)} aria-label="닫기">
+                <FiX />
+              </button>
+            </div>
+            <label>
+              받는 사람
+              <input
+                value={draft.to}
+                onChange={(event) => setDraft(prev => ({ ...prev, to: event.target.value }))}
+                placeholder="이름 또는 이메일"
+              />
+            </label>
+            <label>
+              제목
+              <input
+                value={draft.subject}
+                onChange={(event) => setDraft(prev => ({ ...prev, subject: event.target.value }))}
+                placeholder="제목을 입력하세요"
+              />
+            </label>
+            <label>
+              내용
+              <textarea
+                value={draft.body}
+                onChange={(event) => setDraft(prev => ({ ...prev, body: event.target.value }))}
+                placeholder="메일 내용을 입력하세요"
+              />
+            </label>
+            <div className="mail-compose-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setIsComposerOpen(false)}>
+                취소
+              </button>
+              <button type="submit" className="btn btn-primary">
+                <FiSend />
+                보내기
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+>>>>>>> Stashed changes
     </div>
   )
 }

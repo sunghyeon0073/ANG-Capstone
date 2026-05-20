@@ -1053,19 +1053,31 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+<<<<<<< Updated upstream
   padding: 46px 0 66px;
+=======
+  padding: 36px 0 56px;
+>>>>>>> Stashed changes
   overflow-x: auto;
 }
 
 .org-tree > .tree-parent {
+<<<<<<< Updated upstream
   min-width: 920px;
+=======
+  min-width: 720px;
+>>>>>>> Stashed changes
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
 .org-dept-tree > .tree-parent {
+<<<<<<< Updated upstream
   min-width: 520px;
+=======
+  min-width: 360px;
+>>>>>>> Stashed changes
 }
 
 .org-dept-view {
@@ -1103,11 +1115,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+<<<<<<< Updated upstream
   gap: 12px;
   margin: 0;
   position: relative;
   z-index: 2;
   width: 190px;
+=======
+  gap: 10px;
+  margin: 0;
+  position: relative;
+  z-index: 2;
+  width: 150px;
+>>>>>>> Stashed changes
   border: 0;
   background: transparent;
   font: inherit;
@@ -1118,6 +1138,7 @@
 }
 
 .org-page .profile-avatar {
+<<<<<<< Updated upstream
   width: 50px;
   height: 50px;
   font-size: 20px;
@@ -1129,6 +1150,19 @@
   color: #fff;
   border-radius: 14px;
   font-size: 14px;
+=======
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+
+.profile-role {
+  padding: 4px 13px;
+  background: #00798c;
+  color: #fff;
+  border-radius: 12px;
+  font-size: 13px;
+>>>>>>> Stashed changes
   font-weight: bold;
 }
 
@@ -1154,8 +1188,13 @@
   color: #ccc;
 }
 
+<<<<<<< Updated upstream
 .org-page .profile-name {
   font-size: 18px;
+=======
+.profile-name {
+  font-size: 16px;
+>>>>>>> Stashed changes
   font-weight: bold;
   color: #333;
 }
@@ -1173,9 +1212,15 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
+<<<<<<< Updated upstream
   gap: 72px;
   position: relative;
   margin-top: 30px;
+=======
+  gap: 64px;
+  position: relative;
+  margin-top: 24px;
+>>>>>>> Stashed changes
 }
 
 .org-children-block {
@@ -1187,7 +1232,11 @@
 
 .org-connector-down {
   width: 2px;
+<<<<<<< Updated upstream
   height: 38px;
+=======
+  height: 32px;
+>>>>>>> Stashed changes
   background: #c8d3e0;
 }
 
@@ -1195,7 +1244,11 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
+<<<<<<< Updated upstream
   gap: 72px;
+=======
+  gap: 64px;
+>>>>>>> Stashed changes
   position: relative;
 }
 
@@ -1203,8 +1256,13 @@
   content: "";
   position: absolute;
   top: 0;
+<<<<<<< Updated upstream
   left: 95px;
   right: 95px;
+=======
+  left: 75px;
+  right: 75px;
+>>>>>>> Stashed changes
   height: 2px;
   background: #c8d3e0;
   z-index: 0;
@@ -1215,7 +1273,11 @@
 }
 
 .org-child-node {
+<<<<<<< Updated upstream
   width: 190px;
+=======
+  width: 150px;
+>>>>>>> Stashed changes
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1227,17 +1289,28 @@
   content: "";
   display: block;
   width: 2px;
+<<<<<<< Updated upstream
   height: 28px;
   background: #c8d3e0;
   margin-bottom: 12px;
+=======
+  height: 24px;
+  background: #c8d3e0;
+  margin-bottom: 10px;
+>>>>>>> Stashed changes
 }
 
 .tree-level {
   display: flex;
   justify-content: center;
   align-items: flex-start;
+<<<<<<< Updated upstream
   position: relative;
   gap: 64px;
+=======
+  gap: 64px;
+  position: relative;
+>>>>>>> Stashed changes
   margin-top: 24px;
 }
 
@@ -1249,11 +1322,56 @@
   width: max-content;
   padding-top: 28px;
   margin-top: 0;
+<<<<<<< Updated upstream
+=======
+}
+
+.tree-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 28px;
+  background: #c8d3e0;
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+.tree-children .tree-level::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 75px;
+  right: 75px;
+  height: 2px;
+  background: #c8d3e0;
+  z-index: 0;
+}
+
+.tree-children-single .tree-level::before {
+  display: none;
+}
+
+.tree-children .tree-level {
+  margin-top: 0;
+>>>>>>> Stashed changes
 }
 
 .team-group {
   position: relative;
-  padding: 0 20px;
+  width: 150px;
+  padding: 0;
+}
+
+.team-group::before {
+  content: "";
+  display: block;
+  width: 2px;
+  height: 24px;
+  background: #c8d3e0;
+  margin-bottom: 10px;
+  z-index: 0;
 }
 
 .org-team-group {
@@ -1263,6 +1381,7 @@
 }
 
 .team-dept-label {
+<<<<<<< Updated upstream
   background: #f0f0f0;
   max-width: 230px;
   padding: 5px 18px;
@@ -1274,6 +1393,22 @@
   z-index: 2;
   line-height: 1.2;
   white-space: nowrap;
+=======
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 15px;
+  font-weight: bold;
+  color: #666;
+  margin: 0;
+  z-index: 2;
+  width: 100%;
+  text-align: center;
+}
+
+.org-team-group .team-dept-label {
+  margin: 0;
+>>>>>>> Stashed changes
 }
 
 .team-empty {
@@ -2666,16 +2801,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+<<<<<<< Updated upstream
   gap: 16px;
+=======
+>>>>>>> Stashed changes
   margin-bottom: 16px;
 }
 
 .mail-eyebrow {
+<<<<<<< Updated upstream
   margin-bottom: 6px;
+=======
+>>>>>>> Stashed changes
   color: #8a918d;
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+<<<<<<< Updated upstream
+=======
+  margin-bottom: 6px;
+>>>>>>> Stashed changes
 }
 
 .mail-header h1 {
@@ -2684,6 +2829,23 @@
   font-size: 26px;
 }
 
+<<<<<<< Updated upstream
+=======
+.mail-compose-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #00798c;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(0, 121, 140, 0.18);
+}
+
+>>>>>>> Stashed changes
 .mail-toolbar {
   display: flex;
   align-items: center;
@@ -2702,7 +2864,11 @@
   border-radius: 8px;
   padding: 0 12px;
   background: #fff;
+<<<<<<< Updated upstream
   color: #788783;
+=======
+  color: #789;
+>>>>>>> Stashed changes
 }
 
 .mail-search input {
@@ -2711,7 +2877,10 @@
   border: 0;
   outline: 0;
   background: transparent;
+<<<<<<< Updated upstream
   color: #1f2d2f;
+=======
+>>>>>>> Stashed changes
 }
 
 .mail-icon-btn {
@@ -2724,6 +2893,7 @@
   cursor: pointer;
 }
 
+<<<<<<< Updated upstream
 .mail-error {
   margin-bottom: 14px;
   border: 1px solid #f3b4ad;
@@ -2734,6 +2904,8 @@
   font-size: 13px;
 }
 
+=======
+>>>>>>> Stashed changes
 .mail-shell {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
@@ -2928,6 +3100,7 @@
   white-space: pre-line;
 }
 
+<<<<<<< Updated upstream
 .mail-read-status {
   max-width: 860px;
   margin-bottom: 22px;
@@ -3024,6 +3197,8 @@
   text-align: center;
 }
 
+=======
+>>>>>>> Stashed changes
 .mail-attachments {
   display: flex;
   flex-direction: column;
@@ -3075,6 +3250,7 @@
   cursor: pointer;
 }
 
+<<<<<<< Updated upstream
 .mail-compose-panel {
   width: 100%;
   min-height: 620px;
@@ -3338,6 +3514,68 @@
   background: #edf3f1;
   color: #61706b;
   cursor: pointer;
+=======
+.mail-compose-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 29, 30, 0.32);
+}
+
+.mail-compose-modal {
+  width: min(620px, calc(100vw - 40px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-radius: 12px;
+  padding: 24px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+}
+
+.mail-compose-header,
+.mail-compose-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mail-compose-header h2 {
+  margin: 0;
+}
+
+.mail-compose-header button {
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.mail-compose-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #4c5955;
+  font-weight: 700;
+}
+
+.mail-compose-modal input,
+.mail-compose-modal textarea {
+  border: 1px solid #dce3e0;
+  border-radius: 8px;
+  padding: 11px 12px;
+  font: inherit;
+  outline: 0;
+}
+
+.mail-compose-modal textarea {
+  min-height: 180px;
+  resize: vertical;
+>>>>>>> Stashed changes
 }
 
 @media (max-width: 980px) {
