@@ -15,8 +15,10 @@ const iconMap = {
   'file-trash': FiTrash2,
   'board-notice': FiBell,
   'board-general': FiEdit3,
+  'mail-compose': FiMessageSquare,
   'mail-inbox': FiInbox,
   'mail-sent': FiSend,
+  'mail-drafts': FiFolder,
   'mail-important': FiStar,
   'mail-trash': FiTrash2,
   'org-all': FiList,
@@ -48,8 +50,10 @@ export const SIDEBAR_MENUS = {
     { id: 'board-general', label: '자유게시판' }
   ],
   mail: [
+    { id: 'mail-compose', label: '메일작성' },
     { id: 'mail-inbox', label: '받은메일' },
     { id: 'mail-sent', label: '보낸메일' },
+    { id: 'mail-drafts', label: '임시보관함' },
     { id: 'mail-important', label: '중요' },
     { id: 'mail-trash', label: '휴지통' }
   ],
