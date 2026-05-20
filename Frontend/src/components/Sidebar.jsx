@@ -1,4 +1,4 @@
-import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield } from 'react-icons/fi'
+import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield, FiImage } from 'react-icons/fi'
 
 const iconMap = {
   'home-dashboard': FiHome,
@@ -53,8 +53,8 @@ export const SIDEBAR_MENUS = {
     { id: 'mail-compose', label: '메일작성' },
     { id: 'mail-inbox', label: '받은메일' },
     { id: 'mail-sent', label: '보낸메일' },
-    { id: 'mail-drafts', label: '임시보관함' },
     { id: 'mail-important', label: '중요' },
+    { id: 'mail-drafts', label: '임시보관함' },
     { id: 'mail-trash', label: '휴지통' }
   ],
   org: [

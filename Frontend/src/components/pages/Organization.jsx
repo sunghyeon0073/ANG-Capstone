@@ -1,18 +1,41 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getScopes, getScopeMembers } from '../../api/scopeApi';
 
-const positionOrder = { '원장': 1, '팀장': 2, '팀원': 3 };
+const positionOrder = { 원장: 1, 팀장: 2, 팀원: 3 };
 
+const getScopeId = scope => scope.id ?? scope.scopeId;
+const getScopeName = scope => scope.name ?? scope.scopeName;
+const getScopeType = scope => scope.scopeType ?? scope.type;
+const getParentId = scope => scope.parentId ?? scope.parentScopeId ?? scope.parent?.id ?? scope.parent?.scopeId;
 const getMemberId = member => member.id ?? member.userId ?? member.empNo;
 const getInitials = name => name?.charAt(0) || '?';
+
+const getPositionInScope = (member, scopeId) => {
+  const scopedPosition = member.departments?.find(dept => (dept.scopeId ?? dept.id) === scopeId)?.position;
+  return scopedPosition || member.position || '직급 미정';
+};
+
+const isVisibleOrgMember = member => (member.roleLevel ?? 0) < 100;
+const hasPosition = (member, scopeId, keyword) => getPositionInScope(member, scopeId).includes(keyword);
+
+const sortMembersByPosition = (members, scopeId) => (
+  [...members].sort((a, b) => {
+    const aPosition = getPositionInScope(a, scopeId);
+    const bPosition = getPositionInScope(b, scopeId);
+    return (positionOrder[aPosition] || 99) - (positionOrder[bPosition] || 99);
+  })
+);
 
 const buildScopeTree = scopeList => {
   const scopeMap = new Map(
     scopeList.map(scope => [
-      scope.id,
+      getScopeId(scope),
       {
         ...scope,
-        type: scope.scopeType ?? scope.type,
+        id: getScopeId(scope),
+        name: getScopeName(scope),
+        type: getScopeType(scope),
+        parentId: getParentId(scope),
         children: [],
       },
     ])
@@ -37,22 +60,6 @@ const buildScopeTree = scopeList => {
   return roots;
 };
 
-const getPositionInScope = (member, scopeId) => {
-  const scopedPosition = member.departments?.find(dept => dept.scopeId === scopeId)?.position;
-  return scopedPosition || member.position || '직급 미정';
-};
-
-const isVisibleOrgMember = member => (member.roleLevel ?? 0) < 100;
-const hasPosition = (member, scopeId, keyword) => getPositionInScope(member, scopeId).includes(keyword);
-
-const sortMembersByPosition = (members, scopeId) => {
-  return [...members].sort((a, b) => {
-    const aPosition = getPositionInScope(a, scopeId);
-    const bPosition = getPositionInScope(b, scopeId);
-    return (positionOrder[aPosition] || 99) - (positionOrder[bPosition] || 99);
-  });
-};
-
 const SimpleModal = ({ open, onClose, children }) => {
   if (!open) return null;
 
@@ -72,9 +79,7 @@ const MemberCard = ({ member, scopeId, onClick, teamName }) => (
     onClick={() => onClick(member)}
   >
     {teamName && <div className="team-dept-label">{teamName}</div>}
-    <div className="profile-avatar">
-      {getInitials(member.name)}
-    </div>
+    <div className="profile-avatar">{getInitials(member.name)}</div>
     <div className="profile-name">{member.name}</div>
     <div className="profile-role">{getPositionInScope(member, scopeId)}</div>
   </button>
@@ -88,6 +93,13 @@ export default function Organization({ currentSubPage = 'org-all' }) {
   const [activeTab, setActiveTab] = useState(null);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const scopeTree = useMemo(() => buildScopeTree(scopes), [scopes]);
+  const orgUnits = useMemo(() => {
+    const departments = scopes.filter(scope => getScopeType(scope) === 'DEPARTMENT');
+    return departments.length > 0 ? departments : scopeTree.flatMap(scope => scope.children || []);
+  }, [scopeTree, scopes]);
+  const deptScopes = useMemo(() => (orgUnits.length > 0 ? orgUnits : scopeTree), [orgUnits, scopeTree]);
 
   useEffect(() => {
     const fetchScopes = async () => {
@@ -111,116 +123,82 @@ export default function Organization({ currentSubPage = 'org-all' }) {
     fetchScopes();
   }, []);
 
-  const fetchMembers = async scopeId => {
-    if (membersCache[scopeId]) return;
+  useEffect(() => {
+    if (currentSubPage !== 'org-dept') return;
+    if (!activeTab && orgUnits.length > 0) {
+      setActiveTab(orgUnits[0]);
+    }
+  }, [activeTab, currentSubPage, orgUnits]);
+
+  const loadMembers = async scope => {
+    const scopeId = getScopeId(scope);
+    if (!scopeId || membersCache[scopeId]) return;
+
+    setLoadingMembers(true);
+    setErrorMessage('');
 
     try {
-      setLoadingMembers(true);
       const res = await getScopeMembers(scopeId);
-      setMembersCache(prev => ({ ...prev, [scopeId]: res.data?.data || [] }));
+      const data = res.data?.data || [];
+      setMembersCache(prev => ({
+        ...prev,
+        [scopeId]: Array.isArray(data) ? data.filter(isVisibleOrgMember) : [],
+      }));
     } catch (error) {
-      console.error('조직 구성원 로드 실패', error);
+      console.error('구성원 로드 실패', error);
       setMembersCache(prev => ({ ...prev, [scopeId]: [] }));
-      setErrorMessage('조직 구성원을 불러오지 못했습니다.');
+      setErrorMessage('구성원 데이터를 불러오지 못했습니다.');
     } finally {
       setLoadingMembers(false);
     }
   };
 
-  const handleTabChange = scope => {
-    setActiveTab(scope);
-    fetchMembers(scope.id);
+  useEffect(() => {
+    if (activeTab) {
+      loadMembers(activeTab);
+    }
+  }, [activeTab]);
+
+  const handleTabChange = unit => {
+    setActiveTab(unit);
+    loadMembers(unit);
   };
 
-  const scopeTree = useMemo(() => buildScopeTree(scopes), [scopes]);
-  const companyScopes = useMemo(
-    () => scopeTree.filter(scope => scope.type === 'COMPANY'),
-    [scopeTree]
-  );
-  const deptScopes = useMemo(
-    () => companyScopes
-      .flatMap(company => company.children)
-      .filter(scope => scope.type === 'DEPARTMENT'),
-    [companyScopes]
-  );
-  const orgUnits = useMemo(
-    () => deptScopes.flatMap(dept => (dept.children?.length > 0 ? dept.children : [dept])),
-    [deptScopes]
-  );
+  const getMembersForScope = scope => {
+    const scopeId = getScopeId(scope);
+    return sortMembersByPosition(membersCache[scopeId] || [], scopeId);
+  };
 
-  useEffect(() => {
-    if (currentSubPage !== 'org-all' || deptScopes.length === 0) return;
-
-    deptScopes.forEach(dept => {
-      fetchMembers(dept.id);
-      dept.children?.forEach(team => fetchMembers(team.id));
-    });
-  }, [currentSubPage, deptScopes]);
-
-  const selectedMembers = activeTab
-    ? sortMembersByPosition(
-        (membersCache[activeTab.id] || [])
-          .filter(isVisibleOrgMember)
-          .filter(member => {
-            const position = getPositionInScope(member, activeTab.id);
-            return position.includes('팀장') || position.includes('팀원');
-          }),
-        activeTab.id
-      )
-    : [];
-
-  const selectedLeaders = activeTab
-    ? selectedMembers.filter(member => hasPosition(member, activeTab.id, '팀장'))
-    : [];
-
-  const selectedTeamMembers = activeTab
-    ? selectedMembers.filter(member => hasPosition(member, activeTab.id, '팀원'))
-    : [];
-
-  const OrgTree = ({ dept }) => {
-    const directors = sortMembersByPosition(
-      (membersCache[dept.id] || [])
-        .filter(isVisibleOrgMember)
-        .filter(member => hasPosition(member, dept.id, '원장')),
-      dept.id
-    );
-
-    const teamLeaders = dept.children.flatMap(team => (
-      (membersCache[team.id] || [])
-        .filter(isVisibleOrgMember)
-        .filter(member => hasPosition(member, team.id, '팀장'))
-        .map(member => ({ member, team }))
-    ));
+  const DepartmentTree = ({ scope, leaders, members }) => {
+    const scopeId = getScopeId(scope);
 
     return (
-      <div className="org-tree">
+      <div className="org-tree org-dept-tree">
         <div className="tree-parent">
           <div className="org-parent-row">
-            {directors.length === 0 ? (
-              <div className="team-empty">원장 정보가 없습니다.</div>
+            {leaders.length === 0 ? (
+              <div className="team-empty">팀장 정보가 없습니다.</div>
             ) : (
-              directors.map(member => (
+              leaders.map(member => (
                 <MemberCard
-                  key={`${dept.id}-${getMemberId(member)}`}
+                  key={`${scopeId}-leader-${getMemberId(member)}`}
                   member={member}
-                  scopeId={dept.id}
-                  teamName={dept.name}
+                  scopeId={scopeId}
                   onClick={setSelectedMember}
                 />
               ))
             )}
           </div>
 
-          {teamLeaders.length > 0 && (
-            <div className={`org-children-block ${teamLeaders.length === 1 ? 'org-children-single' : 'org-children-multi'}`}>
+          {members.length > 0 && (
+            <div className={`org-children-block ${members.length === 1 ? 'org-children-single' : 'org-children-multi'}`}>
               <div className="org-connector-down" />
               <div className="org-children-row">
-                {teamLeaders.map(({ member, team }) => (
-                  <div className="org-child-node" key={`${team.id}-${getMemberId(member)}`}>
+                {members.map(member => (
+                  <div className="org-child-node" key={`${scopeId}-member-${getMemberId(member)}`}>
                     <MemberCard
                       member={member}
-                      scopeId={team.id}
-                      teamName={team.name}
+                      scopeId={scopeId}
                       onClick={setSelectedMember}
                     />
                   </div>
@@ -233,44 +211,62 @@ export default function Organization({ currentSubPage = 'org-all' }) {
     );
   };
 
-  const DepartmentTree = ({ scope, leaders, members }) => (
-    <div className="org-tree org-dept-tree">
-      <div className="tree-parent">
-        <div className="org-parent-row">
-          {leaders.length === 0 ? (
-            <div className="team-empty">팀장 정보가 없습니다.</div>
-          ) : (
-            leaders.map(member => (
-              <MemberCard
-                key={`${scope.id}-leader-${getMemberId(member)}`}
-                member={member}
-                scopeId={scope.id}
-                teamName={scope.name}
-                onClick={setSelectedMember}
-              />
-            ))
+  const OrgTree = ({ dept }) => {
+    const deptId = getScopeId(dept);
+    const teams = dept.children || [];
+    const deptMembers = getMembersForScope(dept);
+    const deptLeaders = deptMembers.filter(member => hasPosition(member, deptId, '원장') || hasPosition(member, deptId, '팀장'));
+    const teamLeaders = teams.flatMap(team => {
+      const teamId = getScopeId(team);
+      return getMembersForScope(team)
+        .filter(member => hasPosition(member, teamId, '팀장'))
+        .map(member => ({ member, team }));
+    });
+
+    return (
+      <div className="org-tree">
+        <div className="tree-parent">
+          <div className="org-parent-row">
+            {deptLeaders.length === 0 ? (
+              <div className="team-empty">원장 정보가 없습니다.</div>
+            ) : (
+              deptLeaders.map(member => (
+                <MemberCard
+                  key={`${deptId}-${getMemberId(member)}`}
+                  member={member}
+                  scopeId={deptId}
+                  onClick={setSelectedMember}
+                />
+              ))
+            )}
+          </div>
+
+          {teamLeaders.length > 0 && (
+            <div className={`org-children-block ${teamLeaders.length === 1 ? 'org-children-single' : 'org-children-multi'}`}>
+              <div className="org-connector-down" />
+              <div className="org-children-row">
+                {teamLeaders.map(({ member, team }) => (
+                  <div className="org-child-node" key={`${getScopeId(team)}-${getMemberId(member)}`}>
+                    <MemberCard
+                      member={member}
+                      scopeId={getScopeId(team)}
+                      onClick={setSelectedMember}
+                      teamName={getScopeName(team)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
-
-        {members.length > 0 && (
-          <div className={`org-children-block ${members.length === 1 ? 'org-children-single' : 'org-children-multi'}`}>
-            <div className="org-connector-down" />
-            <div className="org-children-row">
-              {members.map(member => (
-                <div className="org-child-node" key={`${scope.id}-member-${getMemberId(member)}`}>
-                  <MemberCard
-                    member={member}
-                    scopeId={scope.id}
-                    onClick={setSelectedMember}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
-    </div>
-  );
+    );
+  };
+
+  const selectedMembers = activeTab ? getMembersForScope(activeTab) : [];
+  const selectedScopeId = activeTab ? getScopeId(activeTab) : null;
+  const selectedLeaders = selectedMembers.filter(member => selectedScopeId && hasPosition(member, selectedScopeId, '팀장'));
+  const selectedTeamMembers = selectedMembers.filter(member => selectedScopeId && !hasPosition(member, selectedScopeId, '팀장'));
 
   return (
     <div className="org-page">
@@ -286,7 +282,7 @@ export default function Organization({ currentSubPage = 'org-all' }) {
               {deptScopes.length === 0 ? (
                 <div className="file-empty">조직 데이터가 없습니다.</div>
               ) : (
-                deptScopes.map(dept => <OrgTree key={dept.id} dept={dept} />)
+                deptScopes.map(dept => <OrgTree key={getScopeId(dept)} dept={dept} />)
               )}
             </div>
           )}
@@ -296,19 +292,19 @@ export default function Organization({ currentSubPage = 'org-all' }) {
               <div className="org-tabs">
                 {orgUnits.map(unit => (
                   <button
-                    key={unit.id}
+                    key={getScopeId(unit)}
                     type="button"
                     onClick={() => handleTabChange(unit)}
-                    className={`org-tab-btn ${activeTab?.id === unit.id ? 'active' : ''}`}
+                    className={`org-tab-btn ${getScopeId(activeTab || {}) === getScopeId(unit) ? 'active' : ''}`}
                   >
-                    {unit.name}
+                    {getScopeName(unit)}
                   </button>
                 ))}
               </div>
 
               {activeTab ? (
                 <div>
-                  <h3>{activeTab.name} 구성원</h3>
+                  <h3>{getScopeName(activeTab)} 구성원</h3>
                   {loadingMembers ? (
                     <div>불러오는 중...</div>
                   ) : selectedMembers.length === 0 ? (
@@ -322,9 +318,7 @@ export default function Organization({ currentSubPage = 'org-all' }) {
                   )}
                 </div>
               ) : (
-                <div className="file-empty">
-                  부서를 선택하면 구성원을 볼 수 있습니다.
-                </div>
+                <div className="file-empty">부서를 선택하면 구성원을 볼 수 있습니다.</div>
               )}
             </div>
           )}
@@ -335,16 +329,12 @@ export default function Organization({ currentSubPage = 'org-all' }) {
         {selectedMember && (
           <div className="org-modal-content">
             <div className="org-modal-header">
-              <div className="org-modal-avatar">
-                {getInitials(selectedMember.name)}
-              </div>
+              <div className="org-modal-avatar">{getInitials(selectedMember.name)}</div>
               <div>
                 <h2 className="org-modal-name">{selectedMember.name}</h2>
                 <div className="org-modal-role-info">
                   <span className="org-modal-role">
-                    {activeTab
-                      ? getPositionInScope(selectedMember, activeTab.id)
-                      : selectedMember.position || '직급 미정'}
+                    {activeTab ? getPositionInScope(selectedMember, getScopeId(activeTab)) : selectedMember.position || '직급 미정'}
                   </span>
                 </div>
               </div>
