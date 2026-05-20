@@ -84,22 +84,17 @@ export default function DocumentWriter() {
       if (!selectedDoc) return
 
       const previewKind = getDocumentPreviewKind(selectedDoc)
-      const previewFileId = selectedDoc.previewFileId || selectedDoc.fileId
-      const hasGeneratedPdfPreview = Boolean(selectedDoc.previewFileId)
 
-      if (previewKind === 'text' && !hasGeneratedPdfPreview) return
+      if (previewKind === 'text') return
 
       if (
-        !hasGeneratedPdfPreview &&
-        (
-          (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
-          (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent))
-        )
+        (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
+        (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent))
       ) {
         return
       }
 
-      if (!previewFileId || (!hasGeneratedPdfPreview && previewKind !== 'pdf' && previewKind !== 'image')) {
+      if (!selectedDoc.fileId || (previewKind !== 'pdf' && previewKind !== 'image')) {
         return
       }
 
@@ -108,17 +103,17 @@ export default function DocumentWriter() {
         return
       }
 
-      if (String(previewFileId).startsWith('mock-') || String(previewFileId).startsWith('local-')) {
+      if (String(selectedDoc.fileId).startsWith('mock-') || String(selectedDoc.fileId).startsWith('local-')) {
         return
       }
 
       try {
         setPreviewLoading(true)
-        const response = await api.get(`/files/preview/${previewFileId}`, {
+        const response = await api.get(`/files/preview/${selectedDoc.fileId}`, {
           responseType: 'blob',
         })
         const previewType =
-          hasGeneratedPdfPreview || previewKind === 'pdf'
+          previewKind === 'pdf'
             ? 'application/pdf'
             : selectedDoc.fileContentType || response.data?.type || 'image/*'
         objectUrl = URL.createObjectURL(new Blob([response.data], { type: previewType }))
@@ -232,11 +227,6 @@ export default function DocumentWriter() {
         const newDoc = { ...response.data.data, source: 'uploaded' }
         setDocuments([newDoc, ...documents])
         setSelectedDoc(newDoc)
-        setAttachedDocs((prev) => (
-          prev.some((doc) => doc.docId === newDoc.docId)
-            ? prev
-            : [...prev, newDoc]
-        ))
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
           detail: { message: '파일이 업로드되었어요!' },
         }))

@@ -13,7 +13,6 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
     { id: 'file', label: '파일함', icon: FiFolder },
     { id: 'board', label: '게시판', icon: FiFileText },
     { id: 'mail', label: '메일', icon: FiMail },
-    { id: 'chat', label: '채팅', icon: FiMessageCircle },
     { id: 'organization', label: '조직도', icon: FiUsers }
   ]
 
