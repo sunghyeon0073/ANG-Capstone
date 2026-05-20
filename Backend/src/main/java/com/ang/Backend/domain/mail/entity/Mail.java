@@ -47,6 +47,10 @@ public class Mail {
     @Column(name = "sender_deleted_at")
     private LocalDateTime senderDeletedAt;  // 발신자가 발신함에서 삭제한 시각
 
+    @Column(name = "is_sender_favorite")
+    @Builder.Default
+    private boolean isSenderFavorite = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

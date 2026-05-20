@@ -41,6 +41,7 @@ public class MailDto {
         private MailStatus status;
         private LocalDateTime sentAt;
         private boolean isRead;             // 수신함용 (발신함에서는 무시)
+        private boolean isFavorite;
 
         public static MailSummary fromMail(Mail mail) {
             return MailSummary.builder()
@@ -51,6 +52,7 @@ public class MailDto {
                     .status(mail.getStatus())
                     .sentAt(mail.getSentAt())
                     .isRead(false)
+                    .isFavorite(mail.isSenderFavorite())
                     .build();
         }
 
@@ -64,6 +66,7 @@ public class MailDto {
                     .status(mail.getStatus())
                     .sentAt(mail.getSentAt())
                     .isRead(mr.isRead())
+                    .isFavorite(mr.isFavorite())
                     .build();
         }
     }
