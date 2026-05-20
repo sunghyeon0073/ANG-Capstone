@@ -16,6 +16,7 @@ import {
 import {
   deleteInboxMail,
   deleteSentMail,
+  deleteDraftMail,
   cancelMail,
   getDraftMails,
   getFavoriteMails,
@@ -85,6 +86,8 @@ const parseRecipients = (value) => (
 const mapSummary = (mail, box, importantIds = []) => {
   const { date, time } = formatDateTime(mail.sentAt || mail.createdAt)
   const id = mail.mailId
+  const isFavorite = mail.favorite ?? mail.isFavorite
+  const isRead = mail.read ?? mail.isRead
 
   return {
     id,
@@ -97,8 +100,8 @@ const mapSummary = (mail, box, importantIds = []) => {
     time,
     date,
     status: mail.status,
-    important: Boolean(mail.favorite) || importantIds.includes(String(id)),
-    unread: box === 'inbox' ? !mail.read : false,
+    important: Boolean(isFavorite) || importantIds.includes(String(id)),
+    unread: box === 'inbox' ? !isRead : false,
     attachments: [],
     recipients: [],
     isDetailLoaded: false,
@@ -396,16 +399,12 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
 
     try {
       if (target.box === 'draft') {
-        setErrorMessage('임시저장 메일 삭제 API가 없어 삭제는 아직 지원되지 않습니다.')
-        return
-      }
-
-      if (target.box === 'sent') {
+        await deleteDraftMail(id)
+      } else if (target.box === 'sent') {
         await deleteSentMail(id)
       } else {
         await deleteInboxMail(id)
       }
-
       setMails(prev => prev.filter(mail => mail.id !== id))
       setSelectedId(prev => (prev === id ? null : prev))
     } catch (error) {
