@@ -27,12 +27,15 @@ import org.springframework.web.multipart.MultipartFile;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.file.service.S3FileService;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -42,6 +45,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Service
@@ -135,12 +140,13 @@ public class DocumentService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds) {
+    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat) {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
 
-        String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds);
+        AiOutputFormat format = AiOutputFormat.from(outputFormat);
+        String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);
 
         Map<String, String> aiRequest = Map.of("message", finalPrompt);
         @SuppressWarnings("unchecked")
@@ -154,19 +160,12 @@ public class DocumentService {
                 ? aiResponse.get("reply").toString()
                 : "";
 
-        String aiTitle = makeAiTitle(prompt);
+        String aiTitle = makeAiTitle(answer);
 
-        String s3Key = null;
-        try {
-            s3Key = s3FileService.uploadText(answer, aiTitle + ".md");
-        } catch (Exception e) {
-            log.warn("AI 생성 문서 S3 저장 실패: {}", e.getMessage());
-        }
-
-        return saveAiDocument(aiTitle, answer, s3Key, user);
+        return saveAiDocument(aiTitle, answer, user, format);
     }
 
-    private String buildAiPrompt(String prompt, Long sourceDocId, List<Long> attachedDocIds) {
+    private String buildAiPrompt(String prompt, Long sourceDocId, List<Long> attachedDocIds, AiOutputFormat format) {
         LinkedHashSet<Long> docIds = new LinkedHashSet<>();
         if (sourceDocId != null) {
             docIds.add(sourceDocId);
@@ -178,7 +177,7 @@ public class DocumentService {
         }
 
         if (docIds.isEmpty()) {
-            return prompt;
+            return buildAiInstruction(prompt, format);
         }
 
         List<DocumentEntity> sources = transactionTemplate.execute(status -> {
@@ -190,7 +189,7 @@ public class DocumentService {
         });
 
         if (sources == null || sources.isEmpty()) {
-            return prompt;
+            return buildAiInstruction(prompt, format);
         }
 
         StringBuilder builder = new StringBuilder();
@@ -213,32 +212,40 @@ public class DocumentService {
         }
 
         if (index == 1) {
-            return prompt;
+            return buildAiInstruction(prompt, format);
         }
 
         builder.append("[User Prompt]\n")
-                .append(prompt);
+                .append(buildAiInstruction(prompt, format));
 
         return builder.toString();
     }
 
-    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, String s3Key, User user) {
+    private String buildAiInstruction(String prompt, AiOutputFormat format) {
+        return """
+                Create a polished Korean business document.
+                The first line must be a concise document title as a Markdown H1 heading.
+                Do not use the user's prompt verbatim as the title.
+                Target file format: %s.
+
+                User request:
+                %s
+                """.formatted(format.extension.toUpperCase(), prompt);
+    }
+
+    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, User user, AiOutputFormat format) {
+        AiGeneratedFile generatedFile = createAiGeneratedFile(aiTitle, answer, format);
+
         return transactionTemplate.execute(status -> {
-            FileItem fileItem = null;
-            if (s3Key != null) {
-                fileItem = fileItemRepository.save(FileItem.builder()
-                        .originalFileName(aiTitle + ".md")
-                        .storedFileName(s3Key)
-                        .filePath(s3Key)
-                        .fileSize((long) answer.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
-                        .contentType("text/markdown")
-                        .uploader(user)
-                        .build());
-            }
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            FileItem previewFile = format == AiOutputFormat.PDF
+                    ? fileItem
+                    : createAiPreviewFile(aiTitle, answer, user);
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(aiTitle)
                     .file(fileItem)
+                    .previewFile(previewFile)
                     .owner(user)
                     .status(DocumentStatus.DRAFT)
                     .originalContent(answer)
@@ -250,6 +257,41 @@ public class DocumentService {
             res.setCanDelete(true); // AI로 본인이 생성한 것이므로 삭제 가능
             return res;
         });
+    }
+
+    private FileItem saveGeneratedFileItem(AiGeneratedFile generatedFile, User user, String prefix) {
+        String s3Key = s3FileService.uploadBytes(
+                generatedFile.bytes(),
+                generatedFile.fileName(),
+                generatedFile.contentType(),
+                prefix
+        );
+
+        return fileItemRepository.save(FileItem.builder()
+                .originalFileName(generatedFile.fileName())
+                .storedFileName(s3Key)
+                .filePath(s3Key)
+                .fileSize((long) generatedFile.bytes().length)
+                .contentType(generatedFile.contentType())
+                .uploader(user)
+                .ownerId(user != null ? user.getUserId() : null)
+                .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+                .build());
+    }
+
+    private FileItem createAiPreviewFile(String aiTitle, String answer, User user) {
+        try {
+            byte[] pdfBytes = createPdfBytesFromText(answer, aiTitle);
+            AiGeneratedFile preview = new AiGeneratedFile(
+                    safeDocumentFileName(aiTitle) + ".pdf",
+                    "application/pdf",
+                    pdfBytes
+            );
+            return saveGeneratedFileItem(preview, user, "previews");
+        } catch (Exception e) {
+            log.warn("AI document preview PDF generation failed: {}", e.getMessage());
+            return null;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -292,8 +334,8 @@ public class DocumentService {
                 
                 boolean hasAccess = false;
                 for (Scope myScope : myScopes) {
-                    Scope myLevel2 = getLevel2Ancestor(myScope);
-                    Scope targetLevel2 = getLevel2Ancestor(targetScope);
+                    Scope myLevel2 = scopeService.getLevel2Ancestor(myScope);
+                    Scope targetLevel2 = scopeService.getLevel2Ancestor(targetScope);
                     
                     if (myLevel2 != null && targetLevel2 != null && 
                         myLevel2.getScopeId().equals(targetLevel2.getScopeId())) {
@@ -301,7 +343,7 @@ public class DocumentService {
                         break;
                     }
                     // 혹은 기존처럼 직계 부모-자식 관계인 경우도 허용
-                    if (isSameOrChild(myScope, targetScope)) {
+                    if (scopeService.isSameOrParent(myScope, targetScope)) {
                         hasAccess = true;
                         break;
                     }
@@ -325,7 +367,7 @@ public class DocumentService {
 
                 // 사용자가 속한 모든 L2 조상들의 모든 하위 부서 ID를 모음
                 scopeIds = myScopes.stream()
-                        .map(this::getLevel2Ancestor)
+                        .map(scopeService::getLevel2Ancestor)
                         .filter(java.util.Objects::nonNull)
                         .flatMap(l2 -> scopeService.getAllSubScopeIds(l2).stream())
                         .distinct()
@@ -347,37 +389,6 @@ public class DocumentService {
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
         return list;
-    }
-
-    private Scope getLevel2Ancestor(Scope scope) {
-        if (scope == null) return null;
-        
-        // Root (Level 1)
-        if (scope.getParentScope() == null) return null;
-        
-        // Level 2 (Parent is root)
-        if (scope.getParentScope().getParentScope() == null) return scope;
-        
-        // Level 3 (Parent is Level 2)
-        if (scope.getParentScope().getParentScope().getParentScope() == null) return scope.getParentScope();
-        
-        // 그 이상 깊이가 있다면 계속 위로 올라가서 Level 2를 찾음
-        Scope current = scope;
-        while (current.getParentScope() != null && current.getParentScope().getParentScope() != null) {
-            current = current.getParentScope();
-        }
-        return current;
-    }
-
-    private boolean isSameOrChild(Scope parent, Scope target) {
-        if (parent.getScopeId().equals(target.getScopeId())) return true;
-        
-        Scope current = target.getParentScope();
-        while (current != null) {
-            if (current.getScopeId().equals(parent.getScopeId())) return true;
-            current = current.getParentScope();
-        }
-        return false;
     }
 
     public DocumentDto.Response getDocument(Long id, User requester) {
@@ -472,12 +483,201 @@ public class DocumentService {
         }
     }
 
-    private String makeAiTitle(String prompt) {
-        String normalized = prompt.strip().replaceAll("\\s+", " ");
-        if (normalized.length() <= 40) {
-            return normalized;
+    private String makeAiTitle(String answer) {
+        String fallback = "AI 문서 " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"));
+        if (answer == null || answer.isBlank()) {
+            return fallback;
         }
-        return normalized.substring(0, 40);
+
+        return answer.lines()
+                .map(line -> line.replaceFirst("^#+\\s*", "").strip())
+                .filter(line -> !line.isBlank())
+                .filter(line -> line.length() <= 80)
+                .findFirst()
+                .map(line -> line.length() <= 40 ? line : line.substring(0, 40))
+                .map(this::safeDocumentTitle)
+                .filter(title -> !title.isBlank())
+                .orElse(fallback);
+    }
+
+    private String safeDocumentTitle(String title) {
+        return title.replaceAll("[\\\\/:*?\"<>|]", "_").strip();
+    }
+
+    private AiGeneratedFile createAiGeneratedFile(String title, String content, AiOutputFormat format) {
+        try {
+            String fileName = safeDocumentFileName(title) + "." + format.extension;
+            byte[] bytes = switch (format) {
+                case PDF -> createPdfBytesFromText(content, title);
+                case DOCX -> createDocxBytes(content);
+                case XLSX -> createXlsxBytes(content);
+                case TXT -> cleanParsedContent(content).getBytes(StandardCharsets.UTF_8);
+            };
+            return new AiGeneratedFile(fileName, format.contentType, bytes);
+        } catch (Exception e) {
+            throw new RuntimeException("AI document file generation failed.", e);
+        }
+    }
+
+    private String safeDocumentFileName(String title) {
+        String name = safeDocumentTitle(title);
+        if (name.isBlank()) {
+            name = "ai-document";
+        }
+        return name.length() <= 60 ? name : name.substring(0, 60);
+    }
+
+    private byte[] createPdfBytesFromText(String content, String title) throws IOException, InterruptedException {
+        Path tempDir = Files.createTempDirectory("ai-pdf-");
+        Path htmlFile = null;
+        try {
+            htmlFile = tempDir.resolve(sanitizeFileName(safeDocumentFileName(title) + ".html"));
+            Files.writeString(htmlFile, toPreviewHtml(content), StandardCharsets.UTF_8);
+
+            KordocResult result = runLibreOffice(htmlFile, tempDir);
+            if (result.exitCode() != 0) {
+                throw new IOException("LibreOffice PDF conversion failed: " + result.output());
+            }
+
+            Path pdfFile = findConvertedPdf(tempDir, htmlFile);
+            if (pdfFile == null || !Files.exists(pdfFile)) {
+                throw new IOException("LibreOffice PDF conversion produced no PDF.");
+            }
+
+            return Files.readAllBytes(pdfFile);
+        } finally {
+            deleteQuietly(htmlFile);
+            deleteDirectoryQuietly(tempDir);
+        }
+    }
+
+    private byte[] createDocxBytes(String content) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
+            addZipEntry(zip, "[Content_Types].xml", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                      <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                      <Default Extension="xml" ContentType="application/xml"/>
+                      <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+                    </Types>
+                    """);
+            addZipEntry(zip, "_rels/.rels", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+                    </Relationships>
+                    """);
+            addZipEntry(zip, "word/document.xml", buildDocxDocumentXml(content));
+        }
+        return out.toByteArray();
+    }
+
+    private String buildDocxDocumentXml(String content) {
+        String paragraphs = cleanParsedContent(content).lines()
+                .map(line -> """
+                        <w:p><w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>
+                        """.formatted(escapeXml(line)))
+                .collect(Collectors.joining());
+
+        return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                  <w:body>
+                    %s
+                    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+                  </w:body>
+                </w:document>
+                """.formatted(paragraphs);
+    }
+
+    private byte[] createXlsxBytes(String content) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
+            addZipEntry(zip, "[Content_Types].xml", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                      <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                      <Default Extension="xml" ContentType="application/xml"/>
+                      <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                      <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                    </Types>
+                    """);
+            addZipEntry(zip, "_rels/.rels", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                    </Relationships>
+                    """);
+            addZipEntry(zip, "xl/_rels/workbook.xml.rels", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                    </Relationships>
+                    """);
+            addZipEntry(zip, "xl/workbook.xml", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                      <sheets><sheet name="AI Document" sheetId="1" r:id="rId1"/></sheets>
+                    </workbook>
+                    """);
+            addZipEntry(zip, "xl/worksheets/sheet1.xml", buildXlsxSheetXml(content));
+        }
+        return out.toByteArray();
+    }
+
+    private String buildXlsxSheetXml(String content) {
+        List<String> lines = cleanParsedContent(content).lines()
+                .filter(line -> !line.isBlank())
+                .toList();
+        if (lines.isEmpty()) {
+            lines = List.of("");
+        }
+
+        StringBuilder rows = new StringBuilder();
+        for (int i = 0; i < lines.size(); i++) {
+            String[] cells = lines.get(i).split("\\t|,");
+            rows.append("<row r=\"").append(i + 1).append("\">");
+            for (int j = 0; j < cells.length; j++) {
+                rows.append("<c r=\"").append(excelColumnName(j + 1)).append(i + 1)
+                        .append("\" t=\"inlineStr\"><is><t>")
+                        .append(escapeXml(cells[j].strip()))
+                        .append("</t></is></c>");
+            }
+            rows.append("</row>");
+        }
+
+        return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                  <sheetData>%s</sheetData>
+                </worksheet>
+                """.formatted(rows);
+    }
+
+    private String excelColumnName(int index) {
+        StringBuilder name = new StringBuilder();
+        while (index > 0) {
+            index--;
+            name.insert(0, (char) ('A' + (index % 26)));
+            index /= 26;
+        }
+        return name.toString();
+    }
+
+    private void addZipEntry(ZipOutputStream zip, String name, String content) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.write(content.getBytes(StandardCharsets.UTF_8));
+        zip.closeEntry();
+    }
+
+    private String escapeXml(String text) {
+        return text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
     }
 
     private String parseOriginalContent(MultipartFile file) {
@@ -775,6 +975,34 @@ public class DocumentService {
     private String sanitizeFileName(String fileName) {
         return fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
     }
+
+    private enum AiOutputFormat {
+        PDF("pdf", "application/pdf"),
+        DOCX("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        XLSX("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        TXT("txt", "text/plain; charset=UTF-8");
+
+        private final String extension;
+        private final String contentType;
+
+        AiOutputFormat(String extension, String contentType) {
+            this.extension = extension;
+            this.contentType = contentType;
+        }
+
+        private static AiOutputFormat from(String value) {
+            if (value == null || value.isBlank()) {
+                return PDF;
+            }
+            try {
+                return AiOutputFormat.valueOf(value.strip().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return PDF;
+            }
+        }
+    }
+
+    private record AiGeneratedFile(String fileName, String contentType, byte[] bytes) {}
 
     private record KordocResult(int exitCode, String output) {}
 }

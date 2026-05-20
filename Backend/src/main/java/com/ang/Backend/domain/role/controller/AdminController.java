@@ -102,7 +102,7 @@ public class AdminController {
     @DeleteMapping("/users/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable Integer id) {
         userService.anonymize(id);
-        return ResponseEntity.ok(ApiResponse.ok("회원 탈퇴 처리되었습니다."));
+        return ResponseEntity.ok(ApiResponse.ok("회원 퇴사(익명화) 처리되었습니다."));
     }
 
     private String getRoleName(int level) {

@@ -74,7 +74,8 @@ public class DocumentController {
                 request.getPrompt(),
                 user,
                 request.getSourceDocId(),
-                request.getAttachedDocIds()
+                request.getAttachedDocIds(),
+                request.getOutputFormat()
         ));
     }
 

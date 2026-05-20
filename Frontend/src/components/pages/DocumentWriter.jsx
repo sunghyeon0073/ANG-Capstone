@@ -31,6 +31,7 @@ export default function DocumentWriter() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
+  const [aiOutputFormat, setAiOutputFormat] = useState('pdf')
   const [aiLoading, setAiLoading] = useState(false)
   const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
@@ -223,7 +224,7 @@ export default function DocumentWriter() {
         response = await getMyDocuments()
       } else {
         const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
-        response = await getDepartmentDocuments(null, scopeParam)
+        response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam })
       }
 
       const data = response.data?.data || []
@@ -304,6 +305,7 @@ export default function DocumentWriter() {
 
       const payload = {
         prompt,
+        outputFormat: aiOutputFormat,
         attachedDocIds: attachedDocs.map((doc) => doc.docId),
         attachedDocs: attachedDocs.length > 0
           ? attachedDocs.map((doc) => ({
@@ -562,6 +564,19 @@ export default function DocumentWriter() {
             />
 
             <div className="prompt-actions">
+              <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
+                {['pdf', 'docx', 'xlsx', 'txt'].map((format) => (
+                  <button
+                    key={format}
+                    type="button"
+                    className={`ai-format-btn ${aiOutputFormat === format ? 'active' : ''}`}
+                    onClick={() => setAiOutputFormat(format)}
+                    disabled={aiLoading}
+                  >
+                    {format.toUpperCase()}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={handleAiGenerate}
