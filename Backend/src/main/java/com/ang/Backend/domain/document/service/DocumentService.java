@@ -111,7 +111,7 @@ public class DocumentService {
         String originalContent = parseOriginalContent(file);
 
         var storedFile = fileService.storeFile(file, user, subPath);
-        FileItem previewFile = createPreviewFile(file, user, storedFile);
+        FileItem previewFile = createPreviewFile(file, user, storedFile, originalContent);
 
         DocumentEntity doc = DocumentEntity.builder()
                 .title(title)
@@ -484,6 +484,15 @@ public class DocumentService {
         Path tempFile = null;
         try {
             String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+            String lowerName = originalName.toLowerCase();
+            String contentType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+
+            if (isPlainTextFile(lowerName, contentType)) {
+                String text = new String(file.getBytes(), StandardCharsets.UTF_8);
+                uploadParsedMarkdown(text, originalName);
+                return text;
+            }
+
             tempFile = Files.createTempFile("kordoc-", "-" + sanitizeFileName(originalName));
             Files.write(tempFile, file.getBytes());
 
@@ -545,7 +554,7 @@ public class DocumentService {
         }
     }
 
-    private FileItem createPreviewFile(MultipartFile file, User user, FileItem originalFile) {
+    private FileItem createPreviewFile(MultipartFile file, User user, FileItem originalFile, String parsedContent) {
         if (originalFile == null || file == null || file.isEmpty()) {
             return null;
         }
@@ -572,12 +581,15 @@ public class DocumentService {
             KordocResult result = runLibreOffice(tempFile, tempDir);
             if (result.exitCode() != 0) {
                 log.warn("Preview PDF conversion failed with exit code {}: {}", result.exitCode(), result.output());
-                return null;
             }
 
             Path pdfFile = findConvertedPdf(tempDir, tempFile);
             if (pdfFile == null || !Files.exists(pdfFile)) {
                 log.warn("Preview PDF conversion finished but no PDF was created for {}", originalName);
+                pdfFile = createParsedContentPreviewPdf(parsedContent, originalName, tempDir);
+            }
+
+            if (pdfFile == null || !Files.exists(pdfFile)) {
                 return null;
             }
 
@@ -611,10 +623,62 @@ public class DocumentService {
                 || lowerName.endsWith(".xlsx")
                 || lowerName.endsWith(".csv")
                 || lowerName.endsWith(".hwp")
+                || lowerName.endsWith(".txt")
                 || contentType.contains("word")
                 || contentType.contains("excel")
                 || contentType.contains("spreadsheet")
-                || contentType.contains("hwp");
+                || contentType.contains("hwp")
+                || contentType.contains("text/plain");
+    }
+
+    private boolean isPlainTextFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".txt") || contentType.contains("text/plain");
+    }
+
+    private Path createParsedContentPreviewPdf(String parsedContent, String originalName, Path outputDir)
+            throws IOException, InterruptedException {
+        if (parsedContent == null || parsedContent.isBlank()) {
+            return null;
+        }
+
+        String htmlName = originalName.replaceFirst("\\.[^.]+$", "") + "-parsed.html";
+        Path htmlFile = outputDir.resolve(sanitizeFileName(htmlName));
+        Files.writeString(htmlFile, toPreviewHtml(parsedContent), StandardCharsets.UTF_8);
+
+        KordocResult result = runLibreOffice(htmlFile, outputDir);
+        if (result.exitCode() != 0) {
+            log.warn("Parsed content PDF conversion failed with exit code {}: {}", result.exitCode(), result.output());
+            return null;
+        }
+
+        Path pdfFile = findConvertedPdf(outputDir, htmlFile);
+        if (pdfFile == null || !Files.exists(pdfFile)) {
+            log.warn("Parsed content PDF conversion finished but no PDF was created for {}", originalName);
+            return null;
+        }
+
+        return pdfFile;
+    }
+
+    private String toPreviewHtml(String content) {
+        return """
+                <!doctype html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <style>
+                    body { font-family: 'Noto Sans CJK KR', sans-serif; font-size: 12pt; line-height: 1.55; white-space: pre-wrap; }
+                  </style>
+                </head>
+                <body>""" + escapeHtml(content) + "</body></html>";
+    }
+
+    private String escapeHtml(String text) {
+        return text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
 
     private KordocResult runLibreOffice(Path file, Path outputDir) throws IOException, InterruptedException {
