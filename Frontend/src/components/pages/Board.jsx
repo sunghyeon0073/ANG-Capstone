@@ -30,6 +30,28 @@ export default function Board({ me, currentSubPage = 'board' }) {
   const [formData, setFormData] = useState({ title: '', content: '', type: 'general', pinned: false });
   const [toast, setToast] = useState(null);
 
+  const getCurrentUserName = () => {
+    return (
+      me?.name ||
+      me?.nickname ||
+      me?.userName ||
+      me?.username ||
+      me?.fullName ||
+      me?.memberName ||
+      '익명'
+    )
+  }
+
+  const getCurrentUserId = () => {
+    return me?.id || me?.userId || me?.memberId || me?.empNo || ''
+  }
+
+  const getPostAuthorName = (post) => {
+    if (post?.author) return post.author
+    if (post?.authorId && post.authorId === getCurrentUserId()) return getCurrentUserName()
+    return '익명'
+  }
+
   useEffect(() => {
     localStorage.setItem('ang_posts', JSON.stringify(posts));
   }, [posts]);
@@ -98,8 +120,8 @@ export default function Board({ me, currentSubPage = 'board' }) {
   const handleSave = () => {
     if (!formData.title.trim() || !formData.content.trim()) return alert("제목과 내용을 모두 입력하세요.");
 
-    const myId = me?.id || '';
-    const myName = me?.name || '익명';
+    const myId = getCurrentUserId();
+    const myName = getCurrentUserName();
 
     if (selected) {
       setPosts(prev => prev.map(p => p.id === selected.id ? { ...p, ...formData } : p));
@@ -169,7 +191,7 @@ export default function Board({ me, currentSubPage = 'board' }) {
               <div key={post.id} onClick={() => handleOpenPost(post)} className="board-item">
                 <div className="board-item-pin">{post.pinned ? '📌' : '·'}</div>
                 <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }}>{post.title}</div>
-                <div className="board-item-author">{post.author}</div>
+                <div className="board-item-author">{getPostAuthorName(post)}</div>
                 <div className="board-item-date">{post.date}</div>
                 <div className="board-item-views">{post.views || 0}</div>
               </div>
@@ -194,7 +216,7 @@ export default function Board({ me, currentSubPage = 'board' }) {
               </div>
             </div>
             <div className="board-detail-meta">
-              작성자: {selected.author} | 날짜: {selected.date}
+              작성자: {getPostAuthorName(selected)} | 날짜: {selected.date}
             </div>
             <div className="board-detail-content">
               {selected.content}

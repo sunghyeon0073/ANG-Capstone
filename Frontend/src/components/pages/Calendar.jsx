@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createSchedule, deleteSchedule, getSchedules } from '../../api/scheduleApi'
+import { readApiCache, writeApiCache } from '../../utils/apiCache'
 
 const SimpleModal = ({ open, onClose, title, children }) => {
   if (!open) return null
@@ -55,6 +56,8 @@ export default function Calendar({ showSidebar = true }) {
     return { startDate: formatDate(start), endDate: formatDate(end) }
   }, [activeStartDate])
 
+  const getSchedulesCacheKey = () => `schedules:${monthRange.startDate}:${monthRange.endDate}`
+
   const monthGrid = useMemo(() => {
     // Build a 6x7 grid for the active month view
     const year = activeStartDate.getFullYear()
@@ -72,11 +75,21 @@ export default function Calendar({ showSidebar = true }) {
     return cells
   }, [activeStartDate])
 
-  const fetchSchedules = async () => {
-    try {
+  const fetchSchedules = async ({ preferCache = true } = {}) => {
+    const cacheKey = getSchedulesCacheKey()
+    const cachedSchedules = preferCache ? readApiCache(cacheKey) : null
+
+    if (cachedSchedules) {
+      setSchedules(Array.isArray(cachedSchedules) ? cachedSchedules : [])
+    } else {
       setIsLoading(true)
+    }
+
+    try {
       const res = await getSchedules(monthRange)
-      setSchedules(res.data?.data || [])
+      const data = res.data?.data || []
+      setSchedules(data)
+      writeApiCache(cacheKey, data)
     } catch (error) {
       console.error('일정 로드 실패', error)
       setSchedules([])
@@ -175,7 +188,7 @@ export default function Calendar({ showSidebar = true }) {
       })
       setIsModalOpen(false)
       resetForm()
-      fetchSchedules()
+      fetchSchedules({ preferCache: false })
     } catch (error) {
       alert('일정 저장 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'))
     }
@@ -187,6 +200,7 @@ export default function Calendar({ showSidebar = true }) {
     try {
       await deleteSchedule(id)
       setSchedules((prev) => prev.filter((schedule) => schedule.id !== id))
+      fetchSchedules({ preferCache: false })
     } catch (error) {
       alert('일정 삭제 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'))
     }

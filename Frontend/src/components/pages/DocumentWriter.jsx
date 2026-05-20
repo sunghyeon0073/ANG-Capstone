@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import { getMyDocuments, getDepartmentDocuments } from '../../api/documentApi'
+import { readApiCache, writeApiCache } from '../../utils/apiCache'
 // removed mock data imports - use backend APIs only
 import {
   getDocumentPreviewKind,
@@ -44,12 +45,30 @@ export default function DocumentWriter() {
   const [isExporting, setIsExporting] = useState(false)
   const fileInputRef = useRef(null)
 
+  const getScopesCacheKey = () => 'document-writer:my-scopes'
+
+  const getDocumentsCacheKey = () => {
+    if (category === 'my') {
+      return 'document-writer:my-documents'
+    }
+
+    return `document-writer:dept-documents:${selectedScopeId}`
+  }
+
   useEffect(() => {
     const fetchScopes = async () => {
+      const cachedScopes = readApiCache(getScopesCacheKey())
+
+      if (cachedScopes) {
+        setMyScopes(Array.isArray(cachedScopes) ? cachedScopes : [])
+        return
+      }
+
       try {
         const res = await api.get('/scopes/my')
         const scopes = res.data?.data || []
         setMyScopes(scopes)
+        writeApiCache(getScopesCacheKey(), scopes)
       } catch (err) {
         console.error('소속 부서 로드 실패', err)
         setMyScopes([])
@@ -188,8 +207,17 @@ export default function DocumentWriter() {
   }
 
   const fetchDocuments = async () => {
-    try { 
+    const cacheKey = getDocumentsCacheKey()
+    const cachedDocuments = readApiCache(cacheKey)
+
+    if (cachedDocuments) {
+      setDocuments(Array.isArray(cachedDocuments) ? cachedDocuments : [])
+      setLoading(false)
+    } else {
       setLoading(true)
+    }
+
+    try {
       let response
       if (category === 'my') {
         response = await getMyDocuments()
@@ -197,7 +225,10 @@ export default function DocumentWriter() {
         const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
         response = await getDepartmentDocuments(null, scopeParam)
       }
-      setDocuments(response.data?.data || [])
+
+      const data = response.data?.data || []
+      setDocuments(data)
+      writeApiCache(cacheKey, data)
       setError(null)
     } catch (err) {
       console.error('문서 목록 조회 실패:', err)
@@ -225,7 +256,9 @@ export default function DocumentWriter() {
 
       if (response.data?.success) {
         const newDoc = { ...response.data.data, source: 'uploaded' }
-        setDocuments([newDoc, ...documents])
+        const nextDocuments = [newDoc, ...documents]
+        setDocuments(nextDocuments)
+        writeApiCache(getDocumentsCacheKey(), nextDocuments)
         setSelectedDoc(newDoc)
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
           detail: { message: '파일이 업로드되었어요!' },
@@ -284,10 +317,13 @@ export default function DocumentWriter() {
       const response = await api.post('/documents/ai-generate', payload)
 
       if (response.data.success) {
+        const generatedDoc = response.data.data
         if (category === 'my') {
-          setDocuments([response.data.data, ...documents])
+          const nextDocuments = [generatedDoc, ...documents]
+          setDocuments(nextDocuments)
+          writeApiCache(getDocumentsCacheKey(), nextDocuments)
         }
-        setSelectedDoc(response.data.data)
+        setSelectedDoc(generatedDoc)
         setPrompt('')
         setAttachedDocs([])
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {

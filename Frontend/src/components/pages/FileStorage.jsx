@@ -8,6 +8,7 @@ import {
   downloadDocumentFile
 } from '../../api/documentApi';
 import { getScopes } from '../../api/scopeApi';
+import { readApiCache, writeApiCache } from '../../utils/apiCache';
 
 const formatDate = (iso) => iso ? new Date(iso).toLocaleDateString('ko-KR') : '-';
 const formatSize = (bytes) => {
@@ -33,15 +34,28 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
   const isMy = currentSubPage === 'file-my';
   const isShared = currentSubPage === 'file-shared';
   const showList = isMy || isShared;
+  const getDocsCacheKey = () => `file-storage:${currentSubPage}:${keyword.trim().toLowerCase()}`;
+  const getScopesCacheKey = () => 'file-storage:my-scopes';
 
-  const fetchDocs = async () => {
+  const fetchDocs = async ({ preferCache = true } = {}) => {
     if (!showList) return;
-    try {
+
+    const cacheKey = getDocsCacheKey();
+    const cachedDocs = preferCache ? readApiCache(cacheKey) : null;
+
+    if (cachedDocs) {
+      setDocs(Array.isArray(cachedDocs) ? cachedDocs : []);
+    } else {
       setIsLoading(true);
+    }
+
+    try {
       const res = isMy
         ? await getMyDocuments()
         : await getDepartmentDocuments(keyword);
-      setDocs(res.data?.data || []);
+      const data = res.data?.data || [];
+      setDocs(data);
+      writeApiCache(cacheKey, data);
     } catch (error) {
       console.error('문서 로드 실패', error);
       setDocs([]);
@@ -51,6 +65,12 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
   };
 
   const fetchMyScopes = async () => {
+    const cachedScopes = readApiCache(getScopesCacheKey());
+    if (cachedScopes) {
+      setMyScopes(Array.isArray(cachedScopes) ? cachedScopes : []);
+      return;
+    }
+
     try {
       const res = await getScopes();
       // 조직도 API는 트리 구조이므로 평탄화하거나 현재 사용자가 속한 부서만 필터링해야 함
@@ -64,6 +84,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       };
       flatten(Array.isArray(data) ? data : [data]);
       setMyScopes(flatScopes);
+      writeApiCache(getScopesCacheKey(), flatScopes);
     } catch (error) {
       console.error('부서 목록 로드 실패', error);
     }
@@ -96,7 +117,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       setUploadTitle('');
       setUploadFile(null);
       setTargetScopeId('');
-      fetchDocs();
+      fetchDocs({ preferCache: false });
     } catch (error) {
       alert('업로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
     } finally {
@@ -138,6 +159,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       await deleteDocument(docId);
       setDocs(prev => prev.filter(d => d.docId !== docId));
       if (selectedDoc?.docId === docId) setSelectedDoc(null);
+      fetchDocs({ preferCache: false });
     } catch (error) {
       alert('삭제 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
     }

@@ -11,6 +11,7 @@ import {
   updateUserRole
 } from '../../api/adminApi';
 import { getScopes } from '../../api/scopeApi';
+import { readApiCache, writeApiCache } from '../../utils/apiCache';
 
 const ROLE_LEVELS = [
   { label: '일반 사용자 (Lv 1)', value: 1 },
@@ -42,6 +43,9 @@ export default function Admin({ me, currentSubPage }) {
   const [editingPosition, setEditingPosition] = useState(null);
 
   const POSITIONS = ['사원', '대리', '과장', '차장', '부장', '팀장', '센터장', '원장'];
+  const PENDING_CACHE_KEY = 'admin:pending-users';
+  const USERS_CACHE_KEY = 'admin:all-users';
+  const SCOPES_CACHE_KEY = 'admin:scopes';
 
   const myLevel = me?.roleLevel || 0;
 
@@ -57,15 +61,38 @@ export default function Admin({ me, currentSubPage }) {
     loadData();
   }, [activeTab]);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async ({ preferCache = true } = {}) => {
     try {
       if (activeTab === 'approval') {
+        const cachedPending = preferCache ? readApiCache(PENDING_CACHE_KEY) : null;
+        if (cachedPending) {
+          setPendingUsers(Array.isArray(cachedPending) ? cachedPending : []);
+        } else {
+          setIsLoading(true);
+        }
+
         const res = await getPendingUsers();
-        setPendingUsers(res.data?.data || []);
+        const data = res.data?.data || [];
+        setPendingUsers(data);
+        writeApiCache(PENDING_CACHE_KEY, data);
       } else if (activeTab === 'users') {
+        const cachedUsers = preferCache ? readApiCache(USERS_CACHE_KEY) : null;
+        const cachedScopes = preferCache ? readApiCache(SCOPES_CACHE_KEY) : null;
+
+        if (cachedUsers) {
+          setAllUsers(Array.isArray(cachedUsers) ? cachedUsers : []);
+        } else {
+          setIsLoading(true);
+        }
+
+        if (cachedScopes) {
+          setScopes(Array.isArray(cachedScopes) ? cachedScopes : []);
+        }
+
         const [userRes, scopeRes] = await Promise.all([getAllUsers(), getScopes()]);
-        setAllUsers(userRes.data?.data || []);
+        const userData = userRes.data?.data || [];
+        setAllUsers(userData);
+        writeApiCache(USERS_CACHE_KEY, userData);
         
         const flat = [];
         const flatten = (items) => {
@@ -79,6 +106,7 @@ export default function Admin({ me, currentSubPage }) {
           flatten(Array.isArray(scopeData) ? scopeData : [scopeData]);
         }
         setScopes(flat);
+        writeApiCache(SCOPES_CACHE_KEY, flat);
       }
     } catch (error) {
       console.error('데이터 로드 실패', error);
@@ -92,7 +120,11 @@ export default function Admin({ me, currentSubPage }) {
       setApproving(prev => ({ ...prev, [userId]: true }));
       // 레벨과 직급을 인자로 보내지 않음 (백엔드에서 일반 사용자/사원 기본값 처리)
       await approveUser(userId);
-      setPendingUsers(prev => prev.filter(u => u.id !== userId));
+      setPendingUsers(prev => {
+        const next = prev.filter(u => u.id !== userId);
+        writeApiCache(PENDING_CACHE_KEY, next);
+        return next;
+      });
       alert('승인이 완료되었습니다.');
     } catch (error) {
       alert('승인 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
@@ -105,7 +137,11 @@ export default function Admin({ me, currentSubPage }) {
     if (!rejectionReason.trim()) return alert('거절 사유를 입력해주세요.');
     try {
       await rejectUser(rejectingUser.id, rejectionReason);
-      setPendingUsers(prev => prev.filter(u => u.id !== rejectingUser.id));
+      setPendingUsers(prev => {
+        const next = prev.filter(u => u.id !== rejectingUser.id);
+        writeApiCache(PENDING_CACHE_KEY, next);
+        return next;
+      });
       alert('거절 처리가 완료되었습니다.');
       setRejectingUser(null);
       setRejectionReason('');
@@ -121,7 +157,7 @@ export default function Admin({ me, currentSubPage }) {
       alert('부서가 추가되었습니다.');
       setShowAddDept(null);
       setSelectedDeptId('');
-      loadData();
+      loadData({ preferCache: false });
     } catch (error) {
       alert('부서 추가 실패: ' + (error.response?.data?.message || '권한이 없거나 이미 소속된 부서입니다.'));
     }
@@ -132,7 +168,7 @@ export default function Admin({ me, currentSubPage }) {
     try {
       await removeMemberFromScope(scopeId, userId);
       alert('소속이 해제되었습니다.');
-      loadData();
+      loadData({ preferCache: false });
     } catch (error) {
       alert('해제 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
     }
@@ -148,7 +184,7 @@ export default function Admin({ me, currentSubPage }) {
       await updateMemberPosition(editingPosition.scopeId, editingPosition.userId, editingPosition.position);
       alert('직급이 변경되었습니다.');
       setEditingPosition(null);
-      loadData();
+      loadData({ preferCache: false });
     } catch (error) {
       alert('직급 변경 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
     }
@@ -164,7 +200,7 @@ export default function Admin({ me, currentSubPage }) {
       await updateUserRole(editingRole.userId, editingRole.roleLevel);
       alert('권한이 변경되었습니다.');
       setEditingRole(null);
-      loadData();
+      loadData({ preferCache: false });
     } catch (error) {
       alert('권한 변경 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
     }
@@ -184,7 +220,7 @@ export default function Admin({ me, currentSubPage }) {
     try {
       await deleteUser(targetUser.id);
       alert('탈퇴 처리되었습니다.');
-      loadData();
+      loadData({ preferCache: false });
     } catch (error) {
       alert('처리 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
     }
@@ -333,7 +369,7 @@ export default function Admin({ me, currentSubPage }) {
                                 onClick={() => handleUserDelete(user)}
                                 className="btn btn-danger"
                                 style={{ margin: 0, padding: '4px 10px', fontSize: 12 }}
-                              >강제퇴사</button>
+                              >회원탈퇴</button>
                             )}
                           </td>
                         </tr>

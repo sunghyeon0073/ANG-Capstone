@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getScopes, getScopeMembers } from '../../api/scopeApi';
+import { readApiCache, writeApiCache } from '../../utils/apiCache';
 
 const positionOrder = { '원장': 1, '센터장': 2, '본부장': 3, '팀장': 4, '팀원': 5 };
 const leaderKeywords = ['원장', '센터장', '본부장', '팀장'];
@@ -7,6 +8,8 @@ const leaderKeywords = ['원장', '센터장', '본부장', '팀장'];
 const getMemberId = member => member.id ?? member.userId ?? member.empNo;
 const getInitials = name => name?.charAt(0) || '?';
 const normalizeScopeType = scope => scope.scopeType ?? scope.type ?? 'TEAM';
+const SCOPES_CACHE_KEY = 'scopes:all';
+const getMembersCacheKey = scopeId => `scope-members:${scopeId}`;
 
 const uniqueMembers = members => {
   const memberMap = new Map();
@@ -93,6 +96,9 @@ const getScopeGroups = (scope, members) => {
   };
 };
 
+const hasLoadedScopeMembers = (membersCache, scopeId) =>
+  Object.prototype.hasOwnProperty.call(membersCache, scopeId);
+
 const SimpleModal = ({ open, onClose, children }) => {
   if (!open) return null;
 
@@ -129,15 +135,59 @@ export default function Organization({ currentSubPage = 'org-all' }) {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  const loadScopeMembers = async (scopeIds, { useLoadingState = true } = {}) => {
+    if (scopeIds.length === 0) return;
+
+    if (useLoadingState) {
+      setLoadingMembers(true);
+    }
+
+    try {
+      await Promise.all(
+        scopeIds.map(async scopeId => {
+          if (membersCache[scopeId]) return;
+
+          const cachedMembers = readApiCache(getMembersCacheKey(scopeId));
+          if (cachedMembers) {
+            setMembersCache(prev => ({ ...prev, [scopeId]: Array.isArray(cachedMembers) ? cachedMembers : [] }));
+            return;
+          }
+
+          try {
+            const res = await getScopeMembers(scopeId);
+            const data = Array.isArray(res.data?.data) ? res.data.data : [];
+            setMembersCache(prev => ({ ...prev, [scopeId]: data }));
+            writeApiCache(getMembersCacheKey(scopeId), data);
+          } catch (error) {
+            console.error('조직 구성원 로드 실패', error);
+            setMembersCache(prev => ({ ...prev, [scopeId]: [] }));
+          }
+        })
+      );
+    } finally {
+      if (useLoadingState) {
+        setLoadingMembers(false);
+      }
+    }
+  };
+
   useEffect(() => {
     const fetchScopes = async () => {
-      setIsLoading(true);
+      const cachedScopes = readApiCache(SCOPES_CACHE_KEY);
+
+      if (cachedScopes) {
+        setScopes(Array.isArray(cachedScopes) ? cachedScopes : []);
+      } else {
+        setIsLoading(true);
+      }
+
       setErrorMessage('');
 
       try {
         const res = await getScopes();
         const data = res.data?.data || [];
         setScopes(Array.isArray(data) ? data : []);
+        writeApiCache(SCOPES_CACHE_KEY, Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('조직도 로드 실패', error);
         setScopes([]);
@@ -152,19 +202,7 @@ export default function Organization({ currentSubPage = 'org-all' }) {
   }, []);
 
   const fetchMembers = async scopeId => {
-    if (membersCache[scopeId]) return;
-
-    try {
-      setLoadingMembers(true);
-      const res = await getScopeMembers(scopeId);
-      setMembersCache(prev => ({ ...prev, [scopeId]: res.data?.data || [] }));
-    } catch (error) {
-      console.error('조직 구성원 로드 실패', error);
-      setMembersCache(prev => ({ ...prev, [scopeId]: [] }));
-      setErrorMessage('조직 구성원을 불러오지 못했습니다.');
-    } finally {
-      setLoadingMembers(false);
-    }
+    await loadScopeMembers([scopeId]);
   };
 
   const handleTabChange = scope => {
@@ -199,35 +237,29 @@ export default function Organization({ currentSubPage = 'org-all' }) {
   useEffect(() => {
     if (currentSubPage !== 'org-all' || deptScopes.length === 0) return;
 
-    const scopeIdsToLoad = flattenScopeTree(deptScopes).map(scope => scope.id);
-    let isCancelled = false;
+    const rootScopeIds = deptScopes.map(scope => scope.id);
+    const childScopeIds = [...new Set(
+      deptScopes.flatMap(dept => flattenScopeTree(dept.children || [])).map(scope => scope.id)
+    )];
 
-    const loadAllMembers = async () => {
-      await Promise.all(
-        scopeIdsToLoad.map(async scopeId => {
-          if (membersCache[scopeId]) return;
+    loadScopeMembers(rootScopeIds, { useLoadingState: false });
 
-          try {
-            const res = await getScopeMembers(scopeId);
-            const data = Array.isArray(res.data?.data) ? res.data.data : [];
-
-            if (!isCancelled) {
-              setMembersCache(prev => ({ ...prev, [scopeId]: data }));
-            }
-          } catch (error) {
-            console.error('조직 구성원 로드 실패', error);
-            if (!isCancelled) {
-              setMembersCache(prev => ({ ...prev, [scopeId]: [] }));
-            }
-          }
-        })
-      );
+    const scheduleBackgroundPrefetch = () => {
+      loadScopeMembers(childScopeIds, { useLoadingState: false });
     };
 
-    loadAllMembers();
+    const idleId = typeof window !== 'undefined' && window.requestIdleCallback
+      ? window.requestIdleCallback(scheduleBackgroundPrefetch)
+      : window.setTimeout(scheduleBackgroundPrefetch, 0);
 
     return () => {
-      isCancelled = true;
+      if (typeof window !== 'undefined') {
+        if (window.cancelIdleCallback && typeof idleId === 'number') {
+          window.cancelIdleCallback(idleId);
+        } else {
+          window.clearTimeout(idleId);
+        }
+      }
     };
   }, [currentSubPage, deptScopes]);
 
@@ -247,8 +279,10 @@ export default function Organization({ currentSubPage = 'org-all' }) {
   const selectedTeamMembers = selectedGroups.members;
 
   const OrgTree = ({ dept }) => {
-    const deptGroups = getScopeGroups(dept, membersCache[dept.id] || []);
+    const deptMembers = membersCache[dept.id] || [];
+    const deptGroups = getScopeGroups(dept, deptMembers);
     const directors = deptGroups.leaders;
+    const deptMembersLoaded = hasLoadedScopeMembers(membersCache, dept.id);
 
     const teamLeaders = dept.children.flatMap(team => (
       getScopeGroups(team, membersCache[team.id] || []).leaders.map(member => ({ member, team }))
@@ -258,7 +292,9 @@ export default function Organization({ currentSubPage = 'org-all' }) {
       <div className="org-tree">
         <div className="tree-parent">
           <div className="org-parent-row">
-            {directors.length === 0 ? (
+            {!deptMembersLoaded ? (
+              <div className="team-empty">불러오는 중...</div>
+            ) : directors.length === 0 ? (
               <div className="team-empty">책임자 정보가 없습니다.</div>
             ) : (
               directors.map(member => (
@@ -299,7 +335,9 @@ export default function Organization({ currentSubPage = 'org-all' }) {
     <div className="org-tree org-dept-tree">
       <div className="tree-parent">
         <div className="org-parent-row">
-          {leaders.length === 0 ? (
+          {!hasLoadedScopeMembers(membersCache, scope.id) ? (
+              <div className="team-empty">불러오는 중...</div>
+          ) : leaders.length === 0 ? (
               <div className="team-empty">책임자 정보가 없습니다.</div>
           ) : (
             leaders.map(member => (
