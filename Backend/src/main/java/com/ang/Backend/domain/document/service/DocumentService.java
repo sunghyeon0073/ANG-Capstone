@@ -610,7 +610,9 @@ public class DocumentService {
             Path pdfFile = findConvertedPdf(tempDir, tempFile);
             if (pdfFile == null || !Files.exists(pdfFile)) {
                 log.warn("Preview PDF conversion finished but no PDF was created for {}", originalName);
-                pdfFile = createParsedContentPreviewPdf(parsedContent, originalName, tempDir);
+                if (shouldCreateParsedPreviewFallback(lowerName, contentType)) {
+                    pdfFile = createParsedContentPreviewPdf(parsedContent, originalName, tempDir);
+                }
             }
 
             if (pdfFile == null || !Files.exists(pdfFile)) {
@@ -632,7 +634,7 @@ public class DocumentService {
                     .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                     .build());
         } catch (Exception e) {
-            log.warn("Preview PDF generation failed, falling back to extracted text: {}", e.getMessage());
+            log.warn("Preview PDF generation failed: {}", e.getMessage());
             return null;
         } finally {
             deleteQuietly(tempFile);
@@ -657,6 +659,10 @@ public class DocumentService {
 
     private boolean isPlainTextFile(String lowerName, String contentType) {
         return lowerName.endsWith(".txt") || contentType.contains("text/plain");
+    }
+
+    private boolean shouldCreateParsedPreviewFallback(String lowerName, String contentType) {
+        return isPlainTextFile(lowerName, contentType);
     }
 
     private Path createParsedContentPreviewPdf(String parsedContent, String originalName, Path outputDir)
@@ -691,15 +697,15 @@ public class DocumentService {
                 <head>
                   <meta charset="UTF-8">
                   <style>
-                    body { font-family: 'Noto Sans CJK KR', sans-serif; font-size: 12pt; line-height: 1.55; }
-                    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-                    th, td { border: 1px solid #888; padding: 6px 8px; vertical-align: top; }
-                    th { background: #f2f2f2; font-weight: 700; }
-                    p { margin: 0 0 8px; }
-                    body.plain-text { white-space: pre-wrap; }
+                    body {
+                      font-family: 'Noto Sans CJK KR', sans-serif;
+                      font-size: 12pt;
+                      line-height: 1.55;
+                      white-space: pre-wrap;
+                    }
                   </style>
                 </head>
-                <body class="plain-text">""" + escapeHtml(cleanParsedContent(content)) + "</body></html>";
+                <body>""" + escapeHtml(cleanParsedContent(content)) + "</body></html>";
     }
 
     private String escapeHtml(String text) {
