@@ -8,7 +8,6 @@ import {
   FiPaperclip,
   FiRefreshCcw,
   FiSearch,
-  FiSend,
   FiStar,
   FiTrash2,
   FiX,
@@ -75,12 +74,10 @@ const formatDateTime = (value) => {
   }
 }
 
-const parseRecipients = (value) => (
-  value
-    .split(/[\s,;]+/)
-    .map(item => item.trim())
-    .filter(Boolean)
-)
+const mapRecipientSelection = (recipient) => ({
+  empNo: recipient.empNo || recipient.recipientEmpNo,
+  name: recipient.name || recipient.recipientName || recipient.empNo || recipient.recipientEmpNo,
+})
 
 // 목록 API 응답은 본문/수신자 정보가 부족하므로, 일단 목록에 필요한 최소 데이터만 화면용 객체로 변환합니다.
 const mapSummary = (mail, box, importantIds = []) => {
@@ -93,7 +90,7 @@ const mapSummary = (mail, box, importantIds = []) => {
     id,
     box,
     from: mail.senderName || mail.senderEmpNo || '알 수 없음',
-    to: ['sent', 'draft'].includes(box) ? '수신자 확인' : '',
+    to: ['sent', 'draft'].includes(box) ? '수신자 불러오는 중' : '',
     subject: mail.title || '(제목 없음)',
     preview: mail.status === 'CANCELLED' ? '발송 취소된 메일입니다.' : '메일을 선택하면 내용을 확인할 수 있습니다.',
     body: '',
@@ -133,7 +130,9 @@ const mergeDetail = (mail, detail) => {
   }
 }
 
-export default function Mail({ currentSubPage = 'mail-inbox', user }) {
+export default function Mail({ currentSubPage = 'mail-inbox', user, contactRequest, onContactRequestHandled }) {
+  const organizationContact = contactRequest?.channel === 'mail' ? contactRequest.contact : null
+  const organizationRecipient = organizationContact?.empNo || ''
   // activeBox는 현재 메일 화면 모드입니다. 예: 메일작성, 받은메일, 보낸메일, 임시보관함 등.
   const [activeBox, setActiveBox] = useState(normalizeMailboxId(currentSubPage || 'mail-inbox'))
   // mails는 현재 선택된 메일함의 목록 데이터입니다.
@@ -142,7 +141,10 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
   const [selectedId, setSelectedId] = useState(null)
   const [query, setQuery] = useState('')
   // draft는 메일 작성 화면에서 입력 중인 값입니다.
-  const [draft, setDraft] = useState({ to: '', subject: '', body: '' })
+  const [draft, setDraft] = useState({ subject: '', body: '' })
+  const [selectedRecipients, setSelectedRecipients] = useState(() => (
+    organizationRecipient ? [mapRecipientSelection(organizationContact)] : []
+  ))
   // 현재 백엔드에 메일 첨부 API가 없어서, 선택 파일은 프론트 화면에서만 임시로 들고 있습니다.
   const [draftAttachments, setDraftAttachments] = useState([])
   // 받는 사람 검색창과 검색 결과 드롭다운 상태입니다.
@@ -160,11 +162,21 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
   const currentBox = activeBox
   const config = mailboxConfig[currentBox] || mailboxConfig['mail-inbox']
   const isComposePage = currentBox === 'mail-compose'
+  const availableRecipientOptions = recipientOptions.filter(option => (
+    !selectedRecipients.some(recipient => recipient.empNo === option.empNo)
+  ))
 
   // 사이드바에서 다른 메일 메뉴를 클릭하면 currentSubPage가 바뀌고, 그 값을 내부 activeBox에 반영합니다.
   useEffect(() => {
     setActiveBox(normalizeMailboxId(currentSubPage || 'mail-inbox'))
   }, [currentSubPage])
+
+  useEffect(() => {
+    if (!organizationRecipient) return undefined
+
+    const timerId = window.setTimeout(() => onContactRequestHandled?.(), 0)
+    return () => window.clearTimeout(timerId)
+  }, [organizationRecipient, onContactRequestHandled])
 
   // 이름이나 사번을 입력하면 백엔드 사용자 검색 API에서 수신자 후보를 가져옵니다.
   const loadRecipientOptions = useCallback(async (keyword) => {
@@ -203,7 +215,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
     if (!isRecipientListOpen) return
 
     const closeRecipientList = (event) => {
-      if (event.target.closest('.mail-recipient-input, .mail-recipient-dropdown')) return
+      if (event.target.closest('.mail-recipient-input-shell, .mail-recipient-dropdown')) return
       setIsRecipientListOpen(false)
     }
 
@@ -246,7 +258,17 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
           : [getInboxMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'inbox')))]
 
       const loaded = (await Promise.all(loaders)).flat()
-      const filtered = loaded
+      const filtered = await Promise.all(loaded.map(async mail => {
+        if (!['sent', 'draft'].includes(mail.box)) return mail
+
+        try {
+          const response = await getMailDetail(mail.id)
+          return mergeDetail(mail, getResponseData(response))
+        } catch (error) {
+          console.error('수신자 정보 로드 실패', error)
+          return mail
+        }
+      }))
 
       setMails(filtered)
       setSelectedId(filtered[0]?.id || null)
@@ -344,10 +366,10 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
   // 임시저장 목록에서 다시 작성할 때, 저장된 내용을 작성 폼으로 옮깁니다.
   const openDraft = (mail) => {
     setDraft({
-      to: mail.recipients?.map(item => item.recipientEmpNo).filter(Boolean).join(', ') || '',
       subject: mail.subject === '(제목 없음)' ? '' : mail.subject,
       body: mail.body || '',
     })
+    setSelectedRecipients((mail.recipients || []).map(mapRecipientSelection))
     setDraftAttachments([])
     setRecipientQuery('')
     setRecipientOptions([])
@@ -356,21 +378,21 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
     setActiveBox('mail-compose')
   }
 
-  // 드롭다운에서 멤버를 선택하면 실제 발송에 필요한 사번을 받는 사람 칸에 추가합니다.
+  // 드롭다운에서 멤버를 선택하면 이름 칩으로 표시하고 사번은 발송 데이터로만 보관합니다.
   const addRecipient = (recipient) => {
-    const currentRecipients = parseRecipients(draft.to)
-
-    if (!currentRecipients.includes(recipient.empNo)) {
-      setDraft(prev => ({
-        ...prev,
-        to: [...currentRecipients, recipient.empNo].join(', '),
-      }))
-    }
+    setSelectedRecipients(prev => (
+      prev.some(item => item.empNo === recipient.empNo)
+        ? prev
+        : [...prev, mapRecipientSelection(recipient)]
+    ))
 
     setRecipientQuery('')
-    setRecipientOptions([])
-    setIsRecipientListOpen(false)
+    setIsRecipientListOpen(true)
     setRecipientErrorMessage('')
+  }
+
+  const removeRecipient = (empNo) => {
+    setSelectedRecipients(prev => prev.filter(recipient => recipient.empNo !== empNo))
   }
 
   // 파일 첨부 UI용 함수입니다. 아직 메일 전송 API에는 파일을 같이 보내지 않습니다.
@@ -436,7 +458,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
 
   // 작성 중인 메일을 백엔드 임시저장 API로 저장합니다.
   const saveDraft = async () => {
-    const recipientEmpNos = parseRecipients(draft.to)
+    const recipientEmpNos = selectedRecipients.map(recipient => recipient.empNo)
 
     if (!draft.subject.trim() && !draft.body.trim() && recipientEmpNos.length === 0) {
       setErrorMessage('임시저장할 내용을 입력해주세요.')
@@ -452,7 +474,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
         recipientEmpNos,
       })
 
-      setDraft({ to: '', subject: '', body: '' })
+      setDraft({ subject: '', body: '' })
+      setSelectedRecipients([])
       setDraftAttachments([])
       setRecipientQuery('')
       setRecipientOptions([])
@@ -469,9 +492,9 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
   const submitDraft = async (event) => {
     event.preventDefault()
 
-    const recipientEmpNos = parseRecipients(draft.to)
+    const recipientEmpNos = selectedRecipients.map(recipient => recipient.empNo)
     if (recipientEmpNos.length === 0 || !draft.subject.trim()) {
-      setErrorMessage('받는 사람 사번과 제목을 입력해주세요.')
+      setErrorMessage('받는 사람과 제목을 입력해주세요.')
       return
     }
 
@@ -484,7 +507,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
         recipientEmpNos,
       })
 
-      setDraft({ to: '', subject: '', body: '' })
+      setDraft({ subject: '', body: '' })
+      setSelectedRecipients([])
       setDraftAttachments([])
       setRecipientQuery('')
       setRecipientOptions([])
@@ -542,61 +566,66 @@ export default function Mail({ currentSubPage = 'mail-inbox', user }) {
 
       {isComposePage ? (
         <form className="mail-compose-panel" onSubmit={submitDraft}>
-          <label className="mail-compose-row">
+          <label className="mail-compose-row mail-recipient-row">
             받는 사람
-            <input
-              className="mail-recipient-input"
-              value={draft.to}
-              onFocus={() => {
-                const lastKeyword = parseRecipients(draft.to).at(-1) || ''
-
-                setRecipientQuery(lastKeyword)
-                setIsRecipientListOpen(true)
-              }}
-              onChange={(event) => {
-                const nextValue = event.target.value
-                const lastKeyword = parseRecipients(nextValue).at(-1) || ''
-
-                setDraft(prev => ({ ...prev, to: nextValue }))
-                setRecipientQuery(lastKeyword)
-                setIsRecipientListOpen(true)
-              }}
-              placeholder='사번 또는 이름으로 검색하여 수신자를 추가하세요'
-            />
-          </label>
-          {isRecipientListOpen && (
-            <div className="mail-recipient-dropdown">
-              {isRecipientLoading ? (
-                <div className="mail-recipient-empty">검색 중입니다.</div>
-              ) : recipientErrorMessage ? (
-                <div className="mail-recipient-empty">{recipientErrorMessage}</div>
-              ) : recipientOptions.length > 0 ? (
-                recipientOptions.map(recipient => (
+            <div className="mail-recipient-input-shell">
+              {selectedRecipients.map(recipient => (
+                <span className="mail-recipient-chip" key={recipient.empNo}>
+                  {recipient.name}
                   <button
-                    key={recipient.empNo}
                     type="button"
-                    className="mail-recipient-option"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => addRecipient(recipient)}
+                    onClick={() => removeRecipient(recipient.empNo)}
+                    aria-label={`${recipient.name} 수신자 제거`}
                   >
-                    <span className="mail-recipient-avatar">{getInitial(recipient.name)}</span>
-                    <span>
-                      <strong>{recipient.name}</strong>
-                      <em>
-                        {recipient.empNo}
-                        {recipient.position ? ` · ${recipient.position}` : ''}
-                        {recipient.departments?.[0]?.scopeName ? ` · ${recipient.departments[0].scopeName}` : ''}
-                      </em>
-                    </span>
+                    <FiX />
                   </button>
-                ))
-              ) : recipientQuery.trim() ? (
-                <div className="mail-recipient-empty">검색 결과가 없습니다.</div>
-              ) : (
-                <div className="mail-recipient-empty">표시할 멤버가 없습니다.</div>
-              )}
+                </span>
+              ))}
+              <input
+                className="mail-recipient-input"
+                value={recipientQuery}
+                onFocus={() => setIsRecipientListOpen(true)}
+                onChange={(event) => {
+                  setRecipientQuery(event.target.value)
+                  setIsRecipientListOpen(true)
+                }}
+                placeholder={selectedRecipients.length === 0 ? '이름 또는 사번으로 검색하세요' : '수신자 추가'}
+              />
             </div>
-          )}
+            {isRecipientListOpen && (
+              <div className="mail-recipient-dropdown">
+                {isRecipientLoading ? (
+                  <div className="mail-recipient-empty">검색 중입니다.</div>
+                ) : recipientErrorMessage ? (
+                  <div className="mail-recipient-empty">{recipientErrorMessage}</div>
+                ) : availableRecipientOptions.length > 0 ? (
+                  availableRecipientOptions.map(recipient => (
+                    <button
+                      key={recipient.empNo}
+                      type="button"
+                      className="mail-recipient-option"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => addRecipient(recipient)}
+                    >
+                      <span className="mail-recipient-avatar">{getInitial(recipient.name)}</span>
+                      <span>
+                        <strong>{recipient.name}</strong>
+                        <em>
+                          {recipient.empNo}
+                          {recipient.position ? ` · ${recipient.position}` : ''}
+                          {recipient.departments?.[0]?.scopeName ? ` · ${recipient.departments[0].scopeName}` : ''}
+                        </em>
+                      </span>
+                    </button>
+                  ))
+                ) : recipientQuery.trim() ? (
+                  <div className="mail-recipient-empty">검색 결과가 없습니다.</div>
+                ) : (
+                  <div className="mail-recipient-empty">추가할 멤버가 없습니다.</div>
+                )}
+              </div>
+            )}
+          </label>
           <label className="mail-compose-row">
             제목
             <input

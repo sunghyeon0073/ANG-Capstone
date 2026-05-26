@@ -39,6 +39,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [currentPage, setCurrentPage] = useState('home-dashboard')
+  const [contactRequest, setContactRequest] = useState(null)
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -75,6 +76,15 @@ export default function Dashboard() {
     }
   }
 
+  const openMailCompose = (contact) => {
+    setContactRequest({
+      channel: 'mail',
+      contact,
+      requestId: Date.now(),
+    })
+    setCurrentPage('mail-compose')
+  }
+
   const renderPage = () => {
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
@@ -85,6 +95,9 @@ export default function Dashboard() {
       user={user}
       currentSubPage={currentPage}
       me={user} // Admin 컴포넌트 등에서 사용할 내 정보
+      contactRequest={contactRequest}
+      onContactRequestHandled={() => setContactRequest(null)}
+      onSendMail={openMailCompose}
     />
   }
 
