@@ -730,15 +730,20 @@ public class DocumentService {
     }
 
     private KordocResult runCommand(List<String> command) throws IOException, InterruptedException {
+        return runCommand(command, 60, command.isEmpty() ? "command" : command.get(0));
+    }
+
+    private KordocResult runCommand(List<String> command, long timeoutSeconds, String commandName)
+            throws IOException, InterruptedException {
         Process process = new ProcessBuilder(command)
                 .redirectErrorStream(true)
                 .start();
 
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         if (!finished) {
             process.destroyForcibly();
-            return new KordocResult(-1, "kordoc timed out after 60 seconds");
+            return new KordocResult(-1, commandName + " timed out after " + timeoutSeconds + " seconds");
         }
 
         return new KordocResult(process.exitValue(), output);
@@ -810,7 +815,7 @@ public class DocumentService {
             Path pdfFile = findConvertedPdf(tempDir, tempFile);
             if (pdfFile == null || !Files.exists(pdfFile)) {
                 log.warn("Preview PDF conversion finished but no PDF was created for {}", originalName);
-                if (shouldCreateParsedPreviewFallback(lowerName, contentType)) {
+                if (shouldCreateParsedPreviewFallback(lowerName, contentType, parsedContent)) {
                     pdfFile = createParsedContentPreviewPdf(parsedContent, originalName, tempDir);
                 }
             }
@@ -861,8 +866,10 @@ public class DocumentService {
         return lowerName.endsWith(".txt") || contentType.contains("text/plain");
     }
 
-    private boolean shouldCreateParsedPreviewFallback(String lowerName, String contentType) {
-        return isPlainTextFile(lowerName, contentType);
+    private boolean shouldCreateParsedPreviewFallback(String lowerName, String contentType, String parsedContent) {
+        return parsedContent != null
+                && !parsedContent.isBlank()
+                && (isPlainTextFile(lowerName, contentType) || isConvertibleToPdf(lowerName, contentType));
     }
 
     private Path createParsedContentPreviewPdf(String parsedContent, String originalName, Path outputDir)
@@ -897,15 +904,36 @@ public class DocumentService {
                 <head>
                   <meta charset="UTF-8">
                   <style>
+                    @page {
+                      size: A4;
+                      margin: 16mm 14mm;
+                    }
+
+                    html,
                     body {
-                      font-family: 'Noto Sans CJK KR', sans-serif;
-                      font-size: 12pt;
-                      line-height: 1.55;
+                      margin: 0;
+                      padding: 0;
+                    }
+
+                    body {
+                      color: #111827;
+                      font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif;
+                      font-size: 11pt;
+                      line-height: 1.62;
+                      overflow-wrap: anywhere;
+                      word-break: keep-all;
+                      print-color-adjust: exact;
+                      -webkit-print-color-adjust: exact;
+                    }
+
+                    pre {
+                      margin: 0;
+                      font: inherit;
                       white-space: pre-wrap;
                     }
                   </style>
                 </head>
-                <body>""" + escapeHtml(cleanParsedContent(content)) + "</body></html>";
+                <body><pre>""" + escapeHtml(cleanParsedContent(content)) + "</pre></body></html>";
     }
 
     private String escapeHtml(String text) {
@@ -917,27 +945,42 @@ public class DocumentService {
     }
 
     private KordocResult runLibreOffice(Path file, Path outputDir) throws IOException, InterruptedException {
+        Path userProfile = Files.createTempDirectory(outputDir, "lo-profile-");
         try {
             return runCommand(List.of(
                     "libreoffice",
                     "--headless",
+                    "--nologo",
+                    "--invisible",
+                    "--nodefault",
+                    "--nofirststartwizard",
+                    "--nolockcheck",
+                    "--norestore",
+                    "-env:UserInstallation=" + userProfile.toUri(),
                     "--convert-to",
                     "pdf",
                     "--outdir",
                     outputDir.toAbsolutePath().toString(),
                     file.toAbsolutePath().toString()
-            ));
+            ), 180, "LibreOffice");
         } catch (IOException e) {
             log.debug("libreoffice command failed, retrying with soffice: {}", e.getMessage());
             return runCommand(List.of(
                     "soffice",
                     "--headless",
+                    "--nologo",
+                    "--invisible",
+                    "--nodefault",
+                    "--nofirststartwizard",
+                    "--nolockcheck",
+                    "--norestore",
+                    "-env:UserInstallation=" + userProfile.toUri(),
                     "--convert-to",
                     "pdf",
                     "--outdir",
                     outputDir.toAbsolutePath().toString(),
                     file.toAbsolutePath().toString()
-            ));
+            ), 180, "LibreOffice");
         }
     }
 

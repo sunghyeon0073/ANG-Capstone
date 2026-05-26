@@ -89,13 +89,24 @@ export default function DocumentWriter() {
       if (previewKind === 'text') return
 
       if (
-        (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
-        (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent))
+        !selectedDoc.previewFileId &&
+        (
+          (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
+          (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent))
+        )
       ) {
         return
       }
 
-      if (!selectedDoc.fileId || (previewKind !== 'pdf' && previewKind !== 'image')) {
+      const previewFileId = selectedDoc.previewFileId || selectedDoc.fileId
+      const canPreviewBlob = previewFileId && (
+        Boolean(selectedDoc.previewFileId) ||
+        previewKind === 'pdf' ||
+        previewKind === 'image' ||
+        selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
+      )
+
+      if (!canPreviewBlob) {
         return
       }
 
@@ -104,17 +115,17 @@ export default function DocumentWriter() {
         return
       }
 
-      if (String(selectedDoc.fileId).startsWith('mock-') || String(selectedDoc.fileId).startsWith('local-')) {
+      if (String(previewFileId).startsWith('mock-') || String(previewFileId).startsWith('local-')) {
         return
       }
 
       try {
         setPreviewLoading(true)
-        const response = await api.get(`/files/preview/${selectedDoc.fileId}`, {
+        const response = await api.get(`/files/preview/${previewFileId}`, {
           responseType: 'blob',
         })
         const previewType =
-          previewKind === 'pdf'
+          selectedDoc.previewFileId || previewKind === 'pdf' || selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
             ? 'application/pdf'
             : selectedDoc.fileContentType || response.data?.type || 'image/*'
         objectUrl = URL.createObjectURL(new Blob([response.data], { type: previewType }))
