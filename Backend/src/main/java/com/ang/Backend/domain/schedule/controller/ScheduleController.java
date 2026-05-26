@@ -35,6 +35,16 @@ public class ScheduleController {
         return ApiResponse.ok(scheduleService.getSchedules(user, startDate, endDate));
     }
 
+    @GetMapping("/ai-recommendations")
+    public ApiResponse<List<ScheduleDto.AiRecommendationResponse>> getAiRecommendations(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        User user = resolveUser(userDetails);
+        return ApiResponse.ok(scheduleService.getAiRecommendations(user, startDate, endDate));
+    }
+
     @PostMapping
     public ApiResponse<ScheduleDto.Response> create(
             @Valid @RequestBody ScheduleDto.SaveRequest request,

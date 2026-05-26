@@ -63,4 +63,20 @@ public class ScheduleDto {
                     .build();
         }
     }
+
+    @Getter
+    @Builder
+    public static class AiRecommendationResponse {
+        private String id;
+        private String type;
+        private String title;
+        private String message;
+        private LocalDate recommendationDate;
+        private LocalDate sourceStartDate;
+        private LocalDate sourceEndDate;
+        private LocalTime sourceStartTime;
+        private LocalTime sourceEndTime;
+        private Long sourceScheduleId;
+        private String sourceTitle;
+    }
 }
