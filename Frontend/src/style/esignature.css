@@ -1,0 +1,542 @@
+/* ============================================================================
+   E-SIGNATURE
+   ============================================================================ */
+.esignature-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.esignature-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.esignature-header h1 {
+  font-size: 28px;
+  color: #333;
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-designated,
+.btn-create {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.btn-designated {
+  background-color: white;
+  color: var(--color-primary);
+  border: 2px solid var(--color-primary);
+}
+
+.btn-designated:hover {
+  background-color: #f0f8fb;
+}
+
+.btn-create {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.btn-create:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.esignature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  color: #999;
+  font-size: 16px;
+  background: white;
+  border-radius: 8px;
+}
+
+.approval-item {
+  display: grid;
+  grid-template-columns: 1fr 200px 120px 100px;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.approval-item:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(255, 140, 116, 0.1);
+}
+
+.approval-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.approval-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.approval-id {
+  font-size: 12px;
+  color: #999;
+}
+
+.approval-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.requester {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.role {
+  font-size: 12px;
+  color: #999;
+}
+
+.approval-date {
+  font-size: 13px;
+  color: #666;
+}
+
+.status-button {
+  padding: 6px 12px;
+  border-radius: 20px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* E-SIGNATURE DETAIL */
+.esignature-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.back-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  width: fit-content;
+  transition: all 0.2s;
+}
+
+.back-button:hover {
+  background-color: #f5f5f5;
+  border-color: #999;
+}
+
+.detail-header {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.detail-header h1 {
+  margin: 0 0 12px 0;
+  font-size: 24px;
+  color: #333;
+}
+
+.detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  font-size: 13px;
+  color: #666;
+}
+
+.meta-item strong {
+  color: #333;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detail-content {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.content-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.content-section h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.content-section p {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.reject-reason {
+  background-color: #ffebee;
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 4px solid #ff5252;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.btn-approve,
+.btn-reject {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.btn-approve {
+  background-color: #28A745;
+  color: white;
+}
+
+.btn-approve:hover {
+  background-color: #218838;
+}
+
+.btn-reject {
+  background-color: #DC3545;
+  color: white;
+}
+
+.btn-reject:hover {
+  background-color: #c82333;
+}
+
+/* E-SIGNATURE CREATE */
+.esignature-create {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-header {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.form-header h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #333;
+}
+
+.approval-form {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  outline: none;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(255, 140, 116, 0.1);
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding-top: 10px;
+}
+
+.btn-submit,
+.btn-cancel {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.btn-submit {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.btn-submit:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.btn-cancel {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.btn-cancel:hover {
+  background-color: #d0d0d0;
+}
+
+/* ============================================================================
+   ADD DOCUMENT MODAL
+   ============================================================================ */
+.add-document-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.add-document-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-document-form .form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.form-input {
+    padding: 14px 18px;
+    border: none;
+    border-radius: var(--radius-pill);
+    background: var(--input-bg);
+    box-shadow: var(--input-shadow-inset);
+  font-size: 14px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--color-text);
+  outline: none;
+    transition: var(--transition-soft);
+}
+
+.form-input:focus {
+    background: var(--color-surface);
+    box-shadow: var(--shadow-focus-glow);
+}
+
+.form-input:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.form-textarea {
+    padding: 16px 20px;
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--input-bg);
+    box-shadow: var(--input-shadow-inset);
+  font-size: 14px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--color-text);
+  resize: vertical;
+    transition: var(--transition-soft);
+  min-height: 120px;
+  max-height: 250px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-textarea:focus {
+    outline: none;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-focus-glow);
+}
+
+.form-textarea:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.add-document-form .form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.add-document-form .btn-cancel {
+  background-color: #e0e0e0;
+  color: #333;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.add-document-form .btn-cancel:hover:not(:disabled) {
+  background-color: #d0d0d0;
+}
+
+.add-document-form .btn-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-document-form .btn-submit {
+  background-color: var(--color-primary);
+  color: white;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.add-document-form .btn-submit:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+
+.add-document-form .btn-submit:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1024px) {
+  .document-sidebar {
+    width: 280px;
+  }
+
+  .document-main .main-header {
+    padding: 16px;
+  }
+
+  .document-main .main-header h1 {
+    font-size: 20px;
+  }
+
+  .document-content {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .document-writer-container {
+    flex-direction: column;
+  }
+
+  .document-sidebar {
+    width: 100%;
+    max-height: 300px;
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .document-list {
+    max-height: 200px;
+  }
+
+    .sidebar {
+      margin: 0;
+      border-radius: 0;
+    }
+  }

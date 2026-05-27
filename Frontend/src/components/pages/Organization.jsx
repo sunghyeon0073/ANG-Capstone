@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { FiMail, FiMessageSquare } from 'react-icons/fi';
 import { getScopes, getScopeMembers } from '../../api/scopeApi';
 
 const positionOrder = { '원장': 1, '센터장': 2, '본부장': 3, '팀장': 4, '팀원': 5 };
@@ -120,7 +121,7 @@ const MemberCard = ({ member, scopeId, onClick, teamName }) => (
   </button>
 );
 
-export default function Organization({ currentSubPage = 'org-all' }) {
+export default function Organization({ currentSubPage = 'org-all', onSendMail }) {
   const [scopes, setScopes] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -435,6 +436,24 @@ export default function Organization({ currentSubPage = 'org-all' }) {
               </div>
             </div>
             <div className="org-modal-actions">
+              <div className="org-modal-left">
+                <button
+                  type="button"
+                  className="org-modal-btn org-modal-btn-chat"
+                  title="채팅 기능 준비 중"
+                >
+                  <FiMessageSquare />
+                  채팅
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSendMail?.(selectedMember.member)}
+                  className="org-modal-btn org-modal-btn-mail"
+                >
+                  <FiMail />
+                  메일
+                </button>
+              </div>
               <button onClick={() => setSelectedMember(null)} className="org-modal-btn org-modal-btn-close">
                 닫기
               </button>
