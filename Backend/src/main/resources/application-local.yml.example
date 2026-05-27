@@ -50,6 +50,9 @@ file:
 ai:
   base-url: ${AI_BASE_URL:http://localhost:8888}
 
+hwp:
+  edit-base-url: ${HWP_EDIT_BASE_URL:http://10.30.4.178:8877}
+
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
   model: ${OLLAMA_MODEL:ang-ai:latest}
