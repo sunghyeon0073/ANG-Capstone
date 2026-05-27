@@ -67,7 +67,8 @@ export const getDocumentPreviewKind = (doc) => {
     doc?.fileId || doc?.previewFileId || doc?.mockPreviewUrl || doc?.mockPreviewHtml || doc?.mockTableData
 
   if (!hasFile) return 'text'
-  if (doc?.previewFileContentType?.toLowerCase().includes('pdf')) return 'pdf'
+  
+  // 원본 파일 형식을 먼저 확인하여 정확한 라벨을 보장합니다.
   if (isPdfDocument(doc)) return 'pdf'
   if (isImageDocument(doc)) return 'image'
   if (isWordDocument(doc)) return 'word'
@@ -75,6 +76,10 @@ export const getDocumentPreviewKind = (doc) => {
   if (isHwpxDocument(doc)) return 'hwpx'
   if (isHwpDocument(doc)) return 'hwp'
   if (isTextDocument(doc)) return 'text'
+  
+  // 미리보기 파일 형식이 PDF인 경우 (백엔드 변환 결과)
+  if (doc?.previewFileContentType?.toLowerCase().includes('pdf')) return 'pdf'
+  
   if (doc?.fileId || doc?.mockPreviewUrl) return 'file'
   return 'text'
 }

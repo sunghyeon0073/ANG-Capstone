@@ -14,7 +14,7 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiChevronRight } from 'react-icons/fi'
+import { FiChevronRight, FiUpload } from 'react-icons/fi'
 // use backend download endpoint instead of frontend export logic
 
 const parseCsvToTable = (text) => {
@@ -463,40 +463,22 @@ export default function DocumentWriter() {
       </div>
 
       <div className={`document-main ${promptOpen ? '' : 'document-main--prompt-collapsed'}`}>
-        <div className="main-header">
-          <h1>AI 문서작성</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              type="button"
-              className="btn-add-document"
-              onClick={() => setShowUploadModal(true)}
-              disabled={isUploading}
-            >
-              {isUploading ? '업로드 중...' : '+ 파일 추가'}
-            </button>
-          </div>
-        </div>
-
         <div className="document-content">
           {selectedDoc ? (
             <div className="selected-document">
               <div className="doc-viewer-header">
                 <div className="doc-viewer-header-left">
                   <h2 className="selected-document-title">{selectedDoc.title}</h2>
-                  <div className="doc-viewer-tags">
-                    <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
-                      {getFileTypeLabel(selectedDoc)}
-                    </span>
-                    {selectedDoc.scopeName && (
-                      <span className="doc-scope-badge">{selectedDoc.scopeName}</span>
-                    )}
-                  </div>
-                  <div className="doc-meta doc-meta--compact">
-                    <span>작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
-                    {selectedDoc.originalFileName && (
-                      <span>파일: {selectedDoc.originalFileName}</span>
-                    )}
-                  </div>
+                  <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
+                    {getFileTypeLabel(selectedDoc)}
+                  </span>
+                  {selectedDoc.scopeName && (
+                    <span className="doc-scope-badge">{selectedDoc.scopeName}</span>
+                  )}
+                  <span className="doc-meta-item">작성일: {new Date(selectedDoc.createdAt).toLocaleDateString('ko-KR')}</span>
+                  {selectedDoc.originalFileName && (
+                    <span className="doc-meta-item">파일명: {selectedDoc.originalFileName}</span>
+                  )}
                 </div>
                 <div className="doc-viewer-header-actions">
                   <button
@@ -587,27 +569,43 @@ export default function DocumentWriter() {
             />
 
             <div className="prompt-actions">
-              <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
-                {['pdf', 'docx', 'xlsx', 'txt'].map((format) => (
-                  <button
-                    key={format}
-                    type="button"
-                    className={`ai-format-btn ${aiOutputFormat === format ? 'active' : ''}`}
-                    onClick={() => setAiOutputFormat(format)}
-                    disabled={aiLoading}
-                  >
-                    {format.toUpperCase()}
-                  </button>
-                ))}
+              <div className="prompt-actions-left">
+                <button
+                  type="button"
+                  className="btn-prompt-upload"
+                  onClick={() => setShowUploadModal(true)}
+                  disabled={isUploading}
+                  title="파일 업로드"
+                >
+                  <FiUpload />
+                  <span>업로드</span>
+                </button>
+                
+                <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
+                  {['pdf', 'docx', 'xlsx', 'txt', 'hwp'].map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      className={`ai-format-btn ${aiOutputFormat === format ? 'active' : ''}`}
+                      onClick={() => setAiOutputFormat(format)}
+                      disabled={aiLoading}
+                    >
+                      {format.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={handleAiGenerate}
-                className="btn-generate"
-                disabled={aiLoading}
-              >
-                {aiLoading ? '생성 중...' : 'AI 생성'}
-              </button>
+
+              <div className="prompt-actions-right">
+                <button
+                  type="button"
+                  onClick={handleAiGenerate}
+                  className="btn-generate"
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? '생성 중...' : 'AI 생성'}
+                </button>
+              </div>
             </div>
           </div>
           )}

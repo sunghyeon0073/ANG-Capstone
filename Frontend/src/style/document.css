@@ -346,49 +346,83 @@
 
   .doc-viewer-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: var(--space-md);
-    margin-bottom: var(--space-md);
-    padding: var(--space-md) var(--space-lg);
-    border-bottom: none;
-    background: var(--color-surface-muted);
+    margin-bottom: var(--space-sm);
+    padding: var(--space-sm) var(--space-lg);
+    border-bottom: 1px solid var(--color-surface-muted);
+    background: var(--color-surface);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-soft-xs);
   }
 
   .doc-viewer-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     flex: 1;
     min-width: 0;
+    overflow: hidden;
+  }
+
+  .selected-document-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+  }
+
+  .doc-meta-compact {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: #888;
+    margin-left: auto;
+    padding-left: 12px;
+    border-left: 1px solid #eee;
+  }
+
+  .doc-meta-item {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .doc-meta-item + .doc-meta-item::before {
+    content: "•";
+    margin: 0 8px;
+    color: #ccc;
   }
 
   .doc-viewer-tags {
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin: 8px 0;
+    gap: 6px;
   }
 
   .doc-viewer-header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
   }
 
   .btn-viewer-action {
-    padding: 10px 18px;
+    padding: 6px 14px;
     border: none;
     border-radius: var(--radius-pill);
-    background: var(--color-surface);
+    background: var(--color-surface-muted);
     color: var(--color-text);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition-soft);
     white-space: nowrap;
-    box-shadow: var(--shadow-soft-xs);
   }
 
   .btn-viewer-action:hover:not(:disabled) {
