@@ -92,7 +92,7 @@ public class DataInitializer {
     }
 
     private void initScopes() {
-        insertScopeIfAbsent("COMPANY01",      "영진전문대학교",   ScopeType.c,    null);
+        insertScopeIfAbsent("COMPANY01",      "영진전문대학교",   ScopeType.COMPANY,    null);
         insertScopeIfAbsent("DEPT_EDU",       "평생교육원",   ScopeType.DEPARTMENT, "COMPANY01");
         
         insertScopeIfAbsent("ANG-EDU-OP_COMM", "평생교육원 운영위원회", ScopeType.TEAM, "DEPT_EDU");
