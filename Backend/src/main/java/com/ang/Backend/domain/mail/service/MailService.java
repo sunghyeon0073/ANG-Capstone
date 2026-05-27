@@ -339,6 +339,7 @@ public class MailService {
         mail.setStatus(MailStatus.SENT);
         mail.setSentAt(LocalDateTime.now());
         return mail.getMailId();
+        
     }
 
     // 답장
