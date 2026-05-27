@@ -52,6 +52,7 @@ const mailboxConfig = {
 const getInitial = (name) => name?.charAt(0) || '?'
 const getResponseData = (response) => response?.data?.data ?? response?.data ?? []
 const normalizeMailboxId = (id) => (id === 'mail-draft' ? 'mail-drafts' : id)
+const KOREA_TIME_ZONE = 'Asia/Seoul'
 const getStoredUserEmpNo = () => {
   try {
     return JSON.parse(localStorage.getItem('user') || '{}')?.empNo
@@ -67,16 +68,27 @@ const formatFileSize = (bytes) => {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+const parseMailDateTime = (value) => {
+  if (!value) return null
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)
+  const date = new Date(hasTimeZone ? value : `${value}Z`)
+
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 const formatDateTime = (value) => {
-  if (!value) return { date: '-', time: '-' }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return { date: '-', time: '-' }
+  const date = parseMailDateTime(value)
+  if (!date) return { date: '-', time: '-' }
 
   return {
-    date: date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }),
-    time: date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+    date: date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: KOREA_TIME_ZONE }),
+    time: date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: KOREA_TIME_ZONE }),
   }
 }
+
+const sortMailsLatestFirst = (mails) => [...mails].sort((first, second) => (
+  (second.timestamp || 0) - (first.timestamp || 0)
+))
 
 const mapRecipientSelection = (recipient) => ({
   empNo: recipient.empNo || recipient.recipientEmpNo,
@@ -85,7 +97,8 @@ const mapRecipientSelection = (recipient) => ({
 
 // 목록 API 응답을 왼쪽 메일 목록에서 표시할 기본 데이터로 변환합니다.
 const mapSummary = (mail, box, importantIds = []) => {
-  const { date, time } = formatDateTime(mail.sentAt || mail.createdAt)
+  const dateValue = mail.sentAt || mail.createdAt
+  const { date, time } = formatDateTime(dateValue)
   const id = mail.mailId
   const isFavorite = mail.favorite ?? mail.isFavorite
   const isRead = mail.read ?? mail.isRead
@@ -100,6 +113,7 @@ const mapSummary = (mail, box, importantIds = []) => {
     body: '',
     time,
     date,
+    timestamp: parseMailDateTime(dateValue)?.getTime() || 0,
     status: mail.status,
     important: Boolean(isFavorite) || importantIds.includes(String(id)),
     unread: box === 'inbox' ? !isRead : false,
@@ -111,7 +125,8 @@ const mapSummary = (mail, box, importantIds = []) => {
 
 // 상세 응답의 본문, 수신자, 첨부파일을 선택된 메일 데이터에 합칩니다.
 const mergeDetail = (mail, detail) => {
-  const { date, time } = formatDateTime(detail.sentAt || detail.createdAt)
+  const dateValue = detail.sentAt || detail.createdAt
+  const { date, time } = formatDateTime(dateValue)
   const recipients = detail.recipients || []
   const recipientText = recipients
     .map(item => item.recipientName || item.recipientEmpNo)
@@ -128,6 +143,7 @@ const mergeDetail = (mail, detail) => {
     status: detail.status || mail.status,
     date,
     time,
+    timestamp: parseMailDateTime(dateValue)?.getTime() || mail.timestamp,
     attachments: detail.attachments || [],
     recipients,
     unread: false,
@@ -135,7 +151,7 @@ const mergeDetail = (mail, detail) => {
   }
 }
 
-export default function Mail({ currentSubPage = 'mail-inbox', user, contactRequest, onContactRequestHandled }) {
+export default function Mail({ currentSubPage = 'mail-inbox', user, contactRequest, onContactRequestHandled, onSubPageChange }) {
   const organizationContact = contactRequest?.channel === 'mail' ? contactRequest.contact : null
   const organizationRecipient = organizationContact?.empNo || ''
   // 현재 열린 메일함과 오른쪽 상세 화면에서 선택된 메일을 관리합니다.
@@ -277,8 +293,9 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
         }
       }))
 
-      setMails(filtered)
-      setSelectedId(filtered[0]?.id || null)
+      const sortedMails = sortMailsLatestFirst(filtered)
+      setMails(sortedMails)
+      setSelectedId(sortedMails[0]?.id || null)
       setReadStatuses([])
       setIsReadStatusOpen(false)
     } catch (error) {
@@ -550,6 +567,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       setIsRecipientListOpen(false)
       setRecipientErrorMessage('')
       setActiveBox('mail-drafts')
+      onSubPageChange?.('mail-drafts')
     } catch (error) {
       console.error('메일 임시저장 실패', error)
       setErrorMessage('메일을 임시저장하지 못했습니다. 수신자 사번을 확인해주세요.')
@@ -603,6 +621,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       setRecipientErrorMessage('')
       await loadMails()
       setActiveBox('mail-sent')
+      onSubPageChange?.('mail-sent')
     } catch (error) {
       console.error('메일 발송 실패', error)
       setErrorMessage('메일을 발송하지 못했습니다. 수신자 사번을 확인해주세요.')
@@ -826,7 +845,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
                       <div className="mail-list-main">
                         <div className="mail-list-top">
                           <strong>{['sent', 'draft'].includes(mail.box) ? mail.to : mail.from}</strong>
-                          <span>{mail.time}</span>
+                          <span>{`${mail.date} ${mail.time}`}</span>
                         </div>
                         <div className="mail-list-subject">{mail.subject}</div>
                         <p>{mail.preview}</p>

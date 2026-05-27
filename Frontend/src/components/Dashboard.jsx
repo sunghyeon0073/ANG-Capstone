@@ -98,6 +98,7 @@ export default function Dashboard() {
       contactRequest={contactRequest}
       onContactRequestHandled={() => setContactRequest(null)}
       onSendMail={openMailCompose}
+      onSubPageChange={handlePageChange}
     />
   }
 
