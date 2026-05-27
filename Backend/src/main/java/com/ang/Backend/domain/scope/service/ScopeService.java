@@ -203,7 +203,7 @@ public class ScopeService {
         for (int i = 0; i < 5; i++) {
             String code = "SCOPE_" + UUID.randomUUID().toString()
                     .replace("-", "").substring(0, 8).toUpperCase();
-            if (!scopeRepository.existsByScopeCodeIgnoreDeleted(code)) return code;
+            if (scopeRepository.countByScopeCodeIgnoreDeleted(code) == 0) return code;
         }
         throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "고유 부서 코드 생성에 실패했습니다.");
     }

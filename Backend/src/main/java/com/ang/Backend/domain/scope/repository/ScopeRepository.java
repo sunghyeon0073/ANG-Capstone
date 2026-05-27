@@ -13,7 +13,7 @@ public interface ScopeRepository extends JpaRepository<Scope, Integer> {
     boolean existsByScopeCode(String scopeCode);
     List<Scope> findByParentScope(Scope parentScope);
 
-    // @SQLRestriction을 무시하고 soft-delete된 코드도 포함해 중복 여부를 확인
-    @Query(value = "SELECT COUNT(*) > 0 FROM scopes WHERE scope_code = :code", nativeQuery = true)
-    boolean existsByScopeCodeIgnoreDeleted(@Param("code") String code);
+    // @SQLRestriction을 무시하고 soft-delete된 코드도 포함해 중복 여부를 확인 (native query는 Integer 반환)
+    @Query(value = "SELECT COUNT(*) FROM scopes WHERE scope_code = :code", nativeQuery = true)
+    int countByScopeCodeIgnoreDeleted(@Param("code") String code);
 }
