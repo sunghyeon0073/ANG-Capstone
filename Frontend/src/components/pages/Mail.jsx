@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  FiArrowLeft,
   FiArchive,
   FiCornerUpLeft,
   FiDownload,
   FiEdit3,
   FiFileText,
+  FiMail,
   FiPaperclip,
   FiRefreshCcw,
   FiSearch,
@@ -52,6 +54,7 @@ const mailboxConfig = {
 const getInitial = (name) => name?.charAt(0) || '?'
 const getResponseData = (response) => response?.data?.data ?? response?.data ?? []
 const normalizeMailboxId = (id) => (id === 'mail-draft' ? 'mail-drafts' : id)
+const KOREA_TIME_ZONE = 'Asia/Seoul'
 const getStoredUserEmpNo = () => {
   try {
     return JSON.parse(localStorage.getItem('user') || '{}')?.empNo
@@ -67,15 +70,37 @@ const formatFileSize = (bytes) => {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+const parseMailDateTime = (value) => {
+  if (!value) return null
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)
+  const date = new Date(hasTimeZone ? value : `${value}Z`)
+
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 const formatDateTime = (value) => {
-  if (!value) return { date: '-', time: '-' }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return { date: '-', time: '-' }
+  const date = parseMailDateTime(value)
+  if (!date) return { date: '-', time: '-' }
 
   return {
-    date: date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }),
-    time: date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+    date: date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: KOREA_TIME_ZONE }),
+    time: date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: KOREA_TIME_ZONE }),
   }
+}
+
+const sortMailsLatestFirst = (mails) => [...mails].sort((first, second) => (
+  (second.timestamp || 0) - (first.timestamp || 0)
+))
+
+const getReadStatusLabel = (mail) => {
+  if (mail.box === 'inbox') return mail.unread ? '안읽음' : '읽음'
+  if (mail.box !== 'sent' || !mail.readStatuses) return ''
+  if (mail.readStatuses.length === 0) return '안읽음'
+
+  const readCount = mail.readStatuses.filter(item => item.read).length
+  if (readCount === 0) return '안읽음'
+  if (readCount === mail.readStatuses.length) return '읽음'
+  return `일부 읽음 (${readCount}/${mail.readStatuses.length})`
 }
 
 const mapRecipientSelection = (recipient) => ({
@@ -85,7 +110,8 @@ const mapRecipientSelection = (recipient) => ({
 
 // 목록 API 응답을 왼쪽 메일 목록에서 표시할 기본 데이터로 변환합니다.
 const mapSummary = (mail, box, importantIds = []) => {
-  const { date, time } = formatDateTime(mail.sentAt || mail.createdAt)
+  const dateValue = mail.sentAt || mail.createdAt
+  const { date, time } = formatDateTime(dateValue)
   const id = mail.mailId
   const isFavorite = mail.favorite ?? mail.isFavorite
   const isRead = mail.read ?? mail.isRead
@@ -96,22 +122,25 @@ const mapSummary = (mail, box, importantIds = []) => {
     from: mail.senderName || mail.senderEmpNo || '알 수 없음',
     to: ['sent', 'draft'].includes(box) ? '수신자 불러오는 중' : '',
     subject: mail.title || '(제목 없음)',
-    preview: mail.status === 'CANCELLED' ? '발송 취소된 메일입니다.' : '메일을 선택하면 내용을 확인할 수 있습니다.',
+    preview: mail.status === 'CANCELLED' ? '발송 취소된 메일입니다.' : (mail.body || ''),
     body: '',
     time,
     date,
+    timestamp: parseMailDateTime(dateValue)?.getTime() || 0,
     status: mail.status,
     important: Boolean(isFavorite) || importantIds.includes(String(id)),
     unread: box === 'inbox' ? !isRead : false,
     attachments: [],
     recipients: [],
+    readStatuses: null,
     isDetailLoaded: false,
   }
 }
 
 // 상세 응답의 본문, 수신자, 첨부파일을 선택된 메일 데이터에 합칩니다.
 const mergeDetail = (mail, detail) => {
-  const { date, time } = formatDateTime(detail.sentAt || detail.createdAt)
+  const dateValue = detail.sentAt || detail.createdAt
+  const { date, time } = formatDateTime(dateValue)
   const recipients = detail.recipients || []
   const recipientText = recipients
     .map(item => item.recipientName || item.recipientEmpNo)
@@ -128,6 +157,7 @@ const mergeDetail = (mail, detail) => {
     status: detail.status || mail.status,
     date,
     time,
+    timestamp: parseMailDateTime(dateValue)?.getTime() || mail.timestamp,
     attachments: detail.attachments || [],
     recipients,
     unread: false,
@@ -135,11 +165,12 @@ const mergeDetail = (mail, detail) => {
   }
 }
 
-export default function Mail({ currentSubPage = 'mail-inbox', user, contactRequest, onContactRequestHandled }) {
+export default function Mail({ currentSubPage = 'mail-inbox', user, contactRequest, onContactRequestHandled, onSubPageChange }) {
   const organizationContact = contactRequest?.channel === 'mail' ? contactRequest.contact : null
   const organizationRecipient = organizationContact?.empNo || ''
   // 현재 열린 메일함과 오른쪽 상세 화면에서 선택된 메일을 관리합니다.
   const [activeBox, setActiveBox] = useState(normalizeMailboxId(currentSubPage || 'mail-inbox'))
+  const [viewMode, setViewMode] = useState('list')
   const [mails, setMails] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [query, setQuery] = useState('')
@@ -161,21 +192,23 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [attachmentMessage, setAttachmentMessage] = useState('')
-  const [readStatuses, setReadStatuses] = useState([])
-  const [isReadStatusOpen, setIsReadStatusOpen] = useState(false)
-  const [isReadStatusLoading, setIsReadStatusLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const currentBox = activeBox
   const config = mailboxConfig[currentBox] || mailboxConfig['mail-inbox']
   const isComposePage = currentBox === 'mail-compose'
+  const currentEmpNo = user?.empNo || getStoredUserEmpNo()
   const availableRecipientOptions = recipientOptions.filter(option => (
+    option.empNo !== currentEmpNo
+    &&
     !selectedRecipients.some(recipient => recipient.empNo === option.empNo)
   ))
 
   // 사이드바에서 선택한 메일 메뉴를 현재 화면에 반영합니다.
   useEffect(() => {
     setActiveBox(normalizeMailboxId(currentSubPage || 'mail-inbox'))
+    setViewMode('list')
+    setSelectedId(null)
   }, [currentSubPage])
 
   useEffect(() => {
@@ -247,7 +280,6 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       }
 
       // 받은/보낸/임시/중요/휴지통 메뉴별 API를 선택합니다.
-      const currentEmpNo = user?.empNo || getStoredUserEmpNo()
       const loaders = currentBox === 'mail-sent'
         ? [getSentMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'sent')))]
         : currentBox === 'mail-drafts'
@@ -266,21 +298,35 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
 
       const loaded = (await Promise.all(loaders)).flat()
       const filtered = await Promise.all(loaded.map(async mail => {
-        if (!['sent', 'draft'].includes(mail.box)) return mail
+        let enrichedMail = mail
+
+        // 받은 메일 상세 조회는 읽음 처리되므로, 이미 읽은 메일만 목록 미리보기를 채웁니다.
+        const canLoadPreviewWithoutChangingReadState = ['sent', 'draft'].includes(mail.box)
+          || (mail.box === 'inbox' && !mail.unread)
+
+        if (canLoadPreviewWithoutChangingReadState) {
+          try {
+            const response = await getMailDetail(mail.id)
+            enrichedMail = mergeDetail(mail, getResponseData(response))
+          } catch (error) {
+            console.error('수신자 정보 로드 실패', error)
+          }
+        }
+
+        if (mail.box !== 'sent') return enrichedMail
 
         try {
-          const response = await getMailDetail(mail.id)
-          return mergeDetail(mail, getResponseData(response))
+          const response = await getMailReadStatus(mail.id)
+          return { ...enrichedMail, readStatuses: getResponseData(response) }
         } catch (error) {
-          console.error('수신자 정보 로드 실패', error)
-          return mail
+          console.error('수신 확인 로드 실패', error)
+          return enrichedMail
         }
       }))
 
-      setMails(filtered)
-      setSelectedId(filtered[0]?.id || null)
-      setReadStatuses([])
-      setIsReadStatusOpen(false)
+      const sortedMails = sortMailsLatestFirst(filtered)
+      setMails(sortedMails)
+      setSelectedId(null)
     } catch (error) {
       console.error('메일 목록 로드 실패', error)
       setMails([])
@@ -310,16 +356,13 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
 
   // 선택된 메일이 없으면 목록의 첫 메일을 상세 화면에 보여줍니다.
   const selectedMail = useMemo(() => {
-    const currentSelected = visibleMails.find(mail => mail.id === selectedId)
-    return currentSelected || visibleMails[0] || null
+    return visibleMails.find(mail => mail.id === selectedId) || null
   }, [visibleMails, selectedId])
 
   // 메일 선택 시 아직 가져오지 않은 본문과 첨부파일 상세를 조회합니다.
   const selectMail = async (id, refreshDetail = false) => {
     setSelectedId(id)
     setErrorMessage('')
-    setReadStatuses([])
-    setIsReadStatusOpen(false)
 
     const target = mails.find(mail => mail.id === id)
     if (!target || (target.isDetailLoaded && !refreshDetail)) return
@@ -336,11 +379,22 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
+  const openMailDetail = (id) => {
+    setViewMode('detail')
+    selectMail(id, true)
+  }
+
+  const returnToMailList = () => {
+    setViewMode('list')
+    setSelectedId(null)
+    setErrorMessage('')
+  }
+
   useEffect(() => {
-    if (selectedMail && !selectedMail.isDetailLoaded) {
+    if (viewMode === 'detail' && selectedMail && !selectedMail.isDetailLoaded) {
       selectMail(selectedMail.id)
     }
-  }, [selectedMail?.id, selectedMail?.isDetailLoaded])
+  }, [viewMode, selectedMail?.id, selectedMail?.isDetailLoaded])
 
   // 별표 클릭 시 받은/보낸 메일에 맞는 중요 메일 상태를 저장합니다.
   const toggleImportant = async (id) => {
@@ -358,6 +412,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       if (currentBox === 'mail-important' && !nextImportant) {
         setMails(prev => prev.filter(mail => mail.id !== id))
         setSelectedId(prev => (prev === id ? null : prev))
+        setViewMode('list')
         return
       }
 
@@ -385,6 +440,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     setIsRecipientListOpen(false)
     setRecipientErrorMessage('')
     setActiveBox('mail-compose')
+    setViewMode('list')
+    onSubPageChange?.('mail-compose')
   }
 
   // 선택한 수신자는 칩으로 표시하고, 발송 요청에는 사번을 전달합니다.
@@ -489,6 +546,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       }
       setMails(prev => prev.filter(mail => mail.id !== id))
       setSelectedId(prev => (prev === id ? null : prev))
+      setViewMode('list')
     } catch (error) {
       console.error('메일 삭제 실패', error)
       setErrorMessage('메일을 삭제하지 못했습니다.')
@@ -510,6 +568,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
 
       setMails(prev => prev.filter(mail => mail.id !== id))
       setSelectedId(prev => (prev === id ? null : prev))
+      setViewMode('list')
     } catch (error) {
       console.error('메일 복원 실패', error)
       setErrorMessage('메일을 복원하지 못했습니다.')
@@ -550,6 +609,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       setIsRecipientListOpen(false)
       setRecipientErrorMessage('')
       setActiveBox('mail-drafts')
+      setViewMode('list')
+      onSubPageChange?.('mail-drafts')
     } catch (error) {
       console.error('메일 임시저장 실패', error)
       setErrorMessage('메일을 임시저장하지 못했습니다. 수신자 사번을 확인해주세요.')
@@ -603,6 +664,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       setRecipientErrorMessage('')
       await loadMails()
       setActiveBox('mail-sent')
+      setViewMode('list')
+      onSubPageChange?.('mail-sent')
     } catch (error) {
       console.error('메일 발송 실패', error)
       setErrorMessage('메일을 발송하지 못했습니다. 수신자 사번을 확인해주세요.')
@@ -618,27 +681,10 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     try {
       await cancelMail(id)
       await loadMails()
+      setViewMode('list')
     } catch (error) {
       console.error('발송 취소 실패', error)
       setErrorMessage('메일을 발송 취소하지 못했습니다. 이미 읽은 수신자가 있으면 취소할 수 없습니다.')
-    }
-  }
-
-  // 보낸 메일의 수신자별 읽음 상태를 상세 화면에 표시합니다.
-  const loadReadStatus = async (id) => {
-    setErrorMessage('')
-    setIsReadStatusOpen(true)
-    setIsReadStatusLoading(true)
-
-    try {
-      const response = await getMailReadStatus(id)
-      setReadStatuses(getResponseData(response))
-    } catch (error) {
-      console.error('수신 확인 로드 실패', error)
-      setReadStatuses([])
-      setErrorMessage('수신 확인 정보를 불러오지 못했습니다.')
-    } finally {
-      setIsReadStatusLoading(false)
     }
   }
 
@@ -789,7 +835,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
         </form>
       ) : (
         <>
-          <div className="mail-toolbar">
+          {viewMode === 'list' && (
+            <div className="mail-toolbar">
             <div className="mail-search">
               <FiSearch />
               <input
@@ -801,10 +848,12 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
             <button className="mail-icon-btn" aria-label="새로고침" onClick={loadMails}>
               <FiRefreshCcw />
             </button>
-          </div>
+            </div>
+          )}
 
-          <div className="mail-shell">
-            <section className="mail-list-panel">
+          <div className={`mail-shell mail-${viewMode}-view`}>
+            {viewMode === 'list' && (
+              <section className="mail-list-panel">
               <div className="mail-list-title">
                 <h2>{config.title}</h2>
                 <span>{visibleMails.length}</span>
@@ -817,31 +866,68 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
               ) : (
                 <div className="mail-list">
                   {visibleMails.map(mail => (
-                    <button
+                    <div
                       key={`${mail.box}-${mail.id}`}
-                      className={`mail-list-item ${selectedMail?.id === mail.id ? 'active' : ''} ${mail.unread ? 'unread' : ''}`}
-                      onClick={() => selectMail(mail.id, true)}
+                      className={`mail-list-item ${mail.unread ? 'unread' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openMailDetail(mail.id)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          openMailDetail(mail.id)
+                        }
+                      }}
                     >
-                      <div className="mail-list-avatar">{getInitial(['sent', 'draft'].includes(mail.box) ? mail.to : mail.from)}</div>
-                      <div className="mail-list-main">
-                        <div className="mail-list-top">
-                          <strong>{['sent', 'draft'].includes(mail.box) ? mail.to : mail.from}</strong>
-                          <span>{mail.time}</span>
-                        </div>
-                        <div className="mail-list-subject">{mail.subject}</div>
-                        <p>{mail.preview}</p>
-                        <div className="mail-list-meta">
-                          {mail.attachments.length > 0 && <FiPaperclip />}
-                          {mail.important && <FiStar />}
-                        </div>
+                      <button
+                        type="button"
+                        className={`mail-list-star ${mail.important ? 'active' : ''}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          toggleImportant(mail.id)
+                        }}
+                        disabled={mail.box === 'draft'}
+                        aria-label={mail.important ? '중요 표시 해제' : '중요 표시'}
+                        title={mail.important ? '중요 표시 해제' : '중요 표시'}
+                      >
+                        <FiStar />
+                      </button>
+                      {getReadStatusLabel(mail) ? (
+                        <span
+                          className={`mail-list-read ${getReadStatusLabel(mail).includes('안읽음') ? 'unread' : 'read'}`}
+                          aria-label={getReadStatusLabel(mail)}
+                          title={getReadStatusLabel(mail)}
+                        >
+                          <FiMail />
+                        </span>
+                      ) : (
+                        <span className="mail-list-read" />
+                      )}
+                      <strong className="mail-list-sender">
+                        {['sent', 'draft'].includes(mail.box) ? mail.to : mail.from}
+                      </strong>
+                      <div className="mail-list-subject">
+                        <span>{mail.subject}</span>
+                        {mail.preview && (
+                          <span className="mail-list-preview">- {mail.preview}</span>
+                        )}
+                        {mail.attachments.length > 0 && <FiPaperclip aria-label="첨부파일 있음" />}
                       </div>
-                    </button>
+                      <time className="mail-list-date">{`${mail.date} ${mail.time}`}</time>
+                    </div>
                   ))}
                 </div>
               )}
-            </section>
+              </section>
+            )}
 
-            <section className="mail-detail-panel">
+            {viewMode === 'detail' && (
+              <section className="mail-detail-panel">
+                <button type="button" className="mail-back-btn" onClick={returnToMailList}>
+                  <FiArrowLeft />
+                  목록으로
+                </button>
               {selectedMail ? (
                 <>
                   <div className="mail-detail-head">
@@ -886,12 +972,15 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
                           <FiX />
                         </button>
                       )}
-                      {selectedMail.box === 'sent' && (
-                        <button onClick={() => loadReadStatus(selectedMail.id)} aria-label="수신확인" title="수신확인">
-                          <FiArchive />
-                        </button>
-                      )}
-                      <button aria-label="답장" title="답장" onClick={() => setActiveBox('mail-compose')}>
+                      <button
+                        aria-label="답장"
+                        title="답장"
+                        onClick={() => {
+                          setActiveBox('mail-compose')
+                          setViewMode('list')
+                          onSubPageChange?.('mail-compose')
+                        }}
+                      >
                         <FiCornerUpLeft />
                       </button>
                     </div>
@@ -900,39 +989,6 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
                   <div className="mail-body">
                     {selectedMail.isDetailLoaded ? selectedMail.body || '내용 없음' : '메일 내용을 불러오는 중입니다.'}
                   </div>
-
-                  {isReadStatusOpen && (
-                    <div className="mail-read-status">
-                      <div className="mail-read-status-head">
-                        <h3>수신 확인</h3>
-                        <button type="button" onClick={() => setIsReadStatusOpen(false)}>
-                          <FiX />
-                        </button>
-                      </div>
-                      {isReadStatusLoading ? (
-                        <div className="mail-read-empty">수신 확인 정보를 불러오는 중입니다.</div>
-                      ) : readStatuses.length === 0 ? (
-                        <div className="mail-read-empty">수신 확인 정보가 없습니다.</div>
-                      ) : (
-                        <div className="mail-read-list">
-                          {readStatuses.map(item => {
-                            const readTime = formatDateTime(item.readAt)
-                            return (
-                              <div className="mail-read-item" key={item.recipientEmpNo}>
-                                <div>
-                                  <strong>{item.recipientName || item.recipientEmpNo}</strong>
-                                  <span>{item.recipientEmpNo}</span>
-                                </div>
-                                <em className={item.read ? 'read' : 'unread'}>
-                                  {item.read ? `${readTime.date} ${readTime.time}` : '안 읽음'}
-                                </em>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   {selectedMail.attachments.length > 0 && (
                     <div className="mail-attachments">
@@ -956,7 +1012,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
               ) : (
                 <div className="mail-detail-empty">확인할 메일을 선택해주세요.</div>
               )}
-            </section>
+              </section>
+            )}
           </div>
         </>
       )}

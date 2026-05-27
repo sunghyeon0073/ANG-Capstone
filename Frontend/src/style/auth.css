@@ -1,0 +1,95 @@
+/* ============================================================================
+   AUTH
+   ============================================================================ */
+.auth-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.auth-box {
+    background: var(--color-surface);
+    padding: var(--space-2xl);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-soft-lg);
+    border: none;
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-box .btn {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 16px;
+}
+
+.auth-box h1 {
+  text-align: center;
+  color: #333;
+  margin-bottom: 30px;
+  font-size: 28px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #555;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+    padding: 14px 18px;
+    border: none;
+    border-radius: var(--radius-pill);
+    background: var(--input-bg);
+    box-shadow: var(--input-shadow-inset);
+  font-size: 14px;
+    color: var(--color-text);
+    transition: var(--transition-soft);
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-focus-glow);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+.auth-footer p {
+  color: #999;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.logo h1,
+.logo h2 {
+  color: white;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 1px;
+}

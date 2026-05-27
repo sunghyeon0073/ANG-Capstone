@@ -65,7 +65,9 @@
 }
 
 .org-page .profile-node {
-  min-width: 120px;
+  width: 182px;
+  min-height: 202px;
+  box-sizing: border-box;
   padding: 14px 12px 12px;
   border: 1px solid rgba(15, 35, 52, 0.08);
   border-radius: var(--radius-xl);
@@ -104,10 +106,21 @@
 }
 
 .org-page .team-dept-label {
+  display: -webkit-box;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 26px;
+  box-sizing: border-box;
+  padding: 4px 14px;
   margin-bottom: 12px;
   background: #eef6f8;
   color: #44606a;
   border: 1px solid rgba(0, 121, 140, 0.08);
+  line-height: 1.35;
+  text-align: center;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .org-page .tree-parent {
