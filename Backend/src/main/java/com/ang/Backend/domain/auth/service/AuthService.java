@@ -59,8 +59,7 @@ public class AuthService {
             throw new CustomException(ErrorCode.PASSWORD_POLICY_VIOLATION);
         }
 
-        // Validate the scope code
-        Scope scope = scopeRepository.findByScopeCode(req.getScopeCode())
+        Scope scope = scopeRepository.findById(req.getScopeId())
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
 
         User user = User.builder()

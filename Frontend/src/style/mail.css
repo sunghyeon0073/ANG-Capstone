@@ -1087,3 +1087,289 @@
   left: 0;
   right: 0;
 }
+
+/* MAIL - list status and detail actions */
+.mail-list-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.mail-list-important {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--color-primary);
+}
+
+.mail-list-important svg {
+  width: 17px;
+  height: 17px;
+  fill: var(--color-primary);
+}
+
+.mail-list-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.mail-list-time em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mail-list-time em.read {
+  color: var(--color-primary-hover);
+}
+
+.mail-list-time em.unread {
+  color: var(--color-text-muted);
+}
+
+.mail-actions button {
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+
+.mail-actions button svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* MAIL - scrollable mailbox list */
+.mail-shell {
+  height: calc(100vh - 190px);
+  min-height: 520px;
+}
+
+.mail-list-panel,
+.mail-detail-panel {
+  min-height: 0;
+}
+
+.mail-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mail-detail-panel {
+  overflow-y: auto;
+}
+
+@media (max-width: 820px) {
+  .mail-shell {
+    height: auto;
+  }
+
+  .mail-list {
+    max-height: 420px;
+  }
+}
+
+/* MAIL - full list and focused detail views */
+.mail-shell.mail-list-view,
+.mail-shell.mail-detail-view {
+  display: block;
+}
+
+.mail-shell.mail-detail-view {
+  height: auto;
+  min-height: 520px;
+  overflow: visible;
+}
+
+.mail-list-view .mail-list-panel {
+  height: 100%;
+  border-right: 0;
+}
+
+.mail-list-view .mail-list-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 24px;
+  border-bottom: 1px solid #e4e8e4;
+}
+
+.mail-list-view .mail-list-title h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.mail-list-view .mail-list-title span {
+  color: var(--color-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mail-list-view .mail-list-item {
+  grid-template-columns: 32px 32px minmax(100px, 170px) minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 0 18px;
+}
+
+.mail-list-star {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #bcc8dc;
+  cursor: pointer;
+}
+
+.mail-list-star svg {
+  width: 19px;
+  height: 19px;
+}
+
+.mail-list-star:hover,
+.mail-list-star.active {
+  color: #ffbe31;
+}
+
+.mail-list-star.active svg {
+  fill: currentColor;
+}
+
+.mail-list-star:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.mail-list-read {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: #c4ccd2;
+}
+
+.mail-list-read svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mail-list-read.unread {
+  color: #69afe7;
+}
+
+.mail-list-read.unread svg {
+  fill: #cde8fb;
+}
+
+.mail-list-sender {
+  overflow: hidden;
+  color: #263438;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-list-item.unread .mail-list-sender {
+  font-weight: 800;
+}
+
+.mail-list-view .mail-list-subject {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+}
+
+.mail-list-view .mail-list-subject span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-list-view .mail-list-subject > span:first-child {
+  flex: 0 0 auto;
+  max-width: 100%;
+  color: #172326;
+}
+
+.mail-list-view .mail-list-preview {
+  flex: 1 1 0;
+  min-width: 0;
+  color: #7c898c;
+  font-weight: 400;
+}
+
+.mail-list-view .mail-list-subject svg {
+  flex: 0 0 auto;
+  color: #8b989c;
+}
+
+.mail-list-date {
+  justify-self: end;
+  color: #67767b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mail-detail-view .mail-detail-panel {
+  min-height: 100%;
+  padding: 22px 30px 38px;
+  overflow-y: visible;
+}
+
+.mail-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 20px;
+  padding: 8px 12px;
+  border: 1px solid #e0e5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #506064;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mail-back-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+@media (max-width: 820px) {
+  .mail-list-view .mail-list-item {
+    grid-template-columns: 28px 28px minmax(0, 1fr) auto;
+    padding: 15px;
+  }
+
+  .mail-list-sender {
+    grid-column: 3;
+  }
+
+  .mail-list-view .mail-list-subject {
+    grid-column: 3 / -1;
+    margin-top: 8px;
+  }
+
+  .mail-list-date {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  .mail-detail-view .mail-detail-panel {
+    padding: 16px;
+  }
+}
