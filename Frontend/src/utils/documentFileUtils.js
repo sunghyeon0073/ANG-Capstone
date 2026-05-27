@@ -52,10 +52,16 @@ export const isTextDocument = (doc) => {
 export const isHwpDocument = (doc) => {
   const contentType = doc?.fileContentType?.toLowerCase() || ''
   const ext = getFileExtension(doc)
-  return contentType.includes('hwp') || ext === 'hwp'
+  return (contentType.includes('hwp') && !ext.endsWith('x')) || ext === 'hwp'
 }
 
-/** @returns {'pdf'|'image'|'word'|'excel'|'hwp'|'file'|'text'} */
+export const isHwpxDocument = (doc) => {
+  const contentType = doc?.fileContentType?.toLowerCase() || ''
+  const ext = getFileExtension(doc)
+  return contentType.includes('hwpx') || ext === 'hwpx'
+}
+
+/** @returns {'pdf'|'image'|'word'|'excel'|'hwp'|'hwpx'|'file'|'text'} */
 export const getDocumentPreviewKind = (doc) => {
   const hasFile =
     doc?.fileId || doc?.previewFileId || doc?.mockPreviewUrl || doc?.mockPreviewHtml || doc?.mockTableData
@@ -66,6 +72,7 @@ export const getDocumentPreviewKind = (doc) => {
   if (isImageDocument(doc)) return 'image'
   if (isWordDocument(doc)) return 'word'
   if (isExcelDocument(doc)) return 'excel'
+  if (isHwpxDocument(doc)) return 'hwpx'
   if (isHwpDocument(doc)) return 'hwp'
   if (isTextDocument(doc)) return 'text'
   if (doc?.fileId || doc?.mockPreviewUrl) return 'file'
@@ -85,6 +92,7 @@ export const getFileTypeLabel = (doc) => {
     word: 'DOCX',
     excel: 'XLSX',
     hwp: 'HWP',
+    hwpx: 'HWPX',
     file: 'FILE',
     text: 'TXT',
   }
@@ -92,7 +100,7 @@ export const getFileTypeLabel = (doc) => {
 }
 
 export const ACCEPTED_UPLOAD_TYPES =
-  '.txt,.pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.gif,.webp,.hwp,.md'
+  '.txt,.pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.gif,.webp,.hwp,.hwpx,.md'
 
 export const inferContentType = (fileName) => {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
@@ -111,6 +119,7 @@ export const inferContentType = (fileName) => {
     txt: 'text/plain',
     md: 'text/markdown',
     hwp: 'application/x-hwp',
+    hwpx: 'application/vnd.hancom.hwpx',
   }
   return map[ext] || 'application/octet-stream'
 }

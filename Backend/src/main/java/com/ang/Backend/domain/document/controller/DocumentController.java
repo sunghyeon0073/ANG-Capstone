@@ -8,6 +8,10 @@ import com.ang.Backend.domain.document.service.DocumentService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -120,6 +124,39 @@ public class DocumentController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/{id}/hwp-replace")
+    public ResponseEntity<byte[]> replaceHwp(
+            @PathVariable Long id,
+            @RequestBody DocumentDto.HwpReplaceRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        DocumentDto.FileDownload file = documentService.replaceHwp(id, request, user);
+
+        String contentType = file.getContentType() != null
+                ? file.getContentType()
+                : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(file.getFileName(), java.nio.charset.StandardCharsets.UTF_8)
+                        .build()
+                        .toString())
+                .body(file.getBytes());
+    }
+
+    @GetMapping("/trash")
+    public ApiResponse<List<DocumentDto.Response>> getTrashDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        return ApiResponse.ok(documentService.getTrashDocuments(user));
+    }
+
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
@@ -127,6 +164,26 @@ public class DocumentController {
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.delete(id, user);
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/{id}/permanent")
+    public ApiResponse<Void> permanentDelete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        documentService.permanentDelete(id, user);
+        return ApiResponse.ok(null);
+    }
+
+    @PutMapping("/{id}/restore")
+    public ApiResponse<Void> restore(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        documentService.restore(id, user);
         return ApiResponse.ok(null);
     }
 }

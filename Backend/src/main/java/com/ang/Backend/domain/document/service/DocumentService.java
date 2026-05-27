@@ -13,20 +13,31 @@ import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.scope.service.ScopeService;
 import com.ang.Backend.domain.user.entity.User;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.file.service.S3FileService;
+import org.springframework.scheduling.annotation.Scheduled;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -64,9 +75,13 @@ public class DocumentService {
     private final com.ang.Backend.domain.user.repository.UserRepository userRepository;
     private final S3FileService s3FileService;
     private final TransactionTemplate transactionTemplate;
+    private final ObjectMapper objectMapper;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
+
+    @Value("${hwp.edit-base-url:}")
+    private String hwpEditBaseUrl;
 
     @PostConstruct
     @Transactional
@@ -132,7 +147,7 @@ public class DocumentService {
     }
 
     public List<DocumentDto.Response> getAllDocuments(User requester) {
-        List<DocumentDto.Response> list = documentRepository.findAll().stream()
+        List<DocumentDto.Response> list = documentRepository.findAllByDeletedAtIsNull().stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, requester);
@@ -141,6 +156,9 @@ public class DocumentService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat) {
+        if (user == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED, "AI 생성을 위해서는 로그인이 필요합니다.");
+        }
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
@@ -301,8 +319,114 @@ public class DocumentService {
                 .getOriginalContent();
     }
 
+    @Transactional(readOnly = true)
+    public DocumentDto.FileDownload replaceHwp(Long docId, DocumentDto.HwpReplaceRequest request, User requester) {
+        if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
+            throw new IllegalStateException("HWP_EDIT_BASE_URL is not configured.");
+        }
+        if (request == null || request.getReplacements() == null || request.getReplacements().isEmpty()) {
+            throw new IllegalArgumentException("Replacement list is required.");
+        }
+
+        DocumentEntity doc = documentRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        if (doc.getFile() == null) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+
+        FileItem sourceFile = doc.getFile();
+        String originalName = sourceFile.getOriginalFileName() != null ? sourceFile.getOriginalFileName() : "document.hwp";
+        String lowerName = originalName.toLowerCase();
+        String contentType = sourceFile.getContentType() != null ? sourceFile.getContentType().toLowerCase() : "";
+        if (!lowerName.endsWith(".hwp") && !contentType.contains("hwp")) {
+            throw new IllegalArgumentException("Only HWP documents can be edited through the HWP bridge.");
+        }
+
+        String outputFormat = normalizeHwpOutputFormat(request.getOutputFormat());
+
+        try {
+            Resource resource = fileService.loadFileAsResource(sourceFile.getFileId());
+            byte[] originalBytes = resource.getInputStream().readAllBytes();
+            ResponseEntity<byte[]> response = callHwpBridge(originalBytes, originalName, request, outputFormat);
+            byte[] body = response.getBody();
+            if (body == null || body.length == 0) {
+                throw new IllegalStateException("HWP bridge returned an empty file.");
+            }
+
+            return DocumentDto.FileDownload.builder()
+                    .fileName(buildEditedFileName(originalName, outputFormat))
+                    .contentType(resolveEditedContentType(outputFormat, response.getHeaders().getContentType()))
+                    .bytes(body)
+                    .build();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read original HWP file.", e);
+        }
+    }
+
+    private ResponseEntity<byte[]> callHwpBridge(
+            byte[] originalBytes,
+            String originalName,
+            DocumentDto.HwpReplaceRequest request,
+            String outputFormat) {
+        String replacementsJson;
+        try {
+            replacementsJson = objectMapper.writeValueAsString(request.getReplacements());
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Failed to serialize replacement list.", e);
+        }
+
+        ByteArrayResource fileResource = new ByteArrayResource(originalBytes) {
+            @Override
+            public String getFilename() {
+                return originalName;
+            }
+        };
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", fileResource);
+        body.add("replacements", replacementsJson);
+        body.add("output_format", outputFormat);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        return restTemplate.postForEntity(
+                hwpEditBaseUrl.replaceAll("/+$", "") + "/hwp/replace",
+                new HttpEntity<>(body, headers),
+                byte[].class
+        );
+    }
+
+    private String normalizeHwpOutputFormat(String outputFormat) {
+        if (outputFormat == null || outputFormat.isBlank()) {
+            return "hwp";
+        }
+        String normalized = outputFormat.toLowerCase().strip();
+        if (!List.of("hwp", "pdf", "docx").contains(normalized)) {
+            throw new IllegalArgumentException("outputFormat must be hwp, pdf, or docx.");
+        }
+        return normalized;
+    }
+
+    private String buildEditedFileName(String originalName, String outputFormat) {
+        String baseName = originalName.replaceFirst("\\.[^.]+$", "");
+        return sanitizeFileName(baseName + "-edited." + outputFormat);
+    }
+
+    private String resolveEditedContentType(String outputFormat, MediaType bridgeContentType) {
+        if (bridgeContentType != null) {
+            return bridgeContentType.toString();
+        }
+        return switch (outputFormat) {
+            case "pdf" -> "application/pdf";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            default -> "application/x-hwp";
+        };
+    }
+
     public List<DocumentDto.Response> getMyDocuments(User user) {
-        List<DocumentDto.Response> list = documentRepository.findByOwner(user).stream()
+        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNull(user).stream()
                 .filter(d -> d.getScope() == null)
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
@@ -384,7 +508,7 @@ public class DocumentService {
             }
         }
 
-        List<DocumentDto.Response> list = documentRepository.searchByScopes(scopeIds, keyword).stream()
+        List<DocumentDto.Response> list = documentRepository.searchByScopesAndDeletedAtIsNull(scopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
@@ -418,17 +542,124 @@ public class DocumentService {
 
         // 삭제 권한 체크
         if (!canUserDelete(doc, requester)) {
-            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 삭제할 권한이 없습니다.");
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 휴지통으로 이동할 권한이 없습니다.");
         }
 
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+        doc.setDeletedAt(now);
         if (doc.getFile() != null) {
-            fileService.deletePhysicalFile(doc.getFile());
+            doc.getFile().setDeletedAt(now);
         }
-        if (doc.getPreviewFile() != null
-                && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
-            fileService.deletePhysicalFile(doc.getPreviewFile());
+        if (doc.getPreviewFile() != null) {
+            doc.getPreviewFile().setDeletedAt(now);
         }
+        // 물리 파일은 남겨둡니다. 30일 후 완전 삭제 시 제거됩니다.
+    }
+
+    @Transactional
+    public void permanentDelete(Long id, User requester) {
+        DocumentEntity doc = documentRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 완전 삭제 권한 체크
+        if (!canUserDelete(doc, requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 완전 삭제할 권한이 없습니다.");
+        }
+
+        FileItem file = doc.getFile();
+        FileItem previewFile = doc.getPreviewFile();
+
+        // 1. 문서 엔티티를 먼저 삭제하고 DB에 즉시 반영하여 파일 참조를 제거합니다.
         documentRepository.delete(doc);
+        documentRepository.flush();
+        
+        // 2. 다른 문서에서 사용하지 않는 경우에만 물리 파일과 파일 정보를 삭제합니다.
+        if (file != null && !documentRepository.existsByFile(file)) {
+            fileService.deletePhysicalFile(file);
+        }
+        
+        if (previewFile != null && !previewFile.equals(file)) {
+            // Note: existsByFile checks if ANY document uses this FileItem as its 'file' field.
+            if (!documentRepository.existsByFile(previewFile)) {
+                fileService.deletePhysicalFile(previewFile);
+            }
+        }
+    }
+
+    @Transactional
+    public void restore(Long id, User requester) {
+        DocumentEntity doc = documentRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 복구 권한 체크 (삭제 권한과 동일)
+        if (!canUserDelete(doc, requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 복구할 권한이 없습니다.");
+        }
+
+        doc.setDeletedAt(null);
+        if (doc.getFile() != null) {
+            doc.getFile().setDeletedAt(null);
+        }
+        if (doc.getPreviewFile() != null) {
+            doc.getPreviewFile().setDeletedAt(null);
+        }
+    }
+
+    @Scheduled(cron = "0 0 0 * * ?") // 매일 자정에 실행
+    @Transactional
+    public void autoDeleteTrashDocuments() {
+        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
+        List<DocumentEntity> oldTrashDocuments = documentRepository.findByDeletedAtBefore(cutoffDate);
+        
+        for (DocumentEntity doc : oldTrashDocuments) {
+            try {
+                if (doc.getFile() != null) {
+                    fileService.deletePhysicalFile(doc.getFile());
+                }
+                if (doc.getPreviewFile() != null
+                        && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
+                    fileService.deletePhysicalFile(doc.getPreviewFile());
+                }
+                documentRepository.delete(doc);
+                log.info("Auto-deleted trash document: {}", doc.getDocId());
+            } catch (Exception e) {
+                log.error("Failed to auto-delete document {}: {}", doc.getDocId(), e.getMessage());
+            }
+        }
+    }
+
+    public List<DocumentDto.Response> getTrashDocuments(User user) {
+        // 본인의 휴지통 문서
+        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNotNull(user).stream()
+                .map(DocumentDto.Response::fromEntity)
+                .collect(Collectors.toList());
+        
+        // 만약 관리자라면 해당 부서의 삭제된 문서도 볼 수 있어야 함
+        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
+        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
+        
+        if (maxLevel >= 50) {
+            List<Integer> managedScopeIds = roles.stream()
+                    .filter(r -> r.getRole().getRoleLevel() >= 50)
+                    .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
+                    .distinct()
+                    .collect(Collectors.toList());
+            
+            if (!managedScopeIds.isEmpty()) {
+                List<DocumentDto.Response> deptTrash = documentRepository.searchByScopesAndDeletedAtIsNotNull(managedScopeIds, null).stream()
+                        .map(DocumentDto.Response::fromEntity)
+                        .collect(Collectors.toList());
+                // 중복 제거 (본인이 올린 문서가 부서 문서일 수 있음)
+                for (DocumentDto.Response r : deptTrash) {
+                    if (list.stream().noneMatch(existing -> existing.getDocId().equals(r.getDocId()))) {
+                        list.add(r);
+                    }
+                }
+            }
+        }
+        
+        setCanDeleteFlags(list, user);
+        return list;
     }
 
     private boolean canUserDelete(DocumentEntity doc, User requester) {
@@ -796,6 +1027,13 @@ public class DocumentService {
             return originalFile;
         }
 
+        if (isHwpFile(lowerName, contentType)) {
+            FileItem hwpPreview = createHwpBridgePreviewFile(file, user, originalName);
+            if (hwpPreview != null) {
+                return hwpPreview;
+            }
+        }
+
         if (!isConvertibleToPdf(lowerName, contentType)) {
             return null;
         }
@@ -847,6 +1085,59 @@ public class DocumentService {
         }
     }
 
+    private FileItem createHwpBridgePreviewFile(MultipartFile file, User user, String originalName) {
+        if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
+            log.warn("HWP preview skipped because HWP_EDIT_BASE_URL is not configured.");
+            return null;
+        }
+
+        try {
+            byte[] pdfBytes = callHwpPreviewBridge(file.getBytes(), originalName).getBody();
+            if (pdfBytes == null || pdfBytes.length == 0) {
+                log.warn("HWP preview bridge returned an empty PDF for {}", originalName);
+                return null;
+            }
+
+            String previewName = originalName.replaceFirst("\\.[^.]+$", "") + ".pdf";
+            String s3Key = s3FileService.uploadBytes(pdfBytes, previewName, "application/pdf", "previews");
+
+            return fileItemRepository.save(FileItem.builder()
+                    .originalFileName(previewName)
+                    .storedFileName(s3Key)
+                    .filePath(s3Key)
+                    .fileSize((long) pdfBytes.length)
+                    .contentType("application/pdf")
+                    .uploader(user)
+                    .ownerId(user != null ? user.getUserId() : null)
+                    .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+                    .build());
+        } catch (Exception e) {
+            log.warn("HWP preview bridge failed for {}: {}", originalName, e.getMessage());
+            return null;
+        }
+    }
+
+    private ResponseEntity<byte[]> callHwpPreviewBridge(byte[] originalBytes, String originalName) {
+        ByteArrayResource fileResource = new ByteArrayResource(originalBytes) {
+            @Override
+            public String getFilename() {
+                return originalName;
+            }
+        };
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", fileResource);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        return restTemplate.postForEntity(
+                hwpEditBaseUrl.replaceAll("/+$", "") + "/hwp/preview-pdf",
+                new HttpEntity<>(body, headers),
+                byte[].class
+        );
+    }
+
     private boolean isConvertibleToPdf(String lowerName, String contentType) {
         return lowerName.endsWith(".doc")
                 || lowerName.endsWith(".docx")
@@ -860,6 +1151,10 @@ public class DocumentService {
                 || contentType.contains("spreadsheet")
                 || contentType.contains("hwp")
                 || contentType.contains("text/plain");
+    }
+
+    private boolean isHwpFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".hwp") || contentType.contains("hwp");
     }
 
     private boolean isPlainTextFile(String lowerName, String contentType) {

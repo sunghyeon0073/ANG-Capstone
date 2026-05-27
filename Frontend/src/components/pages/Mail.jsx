@@ -197,7 +197,10 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
   const currentBox = activeBox
   const config = mailboxConfig[currentBox] || mailboxConfig['mail-inbox']
   const isComposePage = currentBox === 'mail-compose'
+  const currentEmpNo = user?.empNo || getStoredUserEmpNo()
   const availableRecipientOptions = recipientOptions.filter(option => (
+    option.empNo !== currentEmpNo
+    &&
     !selectedRecipients.some(recipient => recipient.empNo === option.empNo)
   ))
 
@@ -277,7 +280,6 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       }
 
       // 받은/보낸/임시/중요/휴지통 메뉴별 API를 선택합니다.
-      const currentEmpNo = user?.empNo || getStoredUserEmpNo()
       const loaders = currentBox === 'mail-sent'
         ? [getSentMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'sent')))]
         : currentBox === 'mail-drafts'

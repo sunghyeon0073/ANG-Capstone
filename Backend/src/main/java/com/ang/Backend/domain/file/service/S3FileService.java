@@ -56,7 +56,8 @@ public class S3FileService {
 
             return key;
         } catch (IOException e) {
-            throw new RuntimeException("S3 업로드 실패", e);
+            throw new com.ang.Backend.common.exception.CustomException(
+                    com.ang.Backend.common.exception.ErrorCode.FILE_UPLOAD_FAILED);
         }
     }
 

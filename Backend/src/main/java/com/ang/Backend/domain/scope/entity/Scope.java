@@ -4,11 +4,13 @@ import com.ang.Backend.common.enums.ScopeType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "scopes")
+@SQLRestriction("deleted_at IS NULL")
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor
@@ -37,4 +39,7 @@ public class Scope {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 }

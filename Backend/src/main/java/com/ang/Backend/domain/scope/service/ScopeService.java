@@ -4,6 +4,7 @@ import com.ang.Backend.common.enums.ScopeType;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.scope.dto.ScopeDto;
+import com.ang.Backend.domain.scope.dto.ScopeTreeDto;
 import com.ang.Backend.domain.scope.entity.Scope;
 import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.repository.ScopeRepository;
@@ -19,8 +20,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -82,6 +85,29 @@ public class ScopeService {
     }
 
     @Transactional(readOnly = true)
+    public List<ScopeTreeDto> getScopeTree() {
+        return scopeRepository.findAll().stream()
+                .filter(s -> s.getScopeType() == ScopeType.COMPANY)
+                .map(company -> {
+                    List<Scope> departments = scopeRepository.findByParentScope(company);
+                    List<ScopeDto> allChildren = new ArrayList<>();
+                    for (Scope dept : departments) {
+                        allChildren.add(ScopeDto.from(dept));
+                        scopeRepository.findByParentScope(dept).stream()
+                                .map(ScopeDto::from)
+                                .forEach(allChildren::add);
+                    }
+                    return ScopeTreeDto.builder()
+                            .id(company.getScopeId())
+                            .name(company.getName())
+                            .scopeType(company.getScopeType())
+                            .children(allChildren)
+                            .build();
+                })
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<Scope> getAccessibleScopes(User user) {
         List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
         boolean isSuperAdmin = roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100);
@@ -107,12 +133,15 @@ public class ScopeService {
     }
 
     /**
-     * 새로운 조직(Scope)을 생성합니다.
+     * 새로운 조직(Scope)을 생성합니다. 최고관리자(roleLevel >= 100)만 가능합니다.
      */
     @Transactional
-    public ScopeDto createScope(com.ang.Backend.domain.scope.dto.ScopeCreateRequest request) {
+    public ScopeDto createScope(com.ang.Backend.domain.scope.dto.ScopeCreateRequest request, User requester) {
+        if (!isSuperAdmin(requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED);
+        }
+
         Scope parent = null;
-        
         if (request.getType() != ScopeType.COMPANY) {
             if (request.getParentId() == null) {
                 throw new CustomException(ErrorCode.PARENT_SCOPE_REQUIRED);
@@ -121,20 +150,63 @@ public class ScopeService {
                     .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
         }
 
-        if (scopeRepository.existsByScopeCode(request.getScopeCode())) {
-            throw new CustomException(ErrorCode.DUPLICATE_SCOPE_CODE);
-        }
+        String scopeCode = generateUniqueScopeCode();
 
         Scope scope = Scope.builder()
                 .name(request.getName())
                 .scopeType(request.getType())
                 .parentScope(parent)
-                .scopeCode(request.getScopeCode())
+                .scopeCode(scopeCode)
                 .build();
 
         Scope savedScope = scopeRepository.save(scope);
         createPhysicalScopeFolder(savedScope.getScopeCode());
+        log.info("Scope {} ({}) created by super admin {}", savedScope.getName(), scopeCode, requester.getEmpNo());
         return ScopeDto.from(savedScope);
+    }
+
+    /**
+     * 조직(Scope)을 논리적으로 삭제(비활성화)합니다. 최고관리자(roleLevel >= 100)만 가능합니다.
+     */
+    @Transactional
+    public void deleteScope(Integer scopeId, User requester) {
+        if (!isSuperAdmin(requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED);
+        }
+
+        Scope scope = scopeRepository.findById(scopeId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
+
+        if (scope.getScopeType() == ScopeType.COMPANY) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "회사(COMPANY) 타입은 비활성화할 수 없습니다.");
+        }
+
+        if (!scopeRepository.findByParentScope(scope).isEmpty()) {
+            throw new CustomException(ErrorCode.SCOPE_HAS_CHILDREN);
+        }
+
+        if (!userMembershipRepository.findByScope(scope).isEmpty()) {
+            throw new CustomException(ErrorCode.SCOPE_HAS_MEMBERS);
+        }
+
+
+        scope.setDeletedAt(LocalDateTime.now());
+        scopeRepository.save(scope);
+        log.info("Scope {} ({}) soft-deleted by super admin {}", scope.getName(), scope.getScopeCode(), requester.getEmpNo());
+    }
+
+    private boolean isSuperAdmin(User user) {
+        return userRoleRepository.findByUserOrderByRoleLevelDesc(user)
+                .stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100);
+    }
+
+    private String generateUniqueScopeCode() {
+        for (int i = 0; i < 5; i++) {
+            String code = "SCOPE_" + UUID.randomUUID().toString()
+                    .replace("-", "").substring(0, 8).toUpperCase();
+            if (scopeRepository.countByScopeCodeIgnoreDeleted(code) == 0) return code;
+        }
+        throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "고유 부서 코드 생성에 실패했습니다.");
     }
 
     /**

@@ -1178,6 +1178,12 @@
   display: block;
 }
 
+.mail-shell.mail-detail-view {
+  height: auto;
+  min-height: 520px;
+  overflow: visible;
+}
+
 .mail-list-view .mail-list-panel {
   height: 100%;
   border-right: 0;
@@ -1320,6 +1326,7 @@
 .mail-detail-view .mail-detail-panel {
   min-height: 100%;
   padding: 22px 30px 38px;
+  overflow-y: visible;
 }
 
 .mail-back-btn {
