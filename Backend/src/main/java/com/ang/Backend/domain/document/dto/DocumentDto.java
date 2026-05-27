@@ -23,6 +23,25 @@ public class DocumentDto {
         private DocumentStatus status;
     }
 
+    @Getter @NoArgsConstructor
+    public static class HwpReplaceRequest {
+        private List<Replacement> replacements;
+        private String outputFormat;
+    }
+
+    @Getter @NoArgsConstructor
+    public static class Replacement {
+        private String find;
+        private String replace;
+    }
+
+    @Getter @Builder
+    public static class FileDownload {
+        private String fileName;
+        private String contentType;
+        private byte[] bytes;
+    }
+
     @Getter @Builder
     public static class Response {
         private Long docId;

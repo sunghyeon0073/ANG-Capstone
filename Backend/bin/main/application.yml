@@ -1,21 +1,20 @@
-# Copy this file to application-local.yml and fill in real local values.
-# application-local.yml is ignored by Git.
-#
-# Do not commit real RDS passwords, JWT secrets, or admin passwords.
-
 spring:
   application:
     name: Ang
 
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:prod}
+    active: ${SPRING_PROFILES_ACTIVE:local}
 
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.mariadb.jdbc.Driver
-
+    hikari:
+        maximum-pool-size: 10
+        minimum-idle: 1
+        idle-timeout: 30000
+        max-lifetime: 1800000
   jpa:
     hibernate:
       ddl-auto: update
@@ -49,9 +48,6 @@ file:
 
 ai:
   base-url: ${AI_BASE_URL:http://localhost:8888}
-
-hwp:
-  edit-base-url: ${HWP_EDIT_BASE_URL:http://10.30.4.178:8877}
 
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
