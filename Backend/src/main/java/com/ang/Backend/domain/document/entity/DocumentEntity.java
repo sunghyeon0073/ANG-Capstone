@@ -57,6 +57,9 @@ public class DocumentEntity {
     @UpdateTimestamp
     private LocalDateTime updatedAt;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     public void updateContent(String title, String content) {
         this.title = title;
         this.originalContent = content;

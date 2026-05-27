@@ -233,7 +233,8 @@ export default function DocumentWriter() {
       }))
       const formData = new FormData()
       formData.append('file', file)
-      const response = await api.post('/documents/upload', formData)
+      formData.append('title', file.name)
+      const response = await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 
       if (response.data?.success) {
         const newDoc = { ...response.data.data, source: 'uploaded' }

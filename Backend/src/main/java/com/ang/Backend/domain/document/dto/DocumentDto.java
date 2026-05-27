@@ -41,6 +41,7 @@ public class DocumentDto {
         private String scopeName;
         private Integer scopeId;
         private LocalDateTime createdAt;
+        private LocalDateTime deletedAt;
         private boolean canDelete;
 
         public static Response fromEntity(DocumentEntity entity) {
@@ -61,6 +62,7 @@ public class DocumentDto {
                     .scopeName(entity.getScope() != null ? entity.getScope().getName() : "N/A")
                     .scopeId(entity.getScope() != null ? entity.getScope().getScopeId() : null)
                     .createdAt(entity.getCreatedAt())
+                    .deletedAt(entity.getDeletedAt())
                     .build();
         }
 
