@@ -30,6 +30,6 @@ public class RegisterRequest {
     @NotBlank(message = "비밀번호 확인을 입력해주세요.")
     private String passwordConfirm;
 
-    @NotBlank(message = "부서 코드를 입력해주세요.")
-    private String scopeCode;
+    @NotNull(message = "부서를 선택해주세요.")
+    private Integer scopeId;
 }

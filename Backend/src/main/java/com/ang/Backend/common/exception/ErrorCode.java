@@ -37,6 +37,8 @@ public enum ErrorCode {
     DUPLICATE_SCOPE_CODE(HttpStatus.CONFLICT, "이미 사용 중인 팀/부서 코드입니다."),
     PARENT_SCOPE_REQUIRED(HttpStatus.BAD_REQUEST, "상위 부서(parentId)를 지정해야 합니다."),
     ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 해당 부서의 멤버입니다."),
+    SCOPE_HAS_MEMBERS(HttpStatus.CONFLICT, "해당 부서에 소속된 멤버가 있어 비활성화할 수 없습니다."),
+    SCOPE_HAS_CHILDREN(HttpStatus.CONFLICT, "하위 부서가 존재하여 비활성화할 수 없습니다."),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "접근이 거부되었습니다."),
 
     // 역할/권한

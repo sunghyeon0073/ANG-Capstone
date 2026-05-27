@@ -37,6 +37,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.file.service.S3FileService;
+import org.springframework.scheduling.annotation.Scheduled;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -146,7 +147,7 @@ public class DocumentService {
     }
 
     public List<DocumentDto.Response> getAllDocuments(User requester) {
-        List<DocumentDto.Response> list = documentRepository.findAll().stream()
+        List<DocumentDto.Response> list = documentRepository.findAllByDeletedAtIsNull().stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, requester);
@@ -155,6 +156,9 @@ public class DocumentService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat) {
+        if (user == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED, "AI 생성을 위해서는 로그인이 필요합니다.");
+        }
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
@@ -422,7 +426,7 @@ public class DocumentService {
     }
 
     public List<DocumentDto.Response> getMyDocuments(User user) {
-        List<DocumentDto.Response> list = documentRepository.findByOwner(user).stream()
+        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNull(user).stream()
                 .filter(d -> d.getScope() == null)
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
@@ -504,7 +508,7 @@ public class DocumentService {
             }
         }
 
-        List<DocumentDto.Response> list = documentRepository.searchByScopes(scopeIds, keyword).stream()
+        List<DocumentDto.Response> list = documentRepository.searchByScopesAndDeletedAtIsNull(scopeIds, keyword).stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
@@ -538,17 +542,124 @@ public class DocumentService {
 
         // 삭제 권한 체크
         if (!canUserDelete(doc, requester)) {
-            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 삭제할 권한이 없습니다.");
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 휴지통으로 이동할 권한이 없습니다.");
         }
 
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+        doc.setDeletedAt(now);
         if (doc.getFile() != null) {
-            fileService.deletePhysicalFile(doc.getFile());
+            doc.getFile().setDeletedAt(now);
         }
-        if (doc.getPreviewFile() != null
-                && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
-            fileService.deletePhysicalFile(doc.getPreviewFile());
+        if (doc.getPreviewFile() != null) {
+            doc.getPreviewFile().setDeletedAt(now);
         }
+        // 물리 파일은 남겨둡니다. 30일 후 완전 삭제 시 제거됩니다.
+    }
+
+    @Transactional
+    public void permanentDelete(Long id, User requester) {
+        DocumentEntity doc = documentRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 완전 삭제 권한 체크
+        if (!canUserDelete(doc, requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 완전 삭제할 권한이 없습니다.");
+        }
+
+        FileItem file = doc.getFile();
+        FileItem previewFile = doc.getPreviewFile();
+
+        // 1. 문서 엔티티를 먼저 삭제하고 DB에 즉시 반영하여 파일 참조를 제거합니다.
         documentRepository.delete(doc);
+        documentRepository.flush();
+        
+        // 2. 다른 문서에서 사용하지 않는 경우에만 물리 파일과 파일 정보를 삭제합니다.
+        if (file != null && !documentRepository.existsByFile(file)) {
+            fileService.deletePhysicalFile(file);
+        }
+        
+        if (previewFile != null && !previewFile.equals(file)) {
+            // Note: existsByFile checks if ANY document uses this FileItem as its 'file' field.
+            if (!documentRepository.existsByFile(previewFile)) {
+                fileService.deletePhysicalFile(previewFile);
+            }
+        }
+    }
+
+    @Transactional
+    public void restore(Long id, User requester) {
+        DocumentEntity doc = documentRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 복구 권한 체크 (삭제 권한과 동일)
+        if (!canUserDelete(doc, requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 복구할 권한이 없습니다.");
+        }
+
+        doc.setDeletedAt(null);
+        if (doc.getFile() != null) {
+            doc.getFile().setDeletedAt(null);
+        }
+        if (doc.getPreviewFile() != null) {
+            doc.getPreviewFile().setDeletedAt(null);
+        }
+    }
+
+    @Scheduled(cron = "0 0 0 * * ?") // 매일 자정에 실행
+    @Transactional
+    public void autoDeleteTrashDocuments() {
+        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
+        List<DocumentEntity> oldTrashDocuments = documentRepository.findByDeletedAtBefore(cutoffDate);
+        
+        for (DocumentEntity doc : oldTrashDocuments) {
+            try {
+                if (doc.getFile() != null) {
+                    fileService.deletePhysicalFile(doc.getFile());
+                }
+                if (doc.getPreviewFile() != null
+                        && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
+                    fileService.deletePhysicalFile(doc.getPreviewFile());
+                }
+                documentRepository.delete(doc);
+                log.info("Auto-deleted trash document: {}", doc.getDocId());
+            } catch (Exception e) {
+                log.error("Failed to auto-delete document {}: {}", doc.getDocId(), e.getMessage());
+            }
+        }
+    }
+
+    public List<DocumentDto.Response> getTrashDocuments(User user) {
+        // 본인의 휴지통 문서
+        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNotNull(user).stream()
+                .map(DocumentDto.Response::fromEntity)
+                .collect(Collectors.toList());
+        
+        // 만약 관리자라면 해당 부서의 삭제된 문서도 볼 수 있어야 함
+        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
+        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
+        
+        if (maxLevel >= 50) {
+            List<Integer> managedScopeIds = roles.stream()
+                    .filter(r -> r.getRole().getRoleLevel() >= 50)
+                    .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
+                    .distinct()
+                    .collect(Collectors.toList());
+            
+            if (!managedScopeIds.isEmpty()) {
+                List<DocumentDto.Response> deptTrash = documentRepository.searchByScopesAndDeletedAtIsNotNull(managedScopeIds, null).stream()
+                        .map(DocumentDto.Response::fromEntity)
+                        .collect(Collectors.toList());
+                // 중복 제거 (본인이 올린 문서가 부서 문서일 수 있음)
+                for (DocumentDto.Response r : deptTrash) {
+                    if (list.stream().noneMatch(existing -> existing.getDocId().equals(r.getDocId()))) {
+                        list.add(r);
+                    }
+                }
+            }
+        }
+        
+        setCanDeleteFlags(list, user);
+        return list;
     }
 
     private boolean canUserDelete(DocumentEntity doc, User requester) {

@@ -47,10 +47,14 @@ public class FileItem {
     @Column(name = "content_type")
     private String contentType;
 
-    @CreationTimestamp
     @Column(name = "uploaded_at", updatable = false)
     private LocalDateTime uploadedAt;
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    @PrePersist
+    protected void onUpload() {
+        this.uploadedAt = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+    }
 }

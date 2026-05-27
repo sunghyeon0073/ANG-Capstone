@@ -38,11 +38,24 @@ public class ScopeController {
                 .map(ScopeDto::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(scopes));
+        
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<ScopeDto>> createScope(@jakarta.validation.Valid @RequestBody com.ang.Backend.domain.scope.dto.ScopeCreateRequest request) {
-        return ResponseEntity.ok(ApiResponse.ok(scopeService.createScope(request)));
+    public ResponseEntity<ApiResponse<ScopeDto>> createScope(
+            @jakarta.validation.Valid @RequestBody com.ang.Backend.domain.scope.dto.ScopeCreateRequest request,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        return ResponseEntity.ok(ApiResponse.ok(scopeService.createScope(request, requester)));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteScope(
+            @PathVariable Integer id,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails userDetails) {
+        com.ang.Backend.domain.user.entity.User requester = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        scopeService.deleteScope(id, requester);
+        return ResponseEntity.ok(ApiResponse.ok("부서가 비활성화되었습니다."));
     }
 
     @GetMapping("/my")

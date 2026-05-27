@@ -235,6 +235,7 @@ public class MailService {
         mr.setDeletedAt(null);
     }
 
+
     // 발신 휴지통에서 복원
     @Transactional
     public void restoreFromSentTrash(Long mailId, User user) {
@@ -255,6 +256,11 @@ public class MailService {
         if (mail.getStatus() != MailStatus.DRAFT) {
             throw new CustomException(ErrorCode.MAIL_CANCEL_DENIED);
         }
+        List<MailAttachment> attachments = mailAttachmentRepository.findByMail(mail);
+        for (MailAttachment att : attachments) {
+            s3FileService.delete(att.getFileUrl());
+        }
+        mailAttachmentRepository.deleteAll(attachments);
         mailRecipientRepository.deleteAll(mailRecipientRepository.findByMail(mail));
         mailRepository.delete(mail);
     }
@@ -283,6 +289,9 @@ public class MailService {
         Mail mail = findMailById(mailId);
         if (!mail.getSender().getUserId().equals(user.getUserId())) {
             throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        if (mail.getStatus() != MailStatus.DRAFT) {
+            throw new CustomException(ErrorCode.MAIL_NOT_DRAFT);
         }
         String fileUrl = s3FileService.upload(file, "mail/" + mailId);
         MailAttachment attachment = mailAttachmentRepository.save(MailAttachment.builder()

@@ -51,11 +51,24 @@ public class DocumentEntity {
     @Builder.Default
     private Boolean isAiGenerated = false;
 
-    @CreationTimestamp
+    @Column(updatable = false)
     private LocalDateTime createdAt;
 
-    @UpdateTimestamp
     private LocalDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+        this.updatedAt = this.createdAt;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+    }
 
     public void updateContent(String title, String content) {
         this.title = title;
