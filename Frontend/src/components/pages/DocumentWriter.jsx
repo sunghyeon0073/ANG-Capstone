@@ -30,6 +30,7 @@ export default function DocumentWriter() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
+  const [aiOutputFormat, setAiOutputFormat] = useState('pdf')
   const [aiLoading, setAiLoading] = useState(false)
   const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
@@ -88,13 +89,24 @@ export default function DocumentWriter() {
       if (previewKind === 'text') return
 
       if (
-        (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
-        (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent))
+        !selectedDoc.previewFileId &&
+        (
+          (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
+          (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent))
+        )
       ) {
         return
       }
 
-      if (!selectedDoc.fileId || (previewKind !== 'pdf' && previewKind !== 'image')) {
+      const previewFileId = selectedDoc.previewFileId || selectedDoc.fileId
+      const canPreviewBlob = previewFileId && (
+        Boolean(selectedDoc.previewFileId) ||
+        previewKind === 'pdf' ||
+        previewKind === 'image' ||
+        selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
+      )
+
+      if (!canPreviewBlob) {
         return
       }
 
@@ -103,17 +115,17 @@ export default function DocumentWriter() {
         return
       }
 
-      if (String(selectedDoc.fileId).startsWith('mock-') || String(selectedDoc.fileId).startsWith('local-')) {
+      if (String(previewFileId).startsWith('mock-') || String(previewFileId).startsWith('local-')) {
         return
       }
 
       try {
         setPreviewLoading(true)
-        const response = await api.get(`/files/preview/${selectedDoc.fileId}`, {
+        const response = await api.get(`/files/preview/${previewFileId}`, {
           responseType: 'blob',
         })
         const previewType =
-          previewKind === 'pdf'
+          selectedDoc.previewFileId || previewKind === 'pdf' || selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
             ? 'application/pdf'
             : selectedDoc.fileContentType || response.data?.type || 'image/*'
         objectUrl = URL.createObjectURL(new Blob([response.data], { type: previewType }))
@@ -271,6 +283,7 @@ export default function DocumentWriter() {
 
       const payload = {
         prompt,
+        outputFormat: aiOutputFormat,
         attachedDocIds: attachedDocs.map((doc) => doc.docId),
         attachedDocs: attachedDocs.length > 0
           ? attachedDocs.map((doc) => ({
@@ -526,6 +539,19 @@ export default function DocumentWriter() {
             />
 
             <div className="prompt-actions">
+              <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
+                {['pdf', 'docx', 'xlsx', 'txt'].map((format) => (
+                  <button
+                    key={format}
+                    type="button"
+                    className={`ai-format-btn ${aiOutputFormat === format ? 'active' : ''}`}
+                    onClick={() => setAiOutputFormat(format)}
+                    disabled={aiLoading}
+                  >
+                    {format.toUpperCase()}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={handleAiGenerate}

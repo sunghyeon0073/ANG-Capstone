@@ -9,8 +9,9 @@ export const getFileExtension = (doc) => {
 
 export const isPdfDocument = (doc) => {
   const contentType = doc?.fileContentType?.toLowerCase() || ''
+  const previewContentType = doc?.previewFileContentType?.toLowerCase() || ''
   const fileName = getFileName(doc)
-  return contentType.includes('pdf') || fileName.endsWith('.pdf')
+  return contentType.includes('pdf') || previewContentType.includes('pdf') || fileName.endsWith('.pdf')
 }
 
 export const isImageDocument = (doc) => {
@@ -60,6 +61,7 @@ export const getDocumentPreviewKind = (doc) => {
     doc?.fileId || doc?.previewFileId || doc?.mockPreviewUrl || doc?.mockPreviewHtml || doc?.mockTableData
 
   if (!hasFile) return 'text'
+  if (doc?.previewFileContentType?.toLowerCase().includes('pdf')) return 'pdf'
   if (isPdfDocument(doc)) return 'pdf'
   if (isImageDocument(doc)) return 'image'
   if (isWordDocument(doc)) return 'word'

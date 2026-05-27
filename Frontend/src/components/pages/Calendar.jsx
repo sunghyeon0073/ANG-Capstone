@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createSchedule, deleteSchedule, getSchedules } from '../../api/scheduleApi'
+import { FiChevronLeft, FiChevronRight, FiPlus, FiTrash2 } from 'react-icons/fi'
+import {
+  createSchedule,
+  deleteSchedule,
+  getAiScheduleRecommendations,
+  getSchedules,
+} from '../../api/scheduleApi'
 
 const SimpleModal = ({ open, onClose, title, children }) => {
   if (!open) return null
@@ -9,7 +15,7 @@ const SimpleModal = ({ open, onClose, title, children }) => {
       <div className="modal-content calendar-modal">
         <div className="modal-header">
           <h3>{title}</h3>
-          <button onClick={onClose} className="modal-close">&times;</button>
+          <button type="button" onClick={onClose} className="modal-close">&times;</button>
         </div>
         {children}
       </div>
@@ -29,6 +35,23 @@ const normalizeTime = (time) => time?.slice(0, 5) || ''
 const sortByTime = (list) => {
   return [...list].sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'))
 }
+
+const toAiSchedule = (recommendation) => ({
+  id: `ai-${recommendation.id}`,
+  startDate: recommendation.recommendationDate,
+  endDate: recommendation.recommendationDate,
+  title: recommendation.message,
+  startTime: recommendation.sourceStartTime || '09:00',
+  endTime: recommendation.sourceEndTime || '10:00',
+  description:
+    recommendation.type === 'last-year'
+      ? `기준 일정: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`
+      : `예정일: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`,
+  isAiRecommendation: true,
+  aiType: recommendation.type,
+  sourceTitle: recommendation.sourceTitle,
+})
+
 export default function Calendar({ showSidebar = true }) {
   const [date, setDate] = useState(new Date())
   const [activeStartDate, setActiveStartDate] = useState(() => {
@@ -37,6 +60,7 @@ export default function Calendar({ showSidebar = true }) {
   })
   const [selectedFilters, setSelectedFilters] = useState(['my', 'department', 'ai'])
   const [schedules, setSchedules] = useState([])
+  const [aiRecommendations, setAiRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [formData, setFormData] = useState({
@@ -45,7 +69,7 @@ export default function Calendar({ showSidebar = true }) {
     endDate: '',
     startTime: '09:00',
     endTime: '10:00',
-    description: ''
+    description: '',
   })
   const [selectedDate, setSelectedDate] = useState(null)
 
@@ -56,50 +80,52 @@ export default function Calendar({ showSidebar = true }) {
   }, [activeStartDate])
 
   const monthGrid = useMemo(() => {
-    // Build a 6x7 grid for the active month view
     const year = activeStartDate.getFullYear()
     const month = activeStartDate.getMonth()
     const firstOfMonth = new Date(year, month, 1)
-    const startWeekday = firstOfMonth.getDay() // 0..6 (Sun..Sat)
-
-    // start from previous Sunday's date
-    const gridStart = new Date(year, month, 1 - startWeekday)
+    const gridStart = new Date(year, month, 1 - firstOfMonth.getDay())
     const cells = []
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i)
-      cells.push(d)
+
+    for (let i = 0; i < 42; i += 1) {
+      cells.push(new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i))
     }
+
     return cells
   }, [activeStartDate])
 
-  const fetchSchedules = async () => {
+  const aiSchedules = useMemo(() => aiRecommendations.map(toAiSchedule), [aiRecommendations])
+
+  const visibleSchedules = useMemo(() => {
+    return [...schedules, ...aiSchedules]
+  }, [schedules, aiSchedules])
+
+  const fetchCalendarData = async () => {
     try {
       setIsLoading(true)
-      const res = await getSchedules(monthRange)
-      setSchedules(res.data?.data || [])
+      const [scheduleRes, aiRes] = await Promise.all([
+        getSchedules(monthRange),
+        getAiScheduleRecommendations(monthRange),
+      ])
+      setSchedules(scheduleRes.data?.data || [])
+      setAiRecommendations(aiRes.data?.data || [])
     } catch (error) {
       console.error('일정 로드 실패', error)
       setSchedules([])
+      setAiRecommendations([])
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchSchedules()
+    fetchCalendarData()
   }, [monthRange.startDate, monthRange.endDate])
 
   const getScheduleGroup = (schedule) => {
+    if (schedule.isAiRecommendation) return 'ai'
+
     const content = `${schedule.title || ''} ${schedule.description || ''}`.toLowerCase()
-
-    if (/ai|추천|자동|생성|gpt/.test(content)) {
-      return 'ai'
-    }
-
-    if (/부서|팀|회의|보고|공유|운영|협의|정기/.test(content)) {
-      return 'department'
-    }
-
+    if (/부서|팀|회의|보고|공유|운영|정기/.test(content)) return 'department'
     return 'my'
   }
 
@@ -113,54 +139,53 @@ export default function Calendar({ showSidebar = true }) {
 
   const filteredSchedules = useMemo(() => {
     if (selectedFilters.length === 0) return []
-    return schedules.filter((schedule) => selectedFilters.includes(getScheduleGroup(schedule)))
-  }, [schedules, selectedFilters])
+    return visibleSchedules.filter((schedule) => selectedFilters.includes(getScheduleGroup(schedule)))
+  }, [visibleSchedules, selectedFilters])
 
   const getSchedulesForDate = (d) => {
     const dateStr = formatDate(d)
     return filteredSchedules.filter((schedule) => {
-      // 단일 날짜 일정
       if (schedule.date === dateStr) return true
-      
-      // 다중 날짜 일정 (startDate ~ endDate 범위)
       if (schedule.startDate && schedule.endDate) {
         return dateStr >= schedule.startDate && dateStr <= schedule.endDate
       }
-      
       return false
     })
   }
 
-  const resetForm = () => {
+  const resetForm = (baseDate = selectedDate || date) => {
+    const baseDateString = formatDate(baseDate)
     setFormData({
       title: '',
-      startDate: formatDate(selectedDate || date),
-      endDate: formatDate(selectedDate || date),
+      startDate: baseDateString,
+      endDate: baseDateString,
       startTime: '09:00',
       endTime: '10:00',
-      description: ''
+      description: '',
     })
   }
 
   const handleAddSchedule = () => {
-    setSelectedDate(new Date(date))
-    resetForm()
+    const nextSelectedDate = new Date(date)
+    setSelectedDate(nextSelectedDate)
+    resetForm(nextSelectedDate)
     setIsModalOpen(true)
   }
 
   const handleDateChange = (nextDate) => {
     setDate(nextDate)
+    setSelectedDate(nextDate)
     setActiveStartDate(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1))
   }
 
   const handleSaveSchedule = async () => {
     if (!formData.title.trim()) {
-      alert('일정 제목을 입력하세요')
+      alert('일정 제목을 입력해주세요.')
       return
     }
-    
+
     if (!formData.startDate || !formData.endDate) {
-      alert('시작일과 종료일을 선택하세요')
+      alert('시작일과 종료일을 선택해주세요.')
       return
     }
 
@@ -171,54 +196,30 @@ export default function Calendar({ showSidebar = true }) {
         title: formData.title,
         startTime: formData.startTime,
         endTime: formData.endTime,
-        description: formData.description
+        description: formData.description,
       })
       setIsModalOpen(false)
       resetForm()
-      fetchSchedules()
+      fetchCalendarData()
     } catch (error) {
-      alert('일정 저장 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'))
+      alert(`일정 저장 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
     }
   }
 
-  const handleDeleteSchedule = async (id) => {
+  const handleDeleteSchedule = async (schedule) => {
+    if (schedule.isAiRecommendation) return
     if (!window.confirm('이 일정을 삭제하시겠습니까?')) return
 
     try {
-      await deleteSchedule(id)
-      setSchedules((prev) => prev.filter((schedule) => schedule.id !== id))
+      await deleteSchedule(schedule.id)
+      setSchedules((prev) => prev.filter((item) => item.id !== schedule.id))
     } catch (error) {
-      alert('일정 삭제 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'))
+      alert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
     }
   }
 
-  const tileClassName = ({ date: tileDate, view }) => {
-    if (view !== 'month') return ''
-    return getSchedulesForDate(tileDate).length > 0 ? 'calendar-date-with-schedule' : ''
-  }
-
-  const tileContent = ({ date: tileDate, view }) => {
-    if (view !== 'month') return null
-    const daySchedules = sortByTime(getSchedulesForDate(tileDate))
-    if (daySchedules.length === 0) return null
-
-    return (
-      <div className="calendar-date-content">
-        {daySchedules.slice(0, 3).map((schedule) => (
-          <div
-            key={schedule.id}
-            className={`calendar-schedule-item calendar-schedule-item--${getScheduleGroup(schedule)}`}
-            title={schedule.title}
-          >
-            {schedule.title}
-          </div>
-        ))}
-        {daySchedules.length > 3 && <div className="calendar-schedule-overflow">+{daySchedules.length - 3}</div>}
-      </div>
-    )
-  }
-
   const todaySchedules = sortByTime(getSchedulesForDate(date))
+  const todayAiSchedules = todaySchedules.filter((schedule) => schedule.isAiRecommendation)
 
   return (
     <div className="calendar-page">
@@ -251,39 +252,41 @@ export default function Calendar({ showSidebar = true }) {
                 aria-pressed={selectedFilters.includes('ai')}
               >
                 <span className="calendar-filter-check" aria-hidden="true" />
-                AI추천
+                AI 추천
               </button>
             </div>
-            <button className="btn btn-primary calendar-add-btn" onClick={handleAddSchedule}>
-              + 새 일정
+            <button type="button" className="btn btn-primary calendar-add-btn" onClick={handleAddSchedule}>
+              <FiPlus aria-hidden="true" />
+              일정 추가
             </button>
-
           </div>
 
           <div className="calendar-grid">
             <div className="calendar-header-controls">
               <button
                 type="button"
-                className="btn"
+                className="btn calendar-icon-btn"
                 onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() - 1, 1))}
+                aria-label="이전 달"
               >
-                &lt;
+                <FiChevronLeft aria-hidden="true" />
               </button>
               <div className="calendar-current-month">
                 {activeStartDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
               </div>
               <button
                 type="button"
-                className="btn"
+                className="btn calendar-icon-btn"
                 onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 1))}
+                aria-label="다음 달"
               >
-                &gt;
+                <FiChevronRight aria-hidden="true" />
               </button>
             </div>
 
             <div className="calendar-weekdays">
-              {['일', '월', '화', '수', '목', '금', '토'].map((wd) => (
-                <div key={wd} className="calendar-weekday">{wd}</div>
+              {['일', '월', '화', '수', '목', '금', '토'].map((weekday) => (
+                <div key={weekday} className="calendar-weekday">{weekday}</div>
               ))}
             </div>
 
@@ -292,54 +295,50 @@ export default function Calendar({ showSidebar = true }) {
                 const classes = ['calendar-cell']
                 const daySchedules = sortByTime(getSchedulesForDate(cellDate))
                 const cellDateStr = formatDate(cellDate)
-                
+
                 if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
                 if (cellDateStr === formatDate(date)) classes.push('calendar-cell--selected')
                 if (daySchedules.length > 0) classes.push('calendar-date-with-schedule')
+                if (daySchedules.some((item) => item.isAiRecommendation)) classes.push('calendar-cell--has-ai')
 
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={cellDate.toISOString()}
                     className={classes.join(' ')}
                     onClick={() => handleDateChange(cellDate)}
                   >
-                    <div className="calendar-cell-number">{cellDate.getDate()}</div>
-                    <div className="calendar-cell-content">
-                      {daySchedules.slice(0, 3).map((s) => {
-                        let itemClasses = `calendar-schedule-item calendar-schedule-item--${getScheduleGroup(s)}`
-                        
-                        // 다중 날짜 일정인 경우 위치 표시
-                        if (s.startDate && s.endDate) {
-                          if (cellDateStr === s.startDate && cellDateStr === s.endDate) {
-                            // 단일 날짜
+                    <span className="calendar-cell-number">{cellDate.getDate()}</span>
+                    <span className="calendar-cell-content">
+                      {daySchedules.slice(0, 3).map((schedule) => {
+                        let itemClasses = `calendar-schedule-item calendar-schedule-item--${getScheduleGroup(schedule)}`
+                        if (schedule.isAiRecommendation) {
+                          itemClasses += ` calendar-schedule-item--ai-${schedule.aiType}`
+                        }
+
+                        if (schedule.startDate && schedule.endDate && !schedule.isAiRecommendation) {
+                          if (cellDateStr === schedule.startDate && cellDateStr === schedule.endDate) {
                             itemClasses += ' calendar-schedule-single'
-                          } else if (cellDateStr === s.startDate) {
-                            // 시작 날짜
+                          } else if (cellDateStr === schedule.startDate) {
                             itemClasses += ' calendar-schedule-start'
-                          } else if (cellDateStr === s.endDate) {
-                            // 종료 날짜
+                          } else if (cellDateStr === schedule.endDate) {
                             itemClasses += ' calendar-schedule-end'
                           } else {
-                            // 중간 날짜
                             itemClasses += ' calendar-schedule-middle'
                           }
                         }
-                        
+
                         return (
-                          <div
-                            key={s.id}
-                            className={itemClasses}
-                            title={s.title}
-                          >
-                            {s.title}
-                          </div>
+                          <span key={schedule.id} className={itemClasses} title={schedule.title}>
+                            {schedule.title}
+                          </span>
                         )
                       })}
                       {daySchedules.length > 3 && (
-                        <div className="calendar-schedule-overflow">+{daySchedules.length - 3}</div>
+                        <span className="calendar-schedule-overflow">+{daySchedules.length - 3}</span>
                       )}
-                    </div>
-                  </div>
+                    </span>
+                  </button>
                 )
               })}
             </div>
@@ -347,32 +346,54 @@ export default function Calendar({ showSidebar = true }) {
         </div>
 
         {showSidebar && (
-          <div className="calendar-sidebar">
+          <aside className="calendar-sidebar">
             <h2>{date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
             <div className="calendar-sidebar-count">총 {todaySchedules.length}개</div>
+
+            {todayAiSchedules.length > 0 && (
+              <div className="calendar-ai-panel" aria-label="AI 일정 추천">
+                {todayAiSchedules.map((schedule) => (
+                  <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
+                    <div className="calendar-ai-label">
+                      {schedule.aiType === 'last-year' ? '작년 기록 기반' : '다가오는 일정'}
+                    </div>
+                    <div className="calendar-ai-message">{schedule.title}</div>
+                    <div className="calendar-ai-meta">{schedule.description}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {isLoading ? (
               <div className="schedule-empty">불러오는 중...</div>
             ) : todaySchedules.length > 0 ? (
               <div className="schedule-list">
                 {todaySchedules.map((schedule) => (
-                  <div key={schedule.id} className="schedule-item">
+                  <div
+                    key={schedule.id}
+                    className={`schedule-item ${schedule.isAiRecommendation ? `schedule-item--ai schedule-item--ai-${schedule.aiType}` : ''}`}
+                  >
                     <div className="schedule-time">{normalizeTime(schedule.startTime)} ~ {normalizeTime(schedule.endTime)}</div>
                     <div className="schedule-title">{schedule.title}</div>
                     {schedule.description && <div className="schedule-desc">{schedule.description}</div>}
-                    <button
-                      className="schedule-delete-btn"
-                      onClick={() => handleDeleteSchedule(schedule.id)}
-                    >
-                      삭제
-                    </button>
+                    {!schedule.isAiRecommendation && (
+                      <button
+                        type="button"
+                        className="schedule-delete-btn"
+                        onClick={() => handleDeleteSchedule(schedule)}
+                        aria-label={`${schedule.title} 삭제`}
+                      >
+                        <FiTrash2 aria-hidden="true" />
+                        삭제
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="schedule-empty">이 날짜에 일정이 없습니다</div>
+              <div className="schedule-empty">선택한 날짜에 일정이 없습니다.</div>
             )}
-          </div>
+          </aside>
         )}
       </div>
 
@@ -434,7 +455,7 @@ export default function Calendar({ showSidebar = true }) {
           <div className="form-group">
             <label>설명</label>
             <textarea
-              placeholder="설명을 입력하세요(선택사항)"
+              placeholder="설명을 입력하세요. 선택 사항입니다."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="calendar-textarea"
@@ -443,8 +464,8 @@ export default function Calendar({ showSidebar = true }) {
           </div>
 
           <div className="form-actions">
-            <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>취소</button>
-            <button className="btn btn-primary" onClick={handleSaveSchedule}>저장</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>취소</button>
+            <button type="button" className="btn btn-primary" onClick={handleSaveSchedule}>저장</button>
           </div>
         </div>
       </SimpleModal>
