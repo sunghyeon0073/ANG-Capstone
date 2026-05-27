@@ -78,17 +78,20 @@ export default function Memo() {
     }
   }
 
-  const handleDeleteMemo = async () => {
-    if (!selectedMemo) return
+  const handleDeleteMemo = async (memoToDelete = selectedMemo) => {
+    if (!memoToDelete) return
 
     if (window.confirm('이 메모를 삭제하시겠습니까?')) {
       try {
-        await deleteMemo(selectedMemo.id)
-        setMemos(memos.filter(memo => memo.id !== selectedMemo.id))
-        setSelectedMemo(null)
-        setMemoTitle('')
-        setMemoContent('')
-        setIsEditing(false)
+        await deleteMemo(memoToDelete.id)
+        setMemos(memos.filter(memo => memo.id !== memoToDelete.id))
+        
+        if (selectedMemo?.id === memoToDelete.id) {
+          setSelectedMemo(null)
+          setMemoTitle('')
+          setMemoContent('')
+          setIsEditing(false)
+        }
       } catch (error) {
         alert('메모 삭제에 실패했습니다.')
         console.error(error)
@@ -126,14 +129,26 @@ export default function Memo() {
             <div className="memo-empty">메모가 없습니다</div>
           ) : (
             memos.map(memo => (
-              <button
+              <div
                 key={memo.id}
                 className={`memo-item ${selectedMemo?.id === memo.id ? 'active' : ''}`}
                 onClick={() => handleSelectMemo(memo)}
               >
-                <div className="memo-item-title">{memo.title}</div>
-                <div className="memo-item-date">{formatDate(memo.updatedAt)}</div>
-              </button>
+                <div className="memo-item-info">
+                  <div className="memo-item-title">{memo.title}</div>
+                  <div className="memo-item-date">{formatDate(memo.updatedAt)}</div>
+                </div>
+                <button 
+                  className="memo-item-delete" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteMemo(memo);
+                  }}
+                  title="삭제"
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
             ))
           )}
         </div>
