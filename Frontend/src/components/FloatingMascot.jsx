@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FiChevronDown, FiMessageCircle, FiX } from 'react-icons/fi'
 
 const DEFAULT_MESSAGE = '필요하면 제가 옆에서 도와드릴게요.'
-const AI_MESSAGE = '문서 읽는 중... 프롬프트를 입력하면 초안을 만들어볼게요.'
+const AI_MESSAGE = '문서 작업을 도와드릴게요. 프롬프트를 입력하면 초안을 만들어볼게요.'
 
 const ANIMATION_FRAMES = {
   idle: {
@@ -82,19 +82,6 @@ export default function FloatingMascot({ mode = 'default' }) {
     setHasAlert(false)
   }
 
-  const handleMascotPointerEnter = () => {
-    if (animation === 'run') return
-    setAnimation('dead')
-    setMessage('앗, 살살 부탁드려요.')
-    setBubbleOpen(true)
-
-    window.setTimeout(() => {
-      setAnimation((currentAnimation) => (
-        currentAnimation === 'dead' ? 'idle' : currentAnimation
-      ))
-    }, 1800)
-  }
-
   if (collapsed) {
     return (
       <button
@@ -142,7 +129,6 @@ export default function FloatingMascot({ mode = 'default' }) {
         type="button"
         className={`floating-mascot-character is-${animation}`}
         onClick={handleMascotClick}
-        onPointerEnter={handleMascotPointerEnter}
         aria-label="AI 도우미 말풍선 열기"
         title="AI 도우미"
       >

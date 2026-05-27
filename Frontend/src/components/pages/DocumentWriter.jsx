@@ -15,6 +15,7 @@ import {
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
 import { FiChevronRight } from 'react-icons/fi'
+import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
 const parseCsvToTable = (text) => {
@@ -35,7 +36,6 @@ export default function DocumentWriter() {
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
   const [aiOutputFormat, setAiOutputFormat] = useState('pdf')
-  const [aiLoading, setAiLoading] = useState(false)
   const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -52,6 +52,14 @@ export default function DocumentWriter() {
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadTargetScopeId, setUploadTargetScopeId] = useState('')
   const fileInputRef = useRef(null)
+  const mountedRef = useRef(true)
+  const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     const fetchScopes = async () => {
@@ -70,6 +78,24 @@ export default function DocumentWriter() {
   useEffect(() => {
     fetchDocuments()
   }, [category, selectedScopeId])
+
+  useEffect(() => {
+    const handleGeneratedDocument = (event) => {
+      const generatedDocument = event.detail?.document
+      if (!generatedDocument) return
+
+      if (category === 'my') {
+        setDocuments((currentDocuments) => {
+          const exists = currentDocuments.some((doc) => doc.docId === generatedDocument.docId)
+          return exists ? currentDocuments : [generatedDocument, ...currentDocuments]
+        })
+      }
+      setSelectedDoc(generatedDocument)
+    }
+
+    window.addEventListener('ang:ai-document-generated', handleGeneratedDocument)
+    return () => window.removeEventListener('ang:ai-document-generated', handleGeneratedDocument)
+  }, [category])
 
   useEffect(() => {
     const filtered = documents.filter((doc) => {
@@ -306,56 +332,30 @@ export default function DocumentWriter() {
       return
     }
 
+    const payload = {
+      prompt,
+      outputFormat: aiOutputFormat,
+      attachedDocIds: attachedDocs.map((doc) => doc.docId),
+      attachedDocs: attachedDocs.length > 0
+        ? attachedDocs.map((doc) => ({
+            docId: doc.docId,
+            title: doc.title,
+            content: doc.originalContent || doc.title,
+          }))
+        : null,
+    }
+
     try {
-      setAiLoading(true)
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: {
-          message: '문서 생성 중... 제가 열심히 뛰고 있어요.',
-          animation: 'run',
-        },
-      }))
-
-      const payload = {
-        prompt,
-        outputFormat: aiOutputFormat,
-        attachedDocIds: attachedDocs.map((doc) => doc.docId),
-        attachedDocs: attachedDocs.length > 0
-          ? attachedDocs.map((doc) => ({
-              docId: doc.docId,
-              title: doc.title,
-              content: doc.originalContent || doc.title,
-            }))
-          : null,
-      }
-
-      const response = await api.post('/documents/ai-generate', payload)
-
-      if (response.data.success) {
-        if (category === 'my') {
-          setDocuments([response.data.data, ...documents])
-        }
-        setSelectedDoc(response.data.data)
+      await startGeneration(payload)
+      if (mountedRef.current) {
         setPrompt('')
         setAttachedDocs([])
-        window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-          detail: {
-            message: 'AI 문서 초안이 완성됐어요.',
-            animation: 'idle',
-          },
-        }))
-        alert('문서가 생성되었습니다!')
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: {
-          message: 'AI 문서 생성에 실패했어요. 연결 상태를 확인해주세요.',
-          animation: 'idle',
-        },
-      }))
-      alert(err.response?.data?.message || 'AI 문서 생성에 실패했습니다.')
-    } finally {
-      setAiLoading(false)
+      if (mountedRef.current) {
+        alert(err.response?.data?.message || err.message || 'AI 문서 생성에 실패했습니다.')
+      }
     }
   }
 
