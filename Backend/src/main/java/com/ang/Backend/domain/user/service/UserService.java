@@ -49,14 +49,27 @@ public class UserService {
         return toDto(user);
     }
 
+    public record ProfileImageResult(byte[] bytes, String contentType) {}
+
     @Transactional(readOnly = true)
-    public byte[] getProfileImage(Integer userId) {
+    public ProfileImageResult getProfileImage(Integer userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         if (user.getProfileImageUrl() == null) {
             throw new CustomException(ErrorCode.FILE_NOT_FOUND);
         }
-        return s3FileService.download(user.getProfileImageUrl());
+        String key = user.getProfileImageUrl();
+        byte[] bytes = s3FileService.download(key);
+        String contentType = resolveContentType(key);
+        return new ProfileImageResult(bytes, contentType);
+    }
+
+    private String resolveContentType(String key) {
+        String lower = key.toLowerCase();
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        return "image/jpeg";
     }
 
     @Transactional
