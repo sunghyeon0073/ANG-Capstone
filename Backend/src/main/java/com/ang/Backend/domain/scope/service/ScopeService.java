@@ -189,6 +189,7 @@ public class ScopeService {
             throw new CustomException(ErrorCode.SCOPE_HAS_MEMBERS);
         }
 
+
         scope.setDeletedAt(LocalDateTime.now());
         scopeRepository.save(scope);
         log.info("Scope {} ({}) soft-deleted by super admin {}", scope.getName(), scope.getScopeCode(), requester.getEmpNo());
