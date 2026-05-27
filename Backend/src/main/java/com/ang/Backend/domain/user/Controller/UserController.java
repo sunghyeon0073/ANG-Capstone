@@ -5,8 +5,11 @@ import com.ang.Backend.domain.user.dto.UserDto;
 import com.ang.Backend.domain.user.dto.UserUpdateRequest;
 import com.ang.Backend.domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -39,6 +42,21 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserDto>> updateUser(@PathVariable Integer id,
                                                            @RequestBody UserUpdateRequest req) {
         return ResponseEntity.ok(ApiResponse.ok(userService.updateUser(id, req)));
+    }
+
+    @GetMapping("/{id}/profile-image")
+    public ResponseEntity<byte[]> getProfileImage(@PathVariable Integer id) {
+        byte[] imageBytes = userService.getProfileImage(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_JPEG_VALUE)
+                .body(imageBytes);
+    }
+
+    @PostMapping(value = "/{id}/profile-image", consumes = "multipart/form-data")
+    public ResponseEntity<ApiResponse<UserDto>> uploadProfileImage(
+            @PathVariable Integer id,
+            @RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(ApiResponse.ok(userService.uploadProfileImage(id, file)));
     }
 
     @PostMapping("/{id}/approve")

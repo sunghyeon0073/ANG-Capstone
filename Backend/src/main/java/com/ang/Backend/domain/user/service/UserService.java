@@ -3,6 +3,7 @@ package com.ang.Backend.domain.user.service;
 import com.ang.Backend.common.enums.UserStatus;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
+import com.ang.Backend.domain.file.service.S3FileService;
 import com.ang.Backend.domain.role.entity.UserRole;
 import com.ang.Backend.domain.role.repository.RoleRepository;
 import com.ang.Backend.domain.role.repository.UserRoleRepository;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,6 +32,7 @@ public class UserService {
     private final UserMembershipRepository userMembershipRepository;
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
+    private final S3FileService s3FileService;
 
     @Transactional(readOnly = true)
     public List<UserDto> getAllUsers() {
@@ -44,6 +47,28 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         return toDto(user);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] getProfileImage(Integer userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        if (user.getProfileImageUrl() == null) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+        return s3FileService.download(user.getProfileImageUrl());
+    }
+
+    @Transactional
+    public UserDto uploadProfileImage(Integer userId, MultipartFile file) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        if (user.getProfileImageUrl() != null) {
+            s3FileService.delete(user.getProfileImageUrl());
+        }
+        String key = s3FileService.upload(file, "profiles");
+        user.setProfileImageUrl(key);
+        return toDto(userRepository.save(user));
     }
 
     @Transactional
