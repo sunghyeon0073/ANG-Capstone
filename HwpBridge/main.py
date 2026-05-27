@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -28,6 +29,9 @@ CONTENT_TYPES = {
     "pdf": "application/pdf",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
+
+HWP_MAX_ATTEMPTS = int(os.getenv("HWP_MAX_ATTEMPTS", "3"))
+HWP_RETRY_DELAY_SECONDS = float(os.getenv("HWP_RETRY_DELAY_SECONDS", "1"))
 
 
 @app.get("/health")
@@ -114,6 +118,31 @@ def _save_with_hwp(input_path: Path, output_path: Path, output_format: str, befo
     if pythoncom is None or win32com is None:
         raise HTTPException(status_code=500, detail="pywin32 is required on a Windows host")
 
+    last_error = None
+    for attempt in range(1, HWP_MAX_ATTEMPTS + 1):
+        try:
+            _save_with_hwp_once(input_path, output_path, output_format, before_save)
+            return
+        except HTTPException as exc:
+            last_error = exc
+        except Exception as exc:
+            last_error = exc
+
+        if output_path.exists():
+            try:
+                output_path.unlink()
+            except Exception:
+                pass
+
+        if attempt < HWP_MAX_ATTEMPTS:
+            time.sleep(HWP_RETRY_DELAY_SECONDS)
+
+    if isinstance(last_error, HTTPException):
+        raise last_error
+    raise HTTPException(status_code=500, detail=f"HWP automation failed after {HWP_MAX_ATTEMPTS} attempts: {last_error}") from last_error
+
+
+def _save_with_hwp_once(input_path: Path, output_path: Path, output_format: str, before_save=None) -> None:
     pythoncom.CoInitialize()
     hwp = None
     try:
