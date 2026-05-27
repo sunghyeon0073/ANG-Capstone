@@ -233,7 +233,8 @@ public class MailService {
         MailRecipient mr = mailRecipientRepository.findByMailAndRecipient(mail, user)
                 .orElseThrow(() -> new CustomException(ErrorCode.MAIL_ACCESS_DENIED));
         mr.setDeletedAt(null);
-    }
+    }s
+
 
     // 발신 휴지통에서 복원
     @Transactional
