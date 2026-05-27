@@ -246,6 +246,39 @@ public class MailService {
         mail.setSenderDeletedAt(null);
     }
 
+    // 수신 휴지통 완전 삭제 (MailRecipient 물리 삭제)
+    @Transactional
+    public void permanentDeleteFromInboxTrash(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        MailRecipient mr = mailRecipientRepository.findByMailAndRecipient(mail, user)
+                .orElseThrow(() -> new CustomException(ErrorCode.MAIL_ACCESS_DENIED));
+        if (mr.getDeletedAt() == null) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        mailRecipientRepository.delete(mr);
+        log.info("Mail {} permanently deleted from inbox trash by user {}", mailId, user.getEmpNo());
+    }
+
+    // 발신 휴지통 완전 삭제 (Mail + MailRecipient + S3 파일 모두 물리 삭제)
+    @Transactional
+    public void permanentDeleteFromSentTrash(Long mailId, User user) {
+        Mail mail = findMailById(mailId);
+        if (!mail.getSender().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        if (mail.getSenderDeletedAt() == null) {
+            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+        }
+        List<MailAttachment> attachments = mailAttachmentRepository.findByMail(mail);
+        for (MailAttachment att : attachments) {
+            s3FileService.delete(att.getFileUrl());
+        }
+        mailAttachmentRepository.deleteAll(attachments);
+        mailRecipientRepository.deleteAll(mailRecipientRepository.findByMail(mail));
+        mailRepository.delete(mail);
+        log.info("Mail {} permanently deleted from sent trash by sender {}", mailId, user.getEmpNo());
+    }
+
     // 임시저장 삭제 (작성자 본인만, DB에서 완전 삭제)
     @Transactional
     public void deleteDraft(Long mailId, User user) {
@@ -266,6 +299,7 @@ public class MailService {
     }
 
     // 파일 다운로드
+    @Transactional(readOnly = true)
     public MailDto.FileDownloadData downloadFile(Long attachmentId, User user) {
         MailAttachment attachment = mailAttachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> new CustomException(ErrorCode.MAIL_NOT_FOUND));
@@ -339,6 +373,7 @@ public class MailService {
         mail.setStatus(MailStatus.SENT);
         mail.setSentAt(LocalDateTime.now());
         return mail.getMailId();
+        
     }
 
     // 답장

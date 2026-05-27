@@ -62,12 +62,16 @@ public class S3FileService {
     }
 
     public byte[] download(String key) {
-        GetObjectRequest request = GetObjectRequest.builder()
-                .bucket(bucket)
-                .key(key)
-                .build();
-
-        return s3Client.getObjectAsBytes(request).asByteArray();
+        try {
+            GetObjectRequest request = GetObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .build();
+            return s3Client.getObjectAsBytes(request).asByteArray();
+        } catch (software.amazon.awssdk.services.s3.model.NoSuchKeyException e) {
+            throw new com.ang.Backend.common.exception.CustomException(
+                    com.ang.Backend.common.exception.ErrorCode.FILE_NOT_FOUND);
+        }
     }
 
     public void delete(String key) {
