@@ -328,6 +328,7 @@ export default function Organization({ currentSubPage = 'org-all', onSendMail })
                   <MemberCard
                     member={member}
                     scopeId={scope.id}
+                    teamName={scope.name}
                     onClick={(clickedMember, scopeId) => setSelectedMember({ member: clickedMember, scopeId })}
                   />
                 </div>
