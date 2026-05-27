@@ -76,7 +76,41 @@ async def replace_hwp(
         )
 
 
+@app.post("/hwp/preview-pdf")
+async def preview_hwp_pdf(file: UploadFile = File(...)):
+    with tempfile.TemporaryDirectory(prefix="ang-hwp-preview-") as temp_dir:
+        temp_path = Path(temp_dir)
+        original_name = Path(file.filename or "document.hwp").name
+        input_path = temp_path / f"{uuid.uuid4()}-{original_name}"
+        output_path = temp_path / f"{input_path.stem}-preview.pdf"
+
+        input_path.write_bytes(await file.read())
+        _save_with_hwp(input_path, output_path, "pdf")
+
+        if not output_path.exists():
+            raise HTTPException(status_code=500, detail="HWP preview PDF was not created")
+
+        download_name = f"{Path(original_name).stem}-preview.pdf"
+        return FileResponse(
+            output_path,
+            media_type=CONTENT_TYPES["pdf"],
+            filename=download_name,
+        )
+
+
 def _replace_with_hwp(input_path: Path, output_path: Path, replacements: list, output_format: str) -> None:
+    def apply_replacements(hwp):
+        for item in replacements:
+            find_text = str(item.get("find", "") if isinstance(item, dict) else "").strip()
+            replace_text = str(item.get("replace", "") if isinstance(item, dict) else "")
+            if not find_text:
+                continue
+            _all_replace(hwp, find_text, replace_text)
+
+    _save_with_hwp(input_path, output_path, output_format, apply_replacements)
+
+
+def _save_with_hwp(input_path: Path, output_path: Path, output_format: str, before_save=None) -> None:
     if pythoncom is None or win32com is None:
         raise HTTPException(status_code=500, detail="pywin32 is required on a Windows host")
 
@@ -90,12 +124,8 @@ def _replace_with_hwp(input_path: Path, output_path: Path, replacements: list, o
         if not opened:
             raise HTTPException(status_code=500, detail="Failed to open HWP file")
 
-        for item in replacements:
-            find_text = str(item.get("find", "") if isinstance(item, dict) else "").strip()
-            replace_text = str(item.get("replace", "") if isinstance(item, dict) else "")
-            if not find_text:
-                continue
-            _all_replace(hwp, find_text, replace_text)
+        if before_save is not None:
+            before_save(hwp)
 
         save_format = SAVE_FORMATS[output_format]
         saved = hwp.SaveAs(str(output_path), save_format)

@@ -916,6 +916,13 @@ public class DocumentService {
             return originalFile;
         }
 
+        if (isHwpFile(lowerName, contentType)) {
+            FileItem hwpPreview = createHwpBridgePreviewFile(file, user, originalName);
+            if (hwpPreview != null) {
+                return hwpPreview;
+            }
+        }
+
         if (!isConvertibleToPdf(lowerName, contentType)) {
             return null;
         }
@@ -967,6 +974,59 @@ public class DocumentService {
         }
     }
 
+    private FileItem createHwpBridgePreviewFile(MultipartFile file, User user, String originalName) {
+        if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
+            log.warn("HWP preview skipped because HWP_EDIT_BASE_URL is not configured.");
+            return null;
+        }
+
+        try {
+            byte[] pdfBytes = callHwpPreviewBridge(file.getBytes(), originalName).getBody();
+            if (pdfBytes == null || pdfBytes.length == 0) {
+                log.warn("HWP preview bridge returned an empty PDF for {}", originalName);
+                return null;
+            }
+
+            String previewName = originalName.replaceFirst("\\.[^.]+$", "") + ".pdf";
+            String s3Key = s3FileService.uploadBytes(pdfBytes, previewName, "application/pdf", "previews");
+
+            return fileItemRepository.save(FileItem.builder()
+                    .originalFileName(previewName)
+                    .storedFileName(s3Key)
+                    .filePath(s3Key)
+                    .fileSize((long) pdfBytes.length)
+                    .contentType("application/pdf")
+                    .uploader(user)
+                    .ownerId(user != null ? user.getUserId() : null)
+                    .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+                    .build());
+        } catch (Exception e) {
+            log.warn("HWP preview bridge failed for {}: {}", originalName, e.getMessage());
+            return null;
+        }
+    }
+
+    private ResponseEntity<byte[]> callHwpPreviewBridge(byte[] originalBytes, String originalName) {
+        ByteArrayResource fileResource = new ByteArrayResource(originalBytes) {
+            @Override
+            public String getFilename() {
+                return originalName;
+            }
+        };
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", fileResource);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        return restTemplate.postForEntity(
+                hwpEditBaseUrl.replaceAll("/+$", "") + "/hwp/preview-pdf",
+                new HttpEntity<>(body, headers),
+                byte[].class
+        );
+    }
+
     private boolean isConvertibleToPdf(String lowerName, String contentType) {
         return lowerName.endsWith(".doc")
                 || lowerName.endsWith(".docx")
@@ -980,6 +1040,10 @@ public class DocumentService {
                 || contentType.contains("spreadsheet")
                 || contentType.contains("hwp")
                 || contentType.contains("text/plain");
+    }
+
+    private boolean isHwpFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".hwp") || contentType.contains("hwp");
     }
 
     private boolean isPlainTextFile(String lowerName, String contentType) {

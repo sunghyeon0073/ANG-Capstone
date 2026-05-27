@@ -45,6 +45,14 @@ Multipart form fields:
 - `replacements`: JSON 배열 문자열
 - `output_format`: `hwp`, `pdf`, `docx`
 
+`POST /hwp/preview-pdf`
+
+Multipart form fields:
+
+- `file`: 원본 `.hwp`
+
+한컴으로 원본 HWP를 열고 PDF로 저장해서 미리보기용 PDF를 반환합니다.
+
 Example `replacements`:
 
 ```json
