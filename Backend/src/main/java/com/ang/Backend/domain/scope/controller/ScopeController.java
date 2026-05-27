@@ -38,6 +38,7 @@ public class ScopeController {
                 .map(ScopeDto::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(scopes));
+        
     }
 
     @PostMapping
