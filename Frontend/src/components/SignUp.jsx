@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signUp } from '../api/authApi'
+import { getScopes } from '../api/scopeApi'
+
+const normalizeScopeType = (scope) => scope?.scopeType ?? scope?.type ?? ''
 
 export default function SignUp() {
   const [formData, setFormData] = useState({
@@ -11,8 +14,50 @@ export default function SignUp() {
     password: '',
     passwordConfirm: ''
   })
-  const [scopeCode, setScopeCode] = useState('')
+  const [scopes, setScopes] = useState([])
+  const [selectedDeptId, setSelectedDeptId] = useState('')
+  const [selectedTeamId, setSelectedTeamId] = useState('')
+  const [scopeLoading, setScopeLoading] = useState(true)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const fetchScopes = async () => {
+      try {
+        const res = await getScopes()
+        setScopes(Array.isArray(res.data?.data) ? res.data.data : [])
+      } catch (error) {
+        console.error('부서 목록 로드 실패', error)
+        setScopes([])
+      } finally {
+        setScopeLoading(false)
+      }
+    }
+
+    fetchScopes()
+  }, [])
+
+  const departments = useMemo(() => {
+    return scopes
+      .filter((scope) => normalizeScopeType(scope) === 'DEPARTMENT')
+      .sort((left, right) => (left.name || '').localeCompare(right.name || '', 'ko'))
+  }, [scopes])
+
+  const teams = useMemo(() => {
+    if (!selectedDeptId) return []
+
+    return scopes
+      .filter(
+        (scope) =>
+          normalizeScopeType(scope) === 'TEAM' &&
+          String(scope.parentId ?? '') === selectedDeptId
+      )
+      .sort((left, right) => (left.name || '').localeCompare(right.name || '', 'ko'))
+  }, [scopes, selectedDeptId])
+
+  const selectedTeam = useMemo(
+    () => teams.find((team) => String(team.id) === selectedTeamId) || null,
+    [teams, selectedTeamId]
+  )
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -29,8 +74,13 @@ export default function SignUp() {
       return
     }
     
-    if (!scopeCode.trim()) {
-      alert('부서코드를 입력해주세요.')
+    if (!selectedDeptId) {
+      alert('학교를 선택해주세요.')
+      return
+    }
+
+    if (!selectedTeam) {
+      alert('부서를 선택해주세요.')
       return
     }
 
@@ -39,7 +89,7 @@ export default function SignUp() {
         name: formData.name,
         empNo: formData.employeeId,
         birthdate: formData.birthDate,
-        scopeCode: scopeCode.trim(),
+        scopeCode: selectedTeam.scopeCode,
         email: formData.email,
         password: formData.password,
         passwordConfirm: formData.passwordConfirm
@@ -57,8 +107,24 @@ export default function SignUp() {
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-box">
+    <div
+      className="auth-container"
+      style={{
+        minHeight: '100vh',
+        overflowY: 'auto',
+        alignItems: 'flex-start',
+        padding: '24px 20px',
+      }}
+    >
+      <div
+        className="auth-box"
+        style={{
+          width: 'min(760px, 100%)',
+          maxWidth: '760px',
+          boxSizing: 'border-box',
+          margin: '0 auto',
+        }}
+      >
         <h1>회원가입</h1>
         <form onSubmit={handleSignUp}>
           <div className="form-row">
@@ -90,7 +156,7 @@ export default function SignUp() {
           </div>
 
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" style={{ flex: 1 }}>
               <label htmlFor="birthDate">생년월일</label>
               <input
                 type="date"
@@ -101,25 +167,8 @@ export default function SignUp() {
                 required
               />
             </div>
-          </div>
 
-          <div className="form-row full-width">
-            <div className="form-group">
-              <label>부서 고유코드</label>
-              <div className="dynamic-input-row" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <input
-                  type="text"
-                  value={scopeCode}
-                  onChange={(e) => setScopeCode(e.target.value)}
-                  placeholder="부서코드를 입력하세요 (예: DEPT01)"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="form-row full-width">
-            <div className="form-group">
+            <div className="form-group" style={{ flex: 1 }}>
               <label htmlFor="email">이메일</label>
               <input
                 type="email"
@@ -129,7 +178,49 @@ export default function SignUp() {
                 onChange={handleChange}
                 placeholder="이메일"
                 required
+                style={{ width: '100%' }}
               />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group" style={{ flex: 1 }}>
+              <label htmlFor="departmentSelect">학교</label>
+              <select
+                id="departmentSelect"
+                value={selectedDeptId}
+                onChange={(e) => {
+                  setSelectedDeptId(e.target.value)
+                  setSelectedTeamId('')
+                }}
+                required
+                disabled={scopeLoading}
+              >
+                <option value="">학교를 선택하세요</option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ flex: 1 }}>
+              <label htmlFor="teamSelect">부서</label>
+              <select
+                id="teamSelect"
+                value={selectedTeamId}
+                onChange={(e) => setSelectedTeamId(e.target.value)}
+                required
+                disabled={!selectedDeptId || scopeLoading}
+              >
+                <option value="">{selectedDeptId ? '부서를 선택하세요' : '학교를 먼저 선택하세요'}</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

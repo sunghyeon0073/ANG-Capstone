@@ -53,6 +53,7 @@ export default function Dashboard() {
   const handleLogout = () => {
     localStorage.removeItem('user')
     localStorage.removeItem('token')
+    alert('로그아웃되었습니다.')
     navigate('/login')
   }
 
