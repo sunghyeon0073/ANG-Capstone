@@ -1,3 +1,4 @@
+
 /* ============================================================================
    NAVIGATION
    ============================================================================ */
@@ -178,6 +179,7 @@
   justify-content: center;
   font-size: 14px;
   font-weight: bold;
+  overflow: hidden;
 }
 
 .topnavbar-username {
@@ -219,6 +221,13 @@
   font-size: 18px;
   font-weight: bold;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.profile-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .profile-info {

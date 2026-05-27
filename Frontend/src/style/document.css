@@ -606,6 +606,11 @@
     color: #1b5e20;
   }
 
+  .doc-type-tag--hwp {
+    background: #fff4cc;
+    color: #b7791f;
+  }
+
   .file-input-hidden {
     display: none;
   }

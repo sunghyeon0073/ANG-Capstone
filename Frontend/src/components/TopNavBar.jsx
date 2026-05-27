@@ -29,6 +29,14 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
       .toUpperCase() || 'U'
   }
 
+  const renderAvatar = (className) => {
+    if (user?.profileImageUrl) {
+      return <img src={user.profileImageUrl} alt={`${user?.name || '사용자'} 프로필`} className={`${className} profile-image`} />
+    }
+
+    return <div className={className}>{getInitials(user?.name)}</div>
+  }
+
   const handleMyPageClick = () => {
     onPageChange('mypage')
     setShowProfileMenu(false)
@@ -89,22 +97,18 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="topnavbar-profile-button"
           >
-            <div className="profile-avatar">
-              {getInitials(user?.name)}
-            </div>
+            {renderAvatar('profile-avatar')}
             <span className="topnavbar-username">{user?.name}</span>
           </button>
 
           {showProfileMenu && (
             <div className="profile-dropdown">
               <div className="profile-header">
-                <div className="profile-large-avatar">
-                  {getInitials(user?.name)}
-                </div>
+                {renderAvatar('profile-large-avatar')}
                 <div className="profile-info">
                   <div className="profile-name">{user?.name}</div>
                   <div className="profile-role">
-                    {user?.department} • {user?.position}
+                    {user?.department || user?.dept || '소속 정보 없음'} • {user?.position}
                   </div>
                   <div className="profile-email">{user?.email}</div>
                 </div>

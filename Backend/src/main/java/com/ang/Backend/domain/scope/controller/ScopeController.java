@@ -6,6 +6,7 @@ import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
 import com.ang.Backend.domain.scope.dto.ScopeDto;
 import com.ang.Backend.domain.scope.entity.Scope;
+import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.scope.service.ScopeService;
@@ -74,6 +75,7 @@ public class ScopeController {
     }
 
     @GetMapping("/{id}/members")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<UserDto>>> getScopeMembers(@PathVariable Integer id) {
         Scope scope = scopeRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));

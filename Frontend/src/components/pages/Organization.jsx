@@ -62,7 +62,7 @@ const getPositionInScope = (member, scopeId) => {
   return scopedPosition || member.position || '직급 미정';
 };
 
-const isVisibleOrgMember = member => (member.roleLevel ?? 0) < 100;
+const isVisibleOrgMember = member => member.status === 'ACTIVE' && (member.roleLevel ?? 0) < 100;
 const hasAnyPosition = (member, scopeId, keywords) => keywords.some(keyword => getPositionInScope(member, scopeId).includes(keyword));
 
 const getPositionRank = position => {
@@ -217,7 +217,7 @@ export default function Organization({ currentSubPage = 'org-all', onSendMail })
             const data = Array.isArray(res.data?.data) ? res.data.data : [];
 
             if (!isCancelled) {
-              setMembersCache(prev => ({ ...prev, [scopeId]: data }));
+              setMembersCache(prev => ({ ...prev, [scopeId]: data.filter(isVisibleOrgMember) }));
             }
           } catch (error) {
             console.error('조직 구성원 로드 실패', error);
@@ -328,6 +328,7 @@ export default function Organization({ currentSubPage = 'org-all', onSendMail })
                   <MemberCard
                     member={member}
                     scopeId={scope.id}
+                    teamName={scope.name}
                     onClick={(clickedMember, scopeId) => setSelectedMember({ member: clickedMember, scopeId })}
                   />
                 </div>

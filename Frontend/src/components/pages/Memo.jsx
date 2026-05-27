@@ -1,22 +1,47 @@
-import { useState } from 'react'
-import { FiPlus, FiTrash2, FiSave } from 'react-icons/fi'
+import { useState, useEffect } from 'react'
+import { FiPlus, FiTrash2, FiSave, FiEdit3 } from 'react-icons/fi'
+import { getMemos, createMemo, updateMemo, deleteMemo } from '../../api/memoApi'
 
 export default function Memo() {
   const [memos, setMemos] = useState([])
   const [selectedMemo, setSelectedMemo] = useState(null)
   const [memoContent, setMemoContent] = useState('')
   const [memoTitle, setMemoTitle] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+
+  useEffect(() => {
+    fetchMemos()
+  }, [])
+
+  const fetchMemos = async () => {
+    try {
+      setIsLoading(true)
+      const res = await getMemos()
+      setMemos(res.data?.data || [])
+    } catch (error) {
+      console.error('메모 로드 실패', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleNewMemo = () => {
     setSelectedMemo(null)
     setMemoTitle('')
     setMemoContent('')
+    setIsEditing(true)
   }
 
   const handleSelectMemo = (memo) => {
     setSelectedMemo(memo)
     setMemoTitle(memo.title)
     setMemoContent(memo.content)
+    setIsEditing(false)
+  }
+
+  const handleStartEdit = () => {
+    setIsEditing(true)
   }
 
   const handleSaveMemo = async () => {
@@ -25,54 +50,68 @@ export default function Memo() {
       return
     }
 
-    if (selectedMemo) {
-      // 기존 메모 수정
-      const updatedMemos = memos.map(memo =>
-        memo.id === selectedMemo.id
-          ? { ...memo, title: memoTitle, content: memoContent, updatedAt: new Date().toISOString() }
-          : memo
-      )
-      setMemos(updatedMemos)
-      setSelectedMemo(updatedMemos.find(m => m.id === selectedMemo.id))
-      // 나중에 백엔드 API: PUT /api/memos/:id
-    } else {
-      // 새 메모 작성
-      const newMemo = {
-        id: Date.now().toString(),
-        title: memoTitle,
-        content: memoContent,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+    try {
+      if (selectedMemo) {
+        // 기존 메모 수정
+        const res = await updateMemo(selectedMemo.id, {
+          title: memoTitle,
+          content: memoContent
+        })
+        const updatedMemo = res.data?.data
+        setMemos(memos.map(memo => memo.id === selectedMemo.id ? updatedMemo : memo))
+        setSelectedMemo(updatedMemo)
+        setIsEditing(false)
+      } else {
+        // 새 메모 작성
+        const res = await createMemo({
+          title: memoTitle,
+          content: memoContent
+        })
+        const newMemo = res.data?.data
+        setMemos([newMemo, ...memos])
+        setSelectedMemo(newMemo)
+        setIsEditing(false)
       }
-      const updatedMemos = [newMemo, ...memos]
-      setMemos(updatedMemos)
-      setSelectedMemo(newMemo)
-      // 나중에 백엔드 API: POST /api/memos
+    } catch (error) {
+      alert('메모 저장에 실패했습니다.')
+      console.error(error)
     }
   }
 
-  const handleDeleteMemo = async () => {
-    if (!selectedMemo) return
+  const handleDeleteMemo = async (memoToDelete = selectedMemo) => {
+    if (!memoToDelete) return
 
     if (window.confirm('이 메모를 삭제하시겠습니까?')) {
-      const updatedMemos = memos.filter(memo => memo.id !== selectedMemo.id)
-      setMemos(updatedMemos)
-      setSelectedMemo(null)
-      setMemoTitle('')
-      setMemoContent('')
-      // 나중에 백엔드 API: DELETE /api/memos/:id
+      try {
+        await deleteMemo(memoToDelete.id)
+        setMemos(memos.filter(memo => memo.id !== memoToDelete.id))
+        
+        if (selectedMemo?.id === memoToDelete.id) {
+          setSelectedMemo(null)
+          setMemoTitle('')
+          setMemoContent('')
+          setIsEditing(false)
+        }
+      } catch (error) {
+        alert('메모 삭제에 실패했습니다.')
+        console.error(error)
+      }
     }
   }
 
   const formatDate = (dateString) => {
+    if (!dateString) return ''
     const date = new Date(dateString)
-    return date.toLocaleDateString('ko-KR', {
+    // 한국 시간(KST) 강제 설정
+    return new Intl.DateTimeFormat('ko-KR', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
-    })
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Seoul'
+    }).format(date)
   }
 
   return (
@@ -84,18 +123,32 @@ export default function Memo() {
         </button>
 
         <div className="memo-list">
-          {memos.length === 0 ? (
+          {isLoading ? (
+            <div className="memo-empty">불러오는 중...</div>
+          ) : memos.length === 0 ? (
             <div className="memo-empty">메모가 없습니다</div>
           ) : (
             memos.map(memo => (
-              <button
+              <div
                 key={memo.id}
                 className={`memo-item ${selectedMemo?.id === memo.id ? 'active' : ''}`}
                 onClick={() => handleSelectMemo(memo)}
               >
-                <div className="memo-item-title">{memo.title}</div>
-                <div className="memo-item-date">{formatDate(memo.updatedAt)}</div>
-              </button>
+                <div className="memo-item-info">
+                  <div className="memo-item-title">{memo.title}</div>
+                  <div className="memo-item-date">{formatDate(memo.updatedAt)}</div>
+                </div>
+                <button 
+                  className="memo-item-delete" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteMemo(memo);
+                  }}
+                  title="삭제"
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
             ))
           )}
         </div>
@@ -109,17 +162,28 @@ export default function Memo() {
             value={memoTitle}
             onChange={(e) => setMemoTitle(e.target.value)}
             className="memo-title-input"
+            readOnly={!isEditing}
           />
           <div className="memo-editor-actions">
-            <button className="btn-save" onClick={handleSaveMemo}>
-              <FiSave />
-              저장
-            </button>
-            {selectedMemo && (
-              <button className="btn-delete" onClick={handleDeleteMemo}>
-                <FiTrash2 />
-                삭제
+            {!isEditing && selectedMemo && (
+              <button className="btn-edit" onClick={handleStartEdit}>
+                <FiEdit3 />
+                수정
               </button>
+            )}
+            {isEditing && (
+              <>
+                <button className="btn-save" onClick={handleSaveMemo}>
+                  <FiSave />
+                  저장
+                </button>
+                {selectedMemo && (
+                  <button className="btn-delete" onClick={handleDeleteMemo}>
+                    <FiTrash2 />
+                    삭제
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -129,6 +193,7 @@ export default function Memo() {
           value={memoContent}
           onChange={(e) => setMemoContent(e.target.value)}
           className="memo-content-textarea"
+          readOnly={!isEditing}
         />
       </div>
     </div>
