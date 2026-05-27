@@ -1034,7 +1034,7 @@ public class DocumentService {
                 log.info("Created HWP preview PDF for {} as {}", originalName, hwpPreview.getOriginalFileName());
                 return hwpPreview;
             }
-            log.warn("HWP bridge preview was not created for {}, falling back to generic PDF conversion.", originalName);
+            throw new IllegalStateException("HWP preview generation failed. Please check the HWP bridge server and try again.");
         }
 
         if (!isConvertibleToPdf(lowerName, contentType)) {
