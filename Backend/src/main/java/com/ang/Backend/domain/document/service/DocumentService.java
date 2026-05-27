@@ -133,7 +133,7 @@ public class DocumentService {
     }
 
     public List<DocumentDto.Response> getAllDocuments(User requester) {
-        List<DocumentDto.Response> list = documentRepository.findAll().stream()
+        List<DocumentDto.Response> list = documentRepository.findAllByDeletedAtIsNull().stream()
                 .map(DocumentDto.Response::fromEntity)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, requester);
@@ -142,6 +142,9 @@ public class DocumentService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat) {
+        if (user == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED, "AI 생성을 위해서는 로그인이 필요합니다.");
+        }
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("Prompt is required.");
         }
@@ -443,14 +446,43 @@ public class DocumentService {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 완전 삭제할 권한이 없습니다.");
         }
 
-        if (doc.getFile() != null) {
-            fileService.deletePhysicalFile(doc.getFile());
-        }
-        if (doc.getPreviewFile() != null
-                && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
-            fileService.deletePhysicalFile(doc.getPreviewFile());
-        }
+        FileItem file = doc.getFile();
+        FileItem previewFile = doc.getPreviewFile();
+
+        // 1. 문서 엔티티를 먼저 삭제하고 DB에 즉시 반영하여 파일 참조를 제거합니다.
         documentRepository.delete(doc);
+        documentRepository.flush();
+        
+        // 2. 다른 문서에서 사용하지 않는 경우에만 물리 파일과 파일 정보를 삭제합니다.
+        if (file != null && !documentRepository.existsByFile(file)) {
+            fileService.deletePhysicalFile(file);
+        }
+        
+        if (previewFile != null && !previewFile.equals(file)) {
+            // Note: existsByFile checks if ANY document uses this FileItem as its 'file' field.
+            if (!documentRepository.existsByFile(previewFile)) {
+                fileService.deletePhysicalFile(previewFile);
+            }
+        }
+    }
+
+    @Transactional
+    public void restore(Long id, User requester) {
+        DocumentEntity doc = documentRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        // 복구 권한 체크 (삭제 권한과 동일)
+        if (!canUserDelete(doc, requester)) {
+            throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 복구할 권한이 없습니다.");
+        }
+
+        doc.setDeletedAt(null);
+        if (doc.getFile() != null) {
+            doc.getFile().setDeletedAt(null);
+        }
+        if (doc.getPreviewFile() != null) {
+            doc.getPreviewFile().setDeletedAt(null);
+        }
     }
 
     @Scheduled(cron = "0 0 0 * * ?") // 매일 자정에 실행

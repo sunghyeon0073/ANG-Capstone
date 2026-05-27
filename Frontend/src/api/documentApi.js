@@ -14,5 +14,11 @@ export const getDocument = (docId) => api.get(`/documents/${docId}`);
 
 export const deleteDocument = (docId) => api.delete(`/documents/${docId}`);
 
+export const getTrashDocuments = () => api.get('/documents/trash');
+
+export const permanentDeleteDocument = (docId) => api.delete(`/documents/${docId}/permanent`);
+
+export const restoreDocument = (docId) => api.put(`/documents/${docId}/restore`);
+
 export const downloadDocumentFile = (fileId) => 
   api.get(`/files/download/${fileId}`, { responseType: 'blob' });

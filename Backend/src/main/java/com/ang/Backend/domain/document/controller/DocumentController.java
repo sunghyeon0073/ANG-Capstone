@@ -148,4 +148,14 @@ public class DocumentController {
         documentService.permanentDelete(id, user);
         return ApiResponse.ok(null);
     }
+
+    @PutMapping("/{id}/restore")
+    public ApiResponse<Void> restore(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        documentService.restore(id, user);
+        return ApiResponse.ok(null);
+    }
 }
