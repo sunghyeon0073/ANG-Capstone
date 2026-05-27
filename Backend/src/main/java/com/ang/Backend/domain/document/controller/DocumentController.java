@@ -148,6 +148,15 @@ public class DocumentController {
                 .body(file.getBytes());
     }
 
+    @GetMapping("/trash")
+    public ApiResponse<List<DocumentDto.Response>> getTrashDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        return ApiResponse.ok(documentService.getTrashDocuments(user));
+    }
+
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
@@ -155,6 +164,26 @@ public class DocumentController {
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.delete(id, user);
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/{id}/permanent")
+    public ApiResponse<Void> permanentDelete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        documentService.permanentDelete(id, user);
+        return ApiResponse.ok(null);
+    }
+
+    @PutMapping("/{id}/restore")
+    public ApiResponse<Void> restore(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        documentService.restore(id, user);
         return ApiResponse.ok(null);
     }
 }

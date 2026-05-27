@@ -411,7 +411,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
                       </span>
                     )}
                   </td>
-                  <td style={{ padding: '10px 12px', color: '#888' }}>{formatDate(isTrash ? doc.deletedAt : doc.createdAt, isTrash)}</td>
+                  <td style={{ padding: '10px 12px', color: '#888' }}>{formatDate(isTrash ? doc.deletedAt : doc.createdAt, true)}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                     {doc.fileId && !isTrash && (
                       <button

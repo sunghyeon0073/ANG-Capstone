@@ -545,7 +545,7 @@ public class DocumentService {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 휴지통으로 이동할 권한이 없습니다.");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
         doc.setDeletedAt(now);
         if (doc.getFile() != null) {
             doc.getFile().setDeletedAt(now);
