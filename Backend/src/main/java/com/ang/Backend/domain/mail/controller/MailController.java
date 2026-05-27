@@ -116,9 +116,11 @@ public class MailController {
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
         MailDto.FileDownloadData data = mailService.downloadFile(attachmentId, user);
+        String encodedName = java.net.URLEncoder.encode(data.getFileName(), java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + data.getFileName() + "\"")
+                        "attachment; filename*=UTF-8''" + encodedName)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(data.getBytes());
     }
@@ -243,6 +245,26 @@ public class MailController {
         User user = resolveUser(userDetails);
         mailService.restoreFromSentTrash(mailId, user);
         return ResponseEntity.ok(ApiResponse.ok("발신함으로 복원되었습니다."));
+    }
+
+    // 수신 휴지통 완전 삭제
+    @DeleteMapping("/trash/inbox/{mailId}")
+    public ResponseEntity<ApiResponse<Void>> permanentDeleteFromInboxTrash(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        mailService.permanentDeleteFromInboxTrash(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok("메일이 완전히 삭제되었습니다."));
+    }
+
+    // 발신 휴지통 완전 삭제
+    @DeleteMapping("/trash/sent/{mailId}")
+    public ResponseEntity<ApiResponse<Void>> permanentDeleteFromSentTrash(
+            @PathVariable Long mailId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        mailService.permanentDeleteFromSentTrash(mailId, user);
+        return ResponseEntity.ok(ApiResponse.ok("메일이 완전히 삭제되었습니다."));
     }
 
     private User resolveUser(UserDetails userDetails) {
