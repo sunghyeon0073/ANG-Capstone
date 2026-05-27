@@ -917,10 +917,13 @@ public class DocumentService {
         }
 
         if (isHwpFile(lowerName, contentType)) {
+            log.info("Creating HWP preview through bridge for {} using {}", originalName, hwpEditBaseUrl);
             FileItem hwpPreview = createHwpBridgePreviewFile(file, user, originalName);
             if (hwpPreview != null) {
+                log.info("Created HWP preview PDF for {} as {}", originalName, hwpPreview.getOriginalFileName());
                 return hwpPreview;
             }
+            log.warn("HWP bridge preview was not created for {}, falling back to generic PDF conversion.", originalName);
         }
 
         if (!isConvertibleToPdf(lowerName, contentType)) {
