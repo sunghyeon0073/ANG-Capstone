@@ -13,14 +13,24 @@ import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.scope.service.ScopeService;
 import com.ang.Backend.domain.user.entity.User;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -64,9 +74,13 @@ public class DocumentService {
     private final com.ang.Backend.domain.user.repository.UserRepository userRepository;
     private final S3FileService s3FileService;
     private final TransactionTemplate transactionTemplate;
+    private final ObjectMapper objectMapper;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
+
+    @Value("${hwp.edit-base-url:}")
+    private String hwpEditBaseUrl;
 
     @PostConstruct
     @Transactional
@@ -299,6 +313,112 @@ public class DocumentService {
         return documentRepository.findById(docId)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND))
                 .getOriginalContent();
+    }
+
+    @Transactional(readOnly = true)
+    public DocumentDto.FileDownload replaceHwp(Long docId, DocumentDto.HwpReplaceRequest request, User requester) {
+        if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
+            throw new IllegalStateException("HWP_EDIT_BASE_URL is not configured.");
+        }
+        if (request == null || request.getReplacements() == null || request.getReplacements().isEmpty()) {
+            throw new IllegalArgumentException("Replacement list is required.");
+        }
+
+        DocumentEntity doc = documentRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        if (doc.getFile() == null) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+
+        FileItem sourceFile = doc.getFile();
+        String originalName = sourceFile.getOriginalFileName() != null ? sourceFile.getOriginalFileName() : "document.hwp";
+        String lowerName = originalName.toLowerCase();
+        String contentType = sourceFile.getContentType() != null ? sourceFile.getContentType().toLowerCase() : "";
+        if (!lowerName.endsWith(".hwp") && !contentType.contains("hwp")) {
+            throw new IllegalArgumentException("Only HWP documents can be edited through the HWP bridge.");
+        }
+
+        String outputFormat = normalizeHwpOutputFormat(request.getOutputFormat());
+
+        try {
+            Resource resource = fileService.loadFileAsResource(sourceFile.getFileId());
+            byte[] originalBytes = resource.getInputStream().readAllBytes();
+            ResponseEntity<byte[]> response = callHwpBridge(originalBytes, originalName, request, outputFormat);
+            byte[] body = response.getBody();
+            if (body == null || body.length == 0) {
+                throw new IllegalStateException("HWP bridge returned an empty file.");
+            }
+
+            return DocumentDto.FileDownload.builder()
+                    .fileName(buildEditedFileName(originalName, outputFormat))
+                    .contentType(resolveEditedContentType(outputFormat, response.getHeaders().getContentType()))
+                    .bytes(body)
+                    .build();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read original HWP file.", e);
+        }
+    }
+
+    private ResponseEntity<byte[]> callHwpBridge(
+            byte[] originalBytes,
+            String originalName,
+            DocumentDto.HwpReplaceRequest request,
+            String outputFormat) {
+        String replacementsJson;
+        try {
+            replacementsJson = objectMapper.writeValueAsString(request.getReplacements());
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Failed to serialize replacement list.", e);
+        }
+
+        ByteArrayResource fileResource = new ByteArrayResource(originalBytes) {
+            @Override
+            public String getFilename() {
+                return originalName;
+            }
+        };
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", fileResource);
+        body.add("replacements", replacementsJson);
+        body.add("output_format", outputFormat);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        return restTemplate.postForEntity(
+                hwpEditBaseUrl.replaceAll("/+$", "") + "/hwp/replace",
+                new HttpEntity<>(body, headers),
+                byte[].class
+        );
+    }
+
+    private String normalizeHwpOutputFormat(String outputFormat) {
+        if (outputFormat == null || outputFormat.isBlank()) {
+            return "hwp";
+        }
+        String normalized = outputFormat.toLowerCase().strip();
+        if (!List.of("hwp", "pdf", "docx").contains(normalized)) {
+            throw new IllegalArgumentException("outputFormat must be hwp, pdf, or docx.");
+        }
+        return normalized;
+    }
+
+    private String buildEditedFileName(String originalName, String outputFormat) {
+        String baseName = originalName.replaceFirst("\\.[^.]+$", "");
+        return sanitizeFileName(baseName + "-edited." + outputFormat);
+    }
+
+    private String resolveEditedContentType(String outputFormat, MediaType bridgeContentType) {
+        if (bridgeContentType != null) {
+            return bridgeContentType.toString();
+        }
+        return switch (outputFormat) {
+            case "pdf" -> "application/pdf";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            default -> "application/x-hwp";
+        };
     }
 
     public List<DocumentDto.Response> getMyDocuments(User user) {
