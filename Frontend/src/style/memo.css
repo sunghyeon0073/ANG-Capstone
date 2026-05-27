@@ -132,7 +132,8 @@
 }
 
 .btn-save,
-.btn-delete {
+.btn-delete,
+.btn-edit {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -143,6 +144,15 @@
   font-size: 14px;
   font-weight: 600;
   transition: background-color 0.2s;
+}
+
+.btn-edit {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.btn-edit:hover {
+  background-color: #e0e0e0;
 }
 
 .btn-save {
