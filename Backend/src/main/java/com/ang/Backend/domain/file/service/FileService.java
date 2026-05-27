@@ -111,7 +111,7 @@ public class FileService {
 
     @Transactional(readOnly = true)
     public List<FileDto> getFilesByOwner(OwnerType ownerType, Integer ownerId) {
-        return fileItemRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId).stream()
+        return fileItemRepository.findByOwnerTypeAndOwnerIdAndDeletedAtIsNull(ownerType, ownerId).stream()
                 .map(FileDto::from)
                 .collect(Collectors.toList());
     }

@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
-import { getMyDocuments, getDepartmentDocuments } from '../../api/documentApi'
+import {
+  getMyDocuments,
+  getDepartmentDocuments,
+  deleteDocument
+} from '../../api/documentApi'
 // removed mock data imports - use backend APIs only
 import {
   getDocumentPreviewKind,
@@ -43,6 +47,10 @@ export default function DocumentWriter() {
   const [showFullView, setShowFullView] = useState(false)
   const [promptOpen, setPromptOpen] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadTitle, setUploadTitle] = useState('')
+  const [uploadFile, setUploadFile] = useState(null)
+  const [uploadTargetScopeId, setUploadTargetScopeId] = useState('')
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -222,9 +230,9 @@ export default function DocumentWriter() {
 
   // file preview generation removed; rely on backend-provided documents
 
-  const handleFileSelect = async (event) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const handleModalUpload = async (e) => {
+    e.preventDefault()
+    if (!uploadFile || !uploadTitle.trim()) return
 
     try {
       setIsUploading(true)
@@ -232,13 +240,27 @@ export default function DocumentWriter() {
         detail: { message: '파일을 업로드 중입니다...' },
       }))
       const formData = new FormData()
-      formData.append('file', file)
-      const response = await api.post('/documents/upload', formData)
+      formData.append('file', uploadFile)
+      formData.append('title', uploadTitle)
+      if (uploadTargetScopeId) {
+        formData.append('targetScopeId', uploadTargetScopeId)
+      }
+      
+      const response = await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 
       if (response.data?.success) {
         const newDoc = { ...response.data.data, source: 'uploaded' }
-        setDocuments([newDoc, ...documents])
+        if (category === 'my' && !uploadTargetScopeId) {
+          setDocuments([newDoc, ...documents])
+        } else if (category === 'dept' && uploadTargetScopeId) {
+          // If we are in department view and uploaded to a department, we should ideally refresh or check if it matches
+          fetchDocuments()
+        }
         setSelectedDoc(newDoc)
+        setShowUploadModal(false)
+        setUploadTitle('')
+        setUploadFile(null)
+        setUploadTargetScopeId('')
         window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
           detail: { message: '파일이 업로드되었어요!' },
         }))
@@ -250,9 +272,21 @@ export default function DocumentWriter() {
       alert(err.response?.data?.message || err.message || '파일 업로드에 실패했습니다.')
     } finally {
       setIsUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
+    }
+  }
+
+  const handleDelete = async (e, docId) => {
+    e.stopPropagation()
+    if (!window.confirm('정말 삭제하시겠습니까? 삭제된 문서는 휴지통으로 이동합니다.')) return
+    try {
+      await deleteDocument(docId)
+      setDocuments(prev => prev.filter(d => d.docId !== docId))
+      if (selectedDoc?.docId === docId) setSelectedDoc(null)
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: '문서를 휴지통으로 보냈어요.' },
+      }))
+    } catch (err) {
+      alert('삭제 실패: ' + (err.response?.data?.message || '오류가 발생했습니다.'))
     }
   }
 
@@ -391,9 +425,30 @@ export default function DocumentWriter() {
               >
                 <div className="document-item-row">
                   <div className="doc-title">{doc.title}</div>
-                  <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(doc)}`}>
-                    {getFileTypeLabel(doc)}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(doc)}`}>
+                      {getFileTypeLabel(doc)}
+                    </span>
+                    {doc.canDelete && (
+                      <button
+                        className="btn-delete-doc"
+                        onClick={(e) => handleDelete(e, doc.docId)}
+                        title="삭제"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#ff4d4f',
+                          cursor: 'pointer',
+                          padding: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          fontSize: '14px'
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
                   {category === 'dept' && doc.scopeName && (
                     <span className="doc-scope-tag">{doc.scopeName}</span>
                   )}
@@ -414,19 +469,12 @@ export default function DocumentWriter() {
             <button
               type="button"
               className="btn-add-document"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setShowUploadModal(true)}
               disabled={isUploading}
             >
               {isUploading ? '업로드 중...' : '+ 파일 추가'}
             </button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="file-input-hidden"
-            accept={ACCEPTED_UPLOAD_TYPES}
-            onChange={handleFileSelect}
-          />
         </div>
 
         <div className="document-content">
@@ -594,6 +642,54 @@ export default function DocumentWriter() {
             >
               ×
             </button>
+          </div>
+        </div>
+      )}
+
+      {showUploadModal && (
+        <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ minWidth: 360, padding: 24, background: '#fff', borderRadius: 8 }}>
+            <h3 style={{ marginBottom: 16 }}>파일 업로드</h3>
+            <form onSubmit={handleModalUpload} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input
+                value={uploadTitle}
+                onChange={e => setUploadTitle(e.target.value)}
+                placeholder="문서 제목"
+                required
+                style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
+              />
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 13, color: '#666' }}>저장 위치 (미선택 시 개인 보관함)</label>
+                <select 
+                  value={uploadTargetScopeId} 
+                  onChange={e => setUploadTargetScopeId(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
+                >
+                  <option value="">개인 문서함</option>
+                  {myScopes.map(scope => (
+                    <option key={scope.id} value={scope.id}>{scope.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={e => {
+                  const file = e.target.files[0];
+                  setUploadFile(file);
+                  if (file && !uploadTitle) setUploadTitle(file.name);
+                }}
+                required
+              />
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)}>취소</button>
+                <button type="submit" className="btn btn-primary" disabled={isUploading}>
+                  {isUploading ? '업로드 중...' : '업로드'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

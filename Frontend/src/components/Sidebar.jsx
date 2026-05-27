@@ -38,7 +38,6 @@ export const SIDEBAR_MENUS = {
     { id: 'esignature-my', label: '내가 요청' }
   ],
   file: [
-    { id: 'file-home', label: '홈' },
     { id: 'file-my', label: '내 파일' },
     { id: 'file-shared', label: '공유파일' },
     { id: 'file-template', label: '빈 양식' },
