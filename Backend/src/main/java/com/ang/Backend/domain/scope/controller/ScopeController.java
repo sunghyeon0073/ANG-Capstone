@@ -78,6 +78,7 @@ public class ScopeController {
         Scope scope = scopeRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.SCOPE_NOT_FOUND));
         List<UserDto> members = userMembershipRepository.findByScope(scope).stream()
+                .filter(m -> m.getUser().getStatus() == com.ang.Backend.common.enums.UserStatus.ACTIVE)
                 .map(m -> userService.getUser(m.getUser().getUserId()))
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(members));
