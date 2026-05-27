@@ -1,0 +1,256 @@
+
+/* ============================================================================
+   BOARD
+   ============================================================================ */
+.board-page {
+  flex: 1;
+  background: var(--color-bg);
+}
+
+.board-toast {
+  position: fixed;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+    padding: 14px 28px;
+    border-radius: var(--radius-pill);
+  z-index: 9999;
+    box-shadow: var(--shadow-soft-lg);
+}
+
+.board-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.board-header h1 {
+  font-size: 26px;
+  font-weight: bold;
+  color: #1A373E;
+  margin: 0;
+}
+
+.board-header > div:first-child {
+  flex: 1;
+}
+
+.board-container {
+    background: var(--color-surface);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-soft-md);
+    border: none;
+    overflow: hidden;
+}
+
+.board-top {
+    padding: var(--space-lg);
+    border-bottom: none;
+    background: var(--color-surface-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+    box-shadow: var(--shadow-soft-xs);
+}
+
+.board-count {
+  font-weight: bold;
+  color: #00A3C4;
+}
+
+.board-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.board-category {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.board-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.board-search {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  width: 240px;
+  box-sizing: border-box;
+}
+
+.board-write-btn {
+  white-space: nowrap;
+}
+
+.board-list {
+  min-height: 400px;
+}
+
+.board-list-header {
+  display: grid;
+  grid-template-columns: 40px 1fr 140px 120px 80px;
+  padding: 12px 24px;
+  background: var(--color-surface);
+  border-bottom: 1px solid rgba(15,35,52,0.5);
+}
+
+.board-list-label {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.board-item {
+  display: grid;
+  grid-template-columns: 40px 1fr 140px 120px 80px;
+  padding: 14px 24px;
+  margin: 0;
+  border-bottom: 1px solid rgba(15,35,52,0.5);
+  border-radius: 0;
+  cursor: pointer;
+  align-items: center;
+  transition: var(--transition-soft);
+  background: transparent;
+}
+
+.board-item:hover {
+    background-color: var(--color-surface-muted);
+    box-shadow: var(--shadow-soft-xs);
+}
+
+.board-item-pin {
+  color: #ccc;
+}
+
+.board-item-title {
+  font-weight: normal;
+}
+
+.board-item-author {
+  font-size: 13px;
+  color: #666;
+  text-align: left;
+}
+
+.board-item-date {
+  font-size: 12px;
+  color: #999;
+  text-align: left;
+}
+
+.board-item-views {
+  font-size: 13px;
+  color: #666;
+  text-align: center;
+}
+
+.board-empty {
+  padding: 100px 0;
+  text-align: center;
+  color: #ccc;
+}
+
+.board-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.board-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 15px;
+  margin-bottom: 15px;
+}
+
+.board-detail-header h2 {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+  flex: 1;
+}
+
+.board-detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.board-detail-meta {
+  color: #888;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.board-detail-content {
+  min-height: 200px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 15px;
+  color: #333;
+}
+
+.board-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.board-form-row {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
+.board-select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+  flex: 1;
+}
+
+.board-label-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #555;
+}
+
+.board-input {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.board-textarea {
+  height: 200px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  resize: none;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.board-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.board-modal {
+  width: 500px !important;
+}

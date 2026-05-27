@@ -1,0 +1,110 @@
+
+/* ============================================================================
+   HOME
+   ============================================================================ */
+.home-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.home-prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--space-xl);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft-md);
+}
+
+.home-prompt-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-prompt-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.home-prompt-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.home-prompt-box {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.home-prompt-input {
+  width: 100%;
+  min-height: 54px;
+  flex: 1;
+  padding: 16px;
+  border: 1px solid rgba(15, 35, 52, 0.12);
+  border-radius: var(--radius-lg);
+  resize: none;
+  font-size: 15px;
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+  box-sizing: border-box;
+}
+
+.home-prompt-input:focus {
+  outline: none;
+  border-color: rgba(255, 140, 116, 0.45);
+  box-shadow: 0 0 0 4px rgba(255, 140, 116, 0.12);
+}
+
+.home-prompt-actions {
+  display: flex;
+  align-items: stretch;
+}
+
+.home-prompt-actions .btn {
+  min-width: 72px;
+}
+
+.home-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(360px, 1fr);
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+.home-panel {
+  min-width: 0;
+}
+
+.home-calendar-panel,
+.home-board-panel {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft-md);
+  overflow: hidden;
+}
+
+.home-calendar-panel .calendar-page,
+.home-board-panel .board-page {
+  background: transparent;
+}
+
+@media (max-width: 1280px) {
+  .home-prompt-card {
+    gap: 12px;
+  }
+
+  .home-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-prompt-box {
+    flex-direction: column;
+  }
+}
