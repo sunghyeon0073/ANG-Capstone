@@ -10,6 +10,7 @@ import {
   FiPaperclip,
   FiRefreshCcw,
   FiSearch,
+  FiSend,
   FiStar,
   FiTrash2,
   FiX,
@@ -28,6 +29,8 @@ import {
   getMailReadStatus,
   getSentMails,
   getSentTrashMails,
+  permanentDeleteInboxTrashMail,
+  permanentDeleteSentTrashMail,
   restoreInboxMail,
   restoreSentMail,
   saveMailDraft,
@@ -575,6 +578,29 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
+  const permanentlyDeleteMail = async (id) => {
+    const target = mails.find(mail => mail.id === id)
+    if (!target || currentBox !== 'mail-trash') return
+    if (!window.confirm('이 메일을 완전히 삭제하시겠습니까? 삭제 후에는 복원할 수 없습니다.')) return
+
+    setErrorMessage('')
+
+    try {
+      if (target.box === 'sent') {
+        await permanentDeleteSentTrashMail(id)
+      } else {
+        await permanentDeleteInboxTrashMail(id)
+      }
+
+      setMails(prev => prev.filter(mail => mail.id !== id))
+      setSelectedId(null)
+      setViewMode('list')
+    } catch (error) {
+      console.error('메일 완전 삭제 실패', error)
+      setErrorMessage('메일을 완전히 삭제하지 못했습니다.')
+    }
+  }
+
   // 새 작성은 임시저장하고, 이어 쓰는 임시메일은 기존 mailId로 수정 저장합니다.
   const saveDraft = async () => {
     const recipientEmpNos = selectedRecipients.map(recipient => recipient.empNo)
@@ -619,7 +645,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
-  // 작성 화면에서 보낸 메일을 생성한 뒤, 응답받은 mailId에 새 첨부파일을 연결합니다.
+  // 첨부파일은 DRAFT 상태에서만 업로드할 수 있으므로 업로드 후 발송합니다.
   const submitDraft = async (event) => {
     event.preventDefault()
 
@@ -643,13 +669,21 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       if (draftMailId) {
         const response = await updateMailDraft(draftMailId, payload)
         mailId = getResponseData(response)
+      } else if (draftAttachments.length > 0) {
+        const response = await saveMailDraft(payload)
+        mailId = getResponseData(response)
+        setDraftMailId(mailId)
       } else {
         const response = await sendMail(payload)
         mailId = getResponseData(response)
       }
 
-      await uploadAttachments(mailId)
-      if (draftMailId) {
+      const shouldSendSavedDraft = Boolean(draftMailId) || draftAttachments.length > 0
+      const isUploadSuccessful = await uploadAttachments(mailId)
+
+      if (!isUploadSuccessful) return
+
+      if (shouldSendSavedDraft) {
         await sendMailDraft(mailId)
       }
 
@@ -685,6 +719,25 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     } catch (error) {
       console.error('발송 취소 실패', error)
       setErrorMessage('메일을 발송 취소하지 못했습니다. 이미 읽은 수신자가 있으면 취소할 수 없습니다.')
+    }
+  }
+
+  const sendSavedDraft = async (id) => {
+    setErrorMessage('')
+    setIsSubmitting(true)
+
+    try {
+      await sendMailDraft(id)
+      await loadMails()
+      setSelectedId(null)
+      setActiveBox('mail-sent')
+      setViewMode('list')
+      onSubPageChange?.('mail-sent')
+    } catch (error) {
+      console.error('임시메일 발송 실패', error)
+      setErrorMessage('임시저장 메일을 발송하지 못했습니다. 수신자와 저장 내용을 확인해주세요.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -946,43 +999,64 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
                       </div>
                     </div>
                     <div className="mail-actions">
-                      <button
-                        onClick={() => toggleImportant(selectedMail.id)}
-                        aria-label="중요 표시"
-                        title={selectedMail.important ? '중요 해제' : '중요 표시'}
-                      >
-                        <FiStar className={selectedMail.important ? 'mail-star-active' : ''} />
-                      </button>
                       {currentBox === 'mail-trash' ? (
-                        <button onClick={() => restoreMail(selectedMail.id)} aria-label="복원" title="복원">
-                          <FiArchive />
-                        </button>
+                        <>
+                          <button onClick={() => restoreMail(selectedMail.id)} aria-label="복원" title="복원">
+                            <FiArchive />
+                          </button>
+                          <button onClick={() => permanentlyDeleteMail(selectedMail.id)} aria-label="완전 삭제" title="완전 삭제">
+                            <FiTrash2 />
+                          </button>
+                        </>
+                      ) : selectedMail.box === 'draft' ? (
+                        <>
+                          <button onClick={() => moveToTrash(selectedMail.id)} aria-label="삭제" title="삭제">
+                            <FiTrash2 />
+                          </button>
+                          <button onClick={() => openDraft(selectedMail)} aria-label="이어쓰기" title="이어쓰기">
+                            <FiEdit3 />
+                          </button>
+                          <button
+                            onClick={() => sendSavedDraft(selectedMail.id)}
+                            aria-label="바로 보내기"
+                            title="바로 보내기"
+                            disabled={isSubmitting}
+                          >
+                            <FiSend />
+                          </button>
+                        </>
                       ) : (
-                        <button onClick={() => moveToTrash(selectedMail.id)} aria-label="삭제" title="삭제">
-                          <FiTrash2 />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => toggleImportant(selectedMail.id)}
+                            aria-label="중요 표시"
+                            title={selectedMail.important ? '중요 해제' : '중요 표시'}
+                          >
+                            <FiStar className={selectedMail.important ? 'mail-star-active' : ''} />
+                          </button>
+                          <button onClick={() => moveToTrash(selectedMail.id)} aria-label="삭제" title="삭제">
+                            <FiTrash2 />
+                          </button>
+                          {selectedMail.box === 'sent' && selectedMail.status === 'SENT' && (
+                            <button onClick={() => cancelSentMail(selectedMail.id)} aria-label="발송취소" title="발송취소">
+                              <FiX />
+                            </button>
+                          )}
+                          {selectedMail.box !== 'sent' && (
+                            <button
+                              aria-label="답장"
+                              title="답장"
+                              onClick={() => {
+                                setActiveBox('mail-compose')
+                                setViewMode('list')
+                                onSubPageChange?.('mail-compose')
+                              }}
+                            >
+                              <FiCornerUpLeft />
+                            </button>
+                          )}
+                        </>
                       )}
-                      {selectedMail.box === 'draft' && (
-                        <button onClick={() => openDraft(selectedMail)} aria-label="임시저장 이어쓰기" title="임시저장 이어쓰기">
-                          <FiEdit3 />
-                        </button>
-                      )}
-                      {selectedMail.box === 'sent' && selectedMail.status === 'SENT' && (
-                        <button onClick={() => cancelSentMail(selectedMail.id)} aria-label="발송취소" title="발송취소">
-                          <FiX />
-                        </button>
-                      )}
-                      <button
-                        aria-label="답장"
-                        title="답장"
-                        onClick={() => {
-                          setActiveBox('mail-compose')
-                          setViewMode('list')
-                          onSubPageChange?.('mail-compose')
-                        }}
-                      >
-                        <FiCornerUpLeft />
-                      </button>
                     </div>
                   </div>
 
