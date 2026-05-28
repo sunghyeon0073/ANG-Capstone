@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Collections;
 
 @RestController
 @RequestMapping("/mail")
@@ -26,13 +27,14 @@ public class MailController {
     private final MailService mailService;
     private final UserRepository userRepository;
 
-    // 메일 발송
-    @PostMapping
+    // 메일 발송 (파일 첨부 가능)
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<Long>> send(
-            @RequestBody MailDto.SendRequest req,
+            @RequestPart("data") MailDto.SendRequest req,
+            @RequestPart(value = "files", required = false) List<MultipartFile> files,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        Long mailId = mailService.send(req, user);
+        Long mailId = mailService.send(req, user, files != null ? files : Collections.emptyList());
         return ResponseEntity.ok(ApiResponse.ok("메일이 발송되었습니다.", mailId));
     }
  
