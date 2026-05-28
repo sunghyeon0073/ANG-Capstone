@@ -90,6 +90,12 @@ export const hasInlineFilePreview = (doc) => {
 }
 
 export const getFileTypeLabel = (doc) => {
+  const ext = getFileExtension(doc).toUpperCase()
+  if (ext && ext.length > 0 && ext.length <= 10) {
+    if (ext === 'JPEG') return 'JPG'
+    return ext
+  }
+
   const kind = getDocumentPreviewKind(doc)
   const labels = {
     pdf: 'PDF',

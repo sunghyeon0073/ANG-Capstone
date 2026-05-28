@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rhwp/core": "^0.7.13",
+    "@rhwp/editor": "^0.7.13",
     "axios": "^1.16.0",
     "react": "^19.2.5",
     "react-calendar": "^6.0.1",

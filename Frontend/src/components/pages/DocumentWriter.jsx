@@ -14,7 +14,7 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiChevronRight } from 'react-icons/fi'
+import { FiChevronRight, FiUpload } from 'react-icons/fi'
 import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
@@ -137,6 +137,8 @@ export default function DocumentWriter() {
         Boolean(selectedDoc.previewFileId) ||
         previewKind === 'pdf' ||
         previewKind === 'image' ||
+        previewKind === 'hwp' ||
+        previewKind === 'hwpx' ||
         selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
       )
 

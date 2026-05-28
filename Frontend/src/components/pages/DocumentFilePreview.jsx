@@ -1,4 +1,5 @@
 import { getDocumentPreviewKind, hasInlineFilePreview } from '../../utils/documentFileUtils'
+import HwpViewer from './HwpViewer'
 
 function stripHtml(content) {
   return (content || '')
@@ -62,6 +63,7 @@ export default function DocumentFilePreview({
   const isPdf = previewKind === 'pdf'
   const isWord = previewKind === 'word'
   const isExcel = previewKind === 'excel'
+  const isHwp = previewKind === 'hwp' || previewKind === 'hwpx'
   const hasGeneratedPdfPreview = Boolean(doc?.previewFileId)
 
   const previewClassName = [
@@ -70,6 +72,7 @@ export default function DocumentFilePreview({
     isImage && previewUrl ? 'doc-preview--image' : '',
     isWord ? 'doc-preview--word' : '',
     isExcel ? 'doc-preview--excel' : '',
+    isHwp ? 'doc-preview--hwp' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -78,7 +81,7 @@ export default function DocumentFilePreview({
     return <ExtractedContentPreview content={doc?.originalContent || '내용이 없습니다.'} />
   }
 
-  if (!hasGeneratedPdfPreview && !hasInlineFilePreview(doc) && !doc?.mockPreviewHtml && !doc?.mockTableData) {
+  if (!hasGeneratedPdfPreview && !hasInlineFilePreview(doc) && !doc?.mockPreviewHtml && !doc?.mockTableData && !isHwp) {
     return (
       <div className="doc-preview-unsupported">
         <p>{doc.originalFileName || doc.title} 파일은 브라우저에서 미리보기를 지원하지 않습니다.</p>
@@ -95,6 +98,8 @@ export default function DocumentFilePreview({
         <div className="doc-preview-state">미리보기를 불러오는 중...</div>
       ) : previewError ? (
         <div className="doc-preview-state error">{previewError}</div>
+      ) : isHwp && previewUrl ? (
+        <HwpViewer previewUrl={previewUrl} />
       ) : (isPdf || hasGeneratedPdfPreview) && previewUrl ? (
         <iframe
           src={previewUrl}
