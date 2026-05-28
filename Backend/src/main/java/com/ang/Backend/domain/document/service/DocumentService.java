@@ -179,6 +179,9 @@ public class DocumentService {
                 ? aiResponse.get("reply").toString()
                 : "";
         log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
+        if (cleanParsedContent(answer).isBlank()) {
+            throw new IllegalStateException("AI returned an empty document.");
+        }
 
         String aiTitle = makeAiTitle(answer);
 
@@ -880,7 +883,8 @@ public class DocumentService {
     }
 
     private XlsxSheet parseXlsxSheet(String content) {
-        List<String> lines = cleanParsedContent(content).lines().toList();
+        String cleanedContent = cleanParsedContent(content);
+        List<String> lines = cleanedContent.lines().toList();
         List<List<String>> tableRows = extractMarkdownTableRows(lines);
         if (tableRows.isEmpty()) {
             tableRows = lines.stream()
@@ -891,7 +895,10 @@ public class DocumentService {
         }
 
         if (tableRows.isEmpty()) {
-            tableRows = List.of(List.of(""));
+            tableRows = List.of(
+                    List.of("내용"),
+                    List.of(cleanedContent.isBlank() ? "AI 응답이 비어 있습니다." : cleanedContent)
+            );
         }
 
         int columnCount = tableRows.stream().mapToInt(List::size).max().orElse(1);
@@ -1396,6 +1403,7 @@ public class DocumentService {
                       font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif;
                       font-size: 11pt;
                       line-height: 1.62;
+                      letter-spacing: 0;
                       overflow-wrap: anywhere;
                       word-break: keep-all;
                       print-color-adjust: exact;
@@ -1406,6 +1414,7 @@ public class DocumentService {
                       margin: 0;
                       font: inherit;
                       white-space: pre-wrap;
+                      tab-size: 4;
                     }
                   </style>
                 </head>

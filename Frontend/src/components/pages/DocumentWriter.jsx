@@ -39,6 +39,7 @@ export default function DocumentWriter() {
   const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
   const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewData, setPreviewData] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -114,6 +115,7 @@ export default function DocumentWriter() {
 
     const loadPreview = async () => {
       setPreviewUrl(null)
+      setPreviewData(null)
       setPreviewError(null)
 
       if (!selectedDoc) return
@@ -123,6 +125,7 @@ export default function DocumentWriter() {
       if (previewKind === 'text') return
 
       if (
+        !selectedDoc.fileId &&
         !selectedDoc.previewFileId &&
         (
           (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
@@ -132,8 +135,12 @@ export default function DocumentWriter() {
         return
       }
 
-      const previewFileId = selectedDoc.previewFileId || selectedDoc.fileId
+      const shouldRenderOriginal = ['word', 'excel', 'hwpx'].includes(previewKind)
+      const previewFileId = shouldRenderOriginal
+        ? selectedDoc.fileId
+        : selectedDoc.previewFileId || selectedDoc.fileId
       const canPreviewBlob = previewFileId && (
+        shouldRenderOriginal ||
         Boolean(selectedDoc.previewFileId) ||
         previewKind === 'pdf' ||
         previewKind === 'image' ||
@@ -158,11 +165,18 @@ export default function DocumentWriter() {
         const response = await api.get(`/files/preview/${previewFileId}`, {
           responseType: 'blob',
         })
+        const blob = response.data
+
+        if (['word', 'excel', 'hwpx'].includes(previewKind)) {
+          setPreviewData(await blob.arrayBuffer())
+          return
+        }
+
         const previewType =
           selectedDoc.previewFileId || previewKind === 'pdf' || selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
             ? 'application/pdf'
-            : selectedDoc.fileContentType || response.data?.type || 'image/*'
-        objectUrl = URL.createObjectURL(new Blob([response.data], { type: previewType }))
+            : selectedDoc.fileContentType || blob?.type || 'image/*'
+        objectUrl = URL.createObjectURL(new Blob([blob], { type: previewType }))
         setPreviewUrl(objectUrl)
       } catch (err) {
         console.error('문서 미리보기 로드 실패:', err)
@@ -520,6 +534,7 @@ export default function DocumentWriter() {
               <DocumentFilePreview
                 doc={selectedDoc}
                 previewUrl={previewUrl}
+                previewData={previewData}
                 previewLoading={previewLoading}
                 previewError={previewError}
               />
@@ -630,6 +645,7 @@ export default function DocumentWriter() {
             <DocumentFilePreview
               doc={selectedDoc}
               previewUrl={previewUrl}
+              previewData={previewData}
               previewLoading={previewLoading}
               previewError={previewError}
               variant="fullscreen"
