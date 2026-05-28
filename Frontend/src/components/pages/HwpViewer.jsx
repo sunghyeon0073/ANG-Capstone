@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import init, { HwpDocument } from '@rhwp/core';
+import { FiZoomIn, FiZoomOut, FiMaximize } from 'react-icons/fi';
 
 export default function HwpViewer({ previewUrl, fileData }) {
   const containerRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pages, setPages] = useState([]);
+  const [scale, setScale] = useState(1.0);
 
   useEffect(() => {
     let isMounted = true;
@@ -49,20 +51,16 @@ export default function HwpViewer({ previewUrl, fileData }) {
         const doc = new HwpDocument(uint8Array);
         
         // 5. Render Pages
-        // We don't have a direct pageCount API exposed in the simple example, 
-        // but we can try to render until it fails or if the API exposes it.
-        // For now, let's try to render the first few pages (up to 100 to avoid infinite loops)
         const renderedPages = [];
         let pageIdx = 0;
         
         while (pageIdx < 100) {
             try {
                 const svgString = doc.renderPageSvg(pageIdx);
-                if (!svgString) break; // Might return null/undefined if out of bounds
+                if (!svgString) break;
                 renderedPages.push(svgString);
                 pageIdx++;
             } catch (err) {
-                // Out of bounds error typically thrown when page index exceeds available pages
                 break;
             }
         }
@@ -90,6 +88,10 @@ export default function HwpViewer({ previewUrl, fileData }) {
     };
   }, [previewUrl, fileData]);
 
+  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.1, 2.0));
+  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.5));
+  const handleResetZoom = () => setScale(1.0);
+
   if (loading) {
     return (
       <div className="hwp-viewer-loading" style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
@@ -115,33 +117,79 @@ export default function HwpViewer({ previewUrl, fileData }) {
   }
 
   return (
-    <div 
-        className="hwp-viewer-container" 
-        ref={containerRef}
-        style={{
-            width: '100%',
-            height: '100%',
-            overflowY: 'auto',
-            backgroundColor: '#e9ecef',
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '20px'
-        }}
-    >
-      {pages.map((svgContent, index) => (
-        <div 
-            key={index} 
-            className="hwp-page-container"
-            style={{
-                backgroundColor: 'white',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                width: 'fit-content'
-            }}
-            dangerouslySetInnerHTML={{ __html: svgContent }} 
-        />
-      ))}
+    <div className="hwp-viewer-wrapper" style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
+      <div className="hwp-toolbar" style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        gap: '10px', 
+        padding: '8px', 
+        backgroundColor: '#f8f9fa', 
+        borderBottom: '1px solid #dee2e6',
+        zIndex: 10
+      }}>
+        <button className="hwp-toolbar-btn" onClick={handleZoomOut} title="축소" style={btnStyle}>
+          <FiZoomOut />
+        </button>
+        <span style={{ fontSize: '12px', minWidth: '40px', textAlign: 'center' }}>{Math.round(scale * 100)}%</span>
+        <button className="hwp-toolbar-btn" onClick={handleZoomIn} title="확대" style={btnStyle}>
+          <FiZoomIn />
+        </button>
+        <button className="hwp-toolbar-btn" onClick={handleResetZoom} title="100%" style={btnStyle}>
+          <FiMaximize />
+        </button>
+      </div>
+      <div 
+          className="hwp-viewer-container" 
+          ref={containerRef}
+          style={{
+              flex: 1,
+              width: '100%',
+              overflowY: 'auto',
+              backgroundColor: '#e9ecef',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '20px'
+          }}
+      >
+        <div className="hwp-zoom-layer" style={{ 
+          transform: `scale(${scale})`, 
+          transformOrigin: 'top center',
+          transition: 'transform 0.2s ease-out'
+        }}>
+          {pages.map((svgContent, index) => (
+            <div 
+                key={index} 
+                className="hwp-page-container"
+                style={{
+                    backgroundColor: 'white',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    width: 'fit-content',
+                    marginBottom: '20px'
+                }}
+                dangerouslySetInnerHTML={{ __html: svgContent }} 
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
+
+const btnStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '32px',
+  height: '32px',
+  padding: '0',
+  border: '1px solid #ced4da',
+  borderRadius: '4px',
+  backgroundColor: 'white',
+  cursor: 'pointer',
+  fontSize: '16px',
+  color: '#495057',
+  transition: 'all 0.2s'
+};
