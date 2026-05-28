@@ -9,9 +9,8 @@ export const getFileExtension = (doc) => {
 
 export const isPdfDocument = (doc) => {
   const contentType = doc?.fileContentType?.toLowerCase() || ''
-  const previewContentType = doc?.previewFileContentType?.toLowerCase() || ''
   const fileName = getFileName(doc)
-  return contentType.includes('pdf') || previewContentType.includes('pdf') || fileName.endsWith('.pdf')
+  return contentType.includes('pdf') || fileName.endsWith('.pdf')
 }
 
 export const isImageDocument = (doc) => {
@@ -28,8 +27,7 @@ export const isWordDocument = (doc) => {
   const ext = getFileExtension(doc)
   return (
     contentType.includes('wordprocessingml') ||
-    contentType.includes('msword') ||
-    ['doc', 'docx'].includes(ext)
+    ext === 'docx'
   )
 }
 
