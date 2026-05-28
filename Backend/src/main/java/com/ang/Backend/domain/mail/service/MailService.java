@@ -44,17 +44,30 @@ public class MailService {
         mailRecipientRepository.fixNullFavorite();
     }
 
-    // 메일 발송: Mail(SENT) + MailRecipient N개 생성
+    // 메일 발송: Mail(SENT) + MailRecipient N개 생성 (파일 첨부 지원)
     @Transactional
-    public Long send(MailDto.SendRequest req, User sender) {
+    public Long send(MailDto.SendRequest req, User sender, List<MultipartFile> files) {
         Mail mail = Mail.builder()
                 .sender(sender)
                 .title(req.getTitle())
                 .body(req.getBody())
-                .status(MailStatus.SENT)
-                .sentAt(LocalDateTime.now())
+                .status(files.isEmpty() ? MailStatus.SENT : MailStatus.DRAFT)
+                .sentAt(files.isEmpty() ? LocalDateTime.now() : null)
                 .build();
         mailRepository.save(mail);
+
+        if (!files.isEmpty()) {
+            for (MultipartFile file : files) {
+                String fileUrl = s3FileService.upload(file, "mail/" + mail.getMailId());
+                mailAttachmentRepository.save(MailAttachment.builder()
+                        .mail(mail)
+                        .fileUrl(fileUrl)
+                        .fileName(file.getOriginalFilename())
+                        .build());
+            }
+            mail.setStatus(MailStatus.SENT);
+            mail.setSentAt(LocalDateTime.now());
+        }
 
         saveRecipients(mail, req.getRecipientEmpNos());
         log.info("Mail sent by {} to {} recipients", sender.getEmpNo(), req.getRecipientEmpNos().size());
