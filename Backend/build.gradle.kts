@@ -48,6 +48,10 @@ dependencies {
     // AWS S3
     implementation("io.awspring.cloud:spring-cloud-aws-starter-s3:3.1.1")
 
+    // Document parsing
+    implementation("org.apache.poi:poi-ooxml:5.3.0")
+    implementation("org.apache.pdfbox:pdfbox:3.0.3")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
