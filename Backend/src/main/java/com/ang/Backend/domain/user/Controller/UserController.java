@@ -46,10 +46,10 @@ public class UserController {
 
     @GetMapping("/{id}/profile-image")
     public ResponseEntity<byte[]> getProfileImage(@PathVariable Integer id) {
-        byte[] imageBytes = userService.getProfileImage(id);
+        UserService.ProfileImageResult result = userService.getProfileImage(id);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_JPEG_VALUE)
-                .body(imageBytes);
+                .header(HttpHeaders.CONTENT_TYPE, result.contentType())
+                .body(result.bytes());
     }
 
     @PostMapping(value = "/{id}/profile-image", consumes = "multipart/form-data")
