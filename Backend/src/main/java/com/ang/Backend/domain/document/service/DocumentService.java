@@ -165,6 +165,7 @@ public class DocumentService {
 
         AiOutputFormat format = AiOutputFormat.from(outputFormat);
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);
+        log.info("AI document generation started: format={}, promptChars={}", format.extension, finalPrompt.length());
 
         Map<String, String> aiRequest = Map.of("message", finalPrompt);
         @SuppressWarnings("unchecked")
@@ -177,6 +178,7 @@ public class DocumentService {
         String answer = aiResponse != null && aiResponse.get("reply") != null
                 ? aiResponse.get("reply").toString()
                 : "";
+        log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
 
         String aiTitle = makeAiTitle(answer);
 
@@ -240,15 +242,23 @@ public class DocumentService {
     }
 
     private String buildAiInstruction(String prompt, AiOutputFormat format) {
+        String formatInstruction = format == AiOutputFormat.XLSX
+                ? """
+                For XLSX output, write the useful content as one or more Markdown pipe tables.
+                Use clear header rows and data rows. Do not describe the table in prose unless necessary.
+                """
+                : "";
+
         return """
                 Create a polished Korean business document.
                 The first line must be a concise document title as a Markdown H1 heading.
                 Do not use the user's prompt verbatim as the title.
                 Target file format: %s.
+                %s
 
                 User request:
                 %s
-                """.formatted(format.extension.toUpperCase(), prompt);
+                """.formatted(format.extension.toUpperCase(), formatInstruction, prompt);
     }
 
     private DocumentDto.Response saveAiDocument(String aiTitle, String answer, User user, AiOutputFormat format) {
@@ -823,6 +833,7 @@ public class DocumentService {
     }
 
     private byte[] createXlsxBytes(String content) throws IOException {
+        XlsxSheet sheet = parseXlsxSheet(content);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
             addZipEntry(zip, "[Content_Types].xml", """
@@ -832,6 +843,8 @@ public class DocumentService {
                       <Default Extension="xml" ContentType="application/xml"/>
                       <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
                       <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                      <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+                      <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
                     </Types>
                     """);
             addZipEntry(zip, "_rels/.rels", """
@@ -844,6 +857,13 @@ public class DocumentService {
                     <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                     <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
                       <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                      <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+                    </Relationships>
+                    """);
+            addZipEntry(zip, "xl/worksheets/_rels/sheet1.xml.rels", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
                     </Relationships>
                     """);
             addZipEntry(zip, "xl/workbook.xml", """
@@ -852,27 +872,138 @@ public class DocumentService {
                       <sheets><sheet name="AI Document" sheetId="1" r:id="rId1"/></sheets>
                     </workbook>
                     """);
-            addZipEntry(zip, "xl/worksheets/sheet1.xml", buildXlsxSheetXml(content));
+            addZipEntry(zip, "xl/styles.xml", buildXlsxStylesXml());
+            addZipEntry(zip, "xl/tables/table1.xml", buildXlsxTableXml(sheet));
+            addZipEntry(zip, "xl/worksheets/sheet1.xml", buildXlsxSheetXml(sheet));
         }
         return out.toByteArray();
     }
 
-    private String buildXlsxSheetXml(String content) {
-        List<String> lines = cleanParsedContent(content).lines()
-                .filter(line -> !line.isBlank())
+    private XlsxSheet parseXlsxSheet(String content) {
+        List<String> lines = cleanParsedContent(content).lines().toList();
+        List<List<String>> tableRows = extractMarkdownTableRows(lines);
+        if (tableRows.isEmpty()) {
+            tableRows = lines.stream()
+                    .map(String::strip)
+                    .filter(line -> !line.isBlank())
+                    .map(this::splitSpreadsheetLine)
+                    .toList();
+        }
+
+        if (tableRows.isEmpty()) {
+            tableRows = List.of(List.of(""));
+        }
+
+        int columnCount = tableRows.stream().mapToInt(List::size).max().orElse(1);
+        List<String> headers = normalizeXlsxHeaders(tableRows.get(0), columnCount);
+        List<List<String>> rows = new ArrayList<>();
+        rows.add(headers);
+
+        for (int i = 1; i < tableRows.size(); i++) {
+            rows.add(normalizeXlsxRow(tableRows.get(i), columnCount));
+        }
+
+        if (rows.size() == 1) {
+            rows.add(normalizeXlsxRow(List.of(""), columnCount));
+        }
+
+        return new XlsxSheet(rows, columnCount);
+    }
+
+    private List<List<String>> extractMarkdownTableRows(List<String> lines) {
+        List<List<String>> rows = new ArrayList<>();
+        boolean inTable = false;
+
+        for (String line : lines) {
+            String trimmed = line.strip();
+            if (isMarkdownTableRow(trimmed)) {
+                inTable = true;
+                if (!isMarkdownTableSeparator(trimmed)) {
+                    rows.add(splitMarkdownTableRow(trimmed));
+                }
+                continue;
+            }
+
+            if (inTable && !rows.isEmpty()) {
+                break;
+            }
+        }
+
+        return rows;
+    }
+
+    private boolean isMarkdownTableRow(String line) {
+        return line.startsWith("|") && line.endsWith("|") && line.indexOf('|', 1) > 0;
+    }
+
+    private boolean isMarkdownTableSeparator(String line) {
+        return line.replace("|", "")
+                .replace(":", "")
+                .replace("-", "")
+                .replace(" ", "")
+                .isBlank();
+    }
+
+    private List<String> splitMarkdownTableRow(String line) {
+        String trimmed = line.substring(1, line.length() - 1);
+        return java.util.Arrays.stream(trimmed.split("\\|", -1))
+                .map(String::strip)
                 .toList();
-        if (lines.isEmpty()) {
-            lines = List.of("");
+    }
+
+    private List<String> splitSpreadsheetLine(String line) {
+        String delimiter = line.contains("\t") ? "\\t" : ",";
+        String[] cells = line.split(delimiter, -1);
+        if (cells.length == 1) {
+            return List.of(line);
+        }
+        return java.util.Arrays.stream(cells)
+                .map(String::strip)
+                .toList();
+    }
+
+    private List<String> normalizeXlsxHeaders(List<String> headers, int columnCount) {
+        List<String> normalized = new ArrayList<>();
+        for (int i = 0; i < columnCount; i++) {
+            String header = i < headers.size() ? headers.get(i).strip() : "";
+            String candidate = header.isBlank() ? "Column " + (i + 1) : header;
+            String uniqueHeader = candidate;
+            int duplicateIndex = 2;
+            while (normalized.contains(uniqueHeader)) {
+                uniqueHeader = candidate + " " + duplicateIndex++;
+            }
+            normalized.add(uniqueHeader);
+        }
+        return normalized;
+    }
+
+    private List<String> normalizeXlsxRow(List<String> row, int columnCount) {
+        List<String> normalized = new ArrayList<>();
+        for (int i = 0; i < columnCount; i++) {
+            normalized.add(i < row.size() ? row.get(i) : "");
+        }
+        return normalized;
+    }
+
+    private String buildXlsxSheetXml(XlsxSheet sheet) {
+        StringBuilder cols = new StringBuilder();
+        for (int i = 1; i <= sheet.columnCount(); i++) {
+            cols.append("<col min=\"").append(i)
+                    .append("\" max=\"").append(i)
+                    .append("\" width=\"24\" customWidth=\"1\"/>");
         }
 
         StringBuilder rows = new StringBuilder();
-        for (int i = 0; i < lines.size(); i++) {
-            String[] cells = lines.get(i).split("\\t|,");
-            rows.append("<row r=\"").append(i + 1).append("\">");
-            for (int j = 0; j < cells.length; j++) {
-                rows.append("<c r=\"").append(excelColumnName(j + 1)).append(i + 1)
-                        .append("\" t=\"inlineStr\"><is><t>")
-                        .append(escapeXml(cells[j].strip()))
+        for (int i = 0; i < sheet.rows().size(); i++) {
+            List<String> cells = sheet.rows().get(i);
+            int rowNumber = i + 1;
+            rows.append("<row r=\"").append(rowNumber).append("\">");
+            for (int j = 0; j < sheet.columnCount(); j++) {
+                rows.append("<c r=\"").append(excelColumnName(j + 1)).append(rowNumber)
+                        .append("\"")
+                        .append(rowNumber == 1 ? " s=\"1\"" : "")
+                        .append(" t=\"inlineStr\"><is><t>")
+                        .append(escapeXml(cells.get(j)))
                         .append("</t></is></c>");
             }
             rows.append("</row>");
@@ -880,10 +1011,57 @@ public class DocumentService {
 
         return """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <dimension ref="A1:%s%d"/>
+                  <cols>%s</cols>
                   <sheetData>%s</sheetData>
+                  <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
                 </worksheet>
-                """.formatted(rows);
+                """.formatted(excelColumnName(sheet.columnCount()), sheet.rows().size(), cols, rows);
+    }
+
+    private String buildXlsxStylesXml() {
+        return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                  <fonts count="2">
+                    <font><sz val="11"/><name val="Calibri"/></font>
+                    <font><b/><sz val="11"/><name val="Calibri"/></font>
+                  </fonts>
+                  <fills count="2">
+                    <fill><patternFill patternType="none"/></fill>
+                    <fill><patternFill patternType="gray125"/></fill>
+                  </fills>
+                  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+                  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+                  <cellXfs count="2">
+                    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+                    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+                  </cellXfs>
+                  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+                </styleSheet>
+                """;
+    }
+
+    private String buildXlsxTableXml(XlsxSheet sheet) {
+        String ref = "A1:" + excelColumnName(sheet.columnCount()) + sheet.rows().size();
+        StringBuilder columns = new StringBuilder();
+        List<String> headers = sheet.rows().get(0);
+        for (int i = 0; i < sheet.columnCount(); i++) {
+            columns.append("<tableColumn id=\"").append(i + 1)
+                    .append("\" name=\"")
+                    .append(escapeXml(headers.get(i)))
+                    .append("\"/>");
+        }
+
+        return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="AITable" displayName="AITable" ref="%s" totalsRowShown="0">
+                  <autoFilter ref="%s"/>
+                  <tableColumns count="%d">%s</tableColumns>
+                  <tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>
+                </table>
+                """.formatted(ref, ref, sheet.columnCount(), columns);
     }
 
     private String excelColumnName(int index) {
@@ -1344,6 +1522,8 @@ public class DocumentService {
     }
 
     private record AiGeneratedFile(String fileName, String contentType, byte[] bytes) {}
+
+    private record XlsxSheet(List<List<String>> rows, int columnCount) {}
 
     private record KordocResult(int exitCode, String output) {}
 }
