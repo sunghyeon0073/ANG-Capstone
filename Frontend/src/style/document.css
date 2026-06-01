@@ -487,6 +487,17 @@
     transform: translateY(1px);
 }
 
+.doc-body {
+  line-height: 1.8;
+  color: #333;
+  font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif;
+  font-size: 15px;
+  letter-spacing: 0;
+  tab-size: 4;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
 .doc-preview {
   width: 100%;
   flex: 1;
@@ -508,10 +519,9 @@
 
   .doc-preview--word,
   .doc-preview--excel {
-    flex: none;
-    height: auto;
+    flex: 1;
+    height: 100%;
     min-height: 0;
-    max-height: none;
     overflow: auto;
   }
 
@@ -548,16 +558,16 @@
 
   .docx-preview-shell {
     width: 100%;
-    min-height: 520px;
+    height: 100%;
+    min-height: 0;
     overflow: auto;
-    background: #eef2f5;
+    background: #f8fafc;
   }
 
   .docx-preview-container {
-    min-height: 520px;
-    padding: 24px;
-    overflow: auto;
-    background: #eef2f5;
+    min-height: 100%;
+    padding: 16px;
+    background: #f8fafc;
   }
 
   .docx-preview-container .docx-wrapper {
@@ -568,13 +578,16 @@
   .docx-preview-container section.docx {
     margin: 0 auto 24px;
     box-shadow: var(--shadow-soft-sm);
+    border: 1px solid #e2e8f0;
   }
 
   .xlsx-preview {
     width: 100%;
-    min-height: 520px;
+    height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
     background: #fff;
   }
 
@@ -618,7 +631,9 @@
 
   .doc-preview-table-wrap {
     width: 100%;
-    overflow-x: auto;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
     background: #fff;
   }
 

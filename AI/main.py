@@ -20,8 +20,8 @@ app.add_middleware(
 
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "ang-ai:latest")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
-OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "768"))
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "4096"))
 ollama_client = ollama.Client(host=OLLAMA_BASE_URL)
 
 OLLAMA_OPTIONS = {

@@ -268,10 +268,12 @@ public class DocumentService {
                 ? """
                 For XLSX output, write the useful content as one or more Markdown pipe tables.
                 Use clear header rows and data rows. Do not describe the table in prose unless necessary.
+                Include enough rows and columns to preserve the source document's useful detail.
                 """
                 : """
                 If the source document contains tables, preserve them as Markdown pipe tables.
                 Use clear header rows and data rows instead of describing table data in prose.
+                After each important table, add concise interpretation, decisions, and next steps.
                 """;
 
         return """
@@ -280,6 +282,15 @@ public class DocumentService {
                 Do not use the user's prompt verbatim as the title.
                 Target file format: %s.
                 %s
+
+                Length and completeness requirements:
+                - Do not summarize unless the user explicitly asks for a summary.
+                - Produce a complete business document, not a short answer.
+                - Include at least 5 substantial sections when the format is PDF or DOCX.
+                - Each major section should contain 3 to 5 concrete sentences or bullet points.
+                - Preserve important names, dates, amounts, counts, decisions, risks, and action items from the source.
+                - If information is missing, keep useful placeholders such as [담당자], [일자], [금액], or [부서] instead of omitting the section.
+                - For table-heavy sources, keep the table and add a short analysis or follow-up section.
 
                 User request:
                 %s
@@ -1871,6 +1882,10 @@ public class DocumentService {
     }
 
     private String toPreviewHtml(String content) {
+        String cleaned = cleanParsedContent(content);
+        boolean hasTable = cleaned.lines().map(String::strip).anyMatch(this::isMarkdownTableRow);
+        String pageSize = hasTable ? "A4 landscape" : "A4";
+
         return """
                 <!doctype html>
                 <html>
@@ -1878,8 +1893,8 @@ public class DocumentService {
                   <meta charset="UTF-8">
                   <style>
                     @page {
-                      size: A4;
-                      margin: 16mm 14mm;
+                      size: %s;
+                      margin: 10mm 8mm;
                     }
 
                     html,
@@ -1891,8 +1906,8 @@ public class DocumentService {
                     body {
                       color: #111827;
                       font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif;
-                      font-size: 11pt;
-                      line-height: 1.62;
+                      font-size: 9.5pt;
+                      line-height: 1.35;
                       letter-spacing: 0;
                       overflow-wrap: anywhere;
                       word-break: keep-all;
@@ -1900,7 +1915,49 @@ public class DocumentService {
                       -webkit-print-color-adjust: exact;
                     }
 
-                    pre {
+                    h1 {
+                      margin: 0 0 10px;
+                      font-size: 16pt;
+                      line-height: 1.25;
+                    }
+
+                    p {
+                      margin: 0 0 8px;
+                      white-space: pre-wrap;
+                    }
+
+                    .table-wrap {
+                      width: 100%;
+                      margin: 8px 0 14px;
+                    }
+
+                    table {
+                      width: 100%;
+                      border-collapse: collapse;
+                      table-layout: fixed;
+                    }
+
+                    th,
+                    td {
+                      border: 0.75pt solid #cbd5e1;
+                      padding: 4px 5px;
+                      vertical-align: top;
+                      overflow-wrap: anywhere;
+                      word-break: break-word;
+                      white-space: pre-wrap;
+                    }
+
+                    th {
+                      background: #eef2f7;
+                      color: #111827;
+                      font-weight: 700;
+                    }
+
+                    tr {
+                      page-break-inside: avoid;
+                    }
+
+                    .preformatted {
                       margin: 0;
                       font: inherit;
                       white-space: pre-wrap;
@@ -1908,7 +1965,80 @@ public class DocumentService {
                     }
                   </style>
                 </head>
-                <body><pre>""" + escapeHtml(cleanParsedContent(content)) + "</pre></body></html>";
+                <body>%s</body></html>
+                """.formatted(pageSize, renderPreviewHtmlBody(cleaned));
+    }
+
+    private String renderPreviewHtmlBody(String content) {
+        if (content.isBlank()) {
+            return "<p></p>";
+        }
+
+        List<String> lines = content.lines().toList();
+        StringBuilder html = new StringBuilder();
+        List<List<String>> tableRows = new ArrayList<>();
+
+        for (String line : lines) {
+            String trimmed = line.strip();
+            if (isMarkdownTableRow(trimmed)) {
+                if (!isMarkdownTableSeparator(trimmed)) {
+                    tableRows.add(splitMarkdownTableRow(trimmed));
+                }
+                continue;
+            }
+
+            if (!tableRows.isEmpty()) {
+                html.append(renderHtmlTable(tableRows));
+                tableRows.clear();
+            }
+
+            if (trimmed.isBlank()) {
+                continue;
+            }
+
+            if (trimmed.startsWith("# ")) {
+                html.append("<h1>").append(escapeHtml(trimmed.substring(2).strip())).append("</h1>");
+            } else {
+                html.append("<p>").append(escapeHtml(trimmed)).append("</p>");
+            }
+        }
+
+        if (!tableRows.isEmpty()) {
+            html.append(renderHtmlTable(tableRows));
+        }
+
+        return html.isEmpty()
+                ? "<div class=\"preformatted\">" + escapeHtml(content) + "</div>"
+                : html.toString();
+    }
+
+    private String renderHtmlTable(List<List<String>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return "";
+        }
+
+        int columnCount = rows.stream().mapToInt(List::size).max().orElse(1);
+        StringBuilder table = new StringBuilder("<div class=\"table-wrap\"><table>");
+
+        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+            List<String> row = rows.get(rowIndex);
+            table.append("<tr>");
+            String cellTag = rowIndex == 0 ? "th" : "td";
+            for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+                String value = columnIndex < row.size() ? row.get(columnIndex) : "";
+                table.append("<")
+                        .append(cellTag)
+                        .append(">")
+                        .append(escapeHtml(value))
+                        .append("</")
+                        .append(cellTag)
+                        .append(">");
+            }
+            table.append("</tr>");
+        }
+
+        table.append("</table></div>");
+        return table.toString();
     }
 
     private String escapeHtml(String text) {
