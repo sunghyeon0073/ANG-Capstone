@@ -13,7 +13,9 @@ export const uploadMailFile = (mailId, file) => {
   formData.append('mailId', mailId);
   formData.append('file', file);
 
-  return api.postForm('/mail/files', formData);
+  return api.post('/mail/files', formData, {
+    headers: { 'Content-Type': undefined },
+  });
 };
 
 export const downloadMailFile = (attachmentId) => api.get(`/mail/files/${attachmentId}`, {
@@ -51,3 +53,7 @@ export const getSentTrashMails = () => api.get('/mail/trash/sent');
 export const restoreInboxMail = (mailId) => api.post(`/mail/${mailId}/restore/inbox`);
 
 export const restoreSentMail = (mailId) => api.post(`/mail/${mailId}/restore/sent`);
+
+export const permanentDeleteInboxTrashMail = (mailId) => api.delete(`/mail/trash/inbox/${mailId}`);
+
+export const permanentDeleteSentTrashMail = (mailId) => api.delete(`/mail/trash/sent/${mailId}`);

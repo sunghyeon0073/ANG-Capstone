@@ -3,6 +3,7 @@ import { renderAsync } from 'docx-preview'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import { getDocumentPreviewKind, hasInlineFilePreview } from '../../utils/documentFileUtils'
+import HwpViewer from './HwpViewer'
 
 function stripHtml(content) {
   return (content || '')
@@ -267,8 +268,10 @@ export default function DocumentFilePreview({
         <div className="doc-preview-state">미리보기를 불러오는 중...</div>
       ) : previewError ? (
         <div className="doc-preview-state error">{previewError}</div>
-      ) : isHwp && (previewUrl || previewData) ? (
+      ) : previewKind === 'hwp' && (previewUrl || previewData) ? (
         <HwpViewer previewUrl={previewUrl} fileData={previewData} />
+      ) : previewKind === 'hwpx' && (previewUrl || previewData) ? (
+        <HwpxPreview data={previewData} fallbackContent={doc.originalContent} />
       ) : isWord && previewData ? (
         <DocxPreview data={previewData} />
       ) : isExcel && previewData ? (
