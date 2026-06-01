@@ -103,6 +103,7 @@
     box-shadow: var(--shadow-focus-glow);
 }
 
+.topnavbar-chat-button,
 .topnavbar-notification {
   position: relative;
   display: flex;
@@ -119,6 +120,13 @@
     box-shadow: var(--shadow-soft-xs);
 }
 
+.topnavbar-chat-button.active {
+    background: var(--color-primary-soft);
+    color: var(--color-primary-hover);
+    font-weight: 700;
+}
+
+.topnavbar-chat-button:hover,
 .topnavbar-notification:hover {
     background-color: var(--color-surface);
     box-shadow: var(--shadow-soft-md);

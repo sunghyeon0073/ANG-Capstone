@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
 
-export default function TopNavBar({ user, onLogout, currentPage, onPageChange }) {
+export default function TopNavBar({ user, onLogout, currentPage, onPageChange, onOpenChatWindow, isChatWindowOpen }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [notificationCount] = useState(0)
 
@@ -83,6 +83,15 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange })
         <div className="topnavbar-search">
           <input type="text" placeholder="검색" />
         </div>
+
+        <button
+          type="button"
+          className={`topnavbar-chat-button ${(currentMainCategory === 'chat' || isChatWindowOpen) ? 'active' : ''}`}
+          onClick={onOpenChatWindow}
+        >
+          <FiMessageCircle className="notification-icon" />
+          <span>채팅</span>
+        </button>
 
         <button className="topnavbar-notification">
           <FiBell className="notification-icon" />

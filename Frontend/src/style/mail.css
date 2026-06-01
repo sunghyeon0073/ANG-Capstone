@@ -1293,6 +1293,49 @@
   background: #fff5f3;
 }
 
+.mail-list-skeleton {
+  pointer-events: none;
+}
+
+.mail-list-skeleton span {
+  display: block;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef2f3 0%, #f8faf9 50%, #eef2f3 100%);
+  background-size: 180% 100%;
+  animation: mail-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.mail-list-skeleton span:nth-child(1),
+.mail-list-skeleton span:nth-child(2),
+.mail-list-skeleton span:nth-child(3) {
+  width: 16px;
+  height: 16px;
+}
+
+.mail-list-skeleton span:nth-child(4) {
+  width: 78%;
+}
+
+.mail-list-skeleton span:nth-child(5) {
+  width: 92%;
+}
+
+.mail-list-skeleton span:nth-child(6) {
+  width: 110px;
+  justify-self: end;
+}
+
+@keyframes mail-skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
+}
+
 .mail-list-check {
   display: inline-grid;
   place-items: center;
