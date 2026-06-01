@@ -21,6 +21,7 @@ public class MailDto {
         private String title;
         private String body;
         private List<String> recipientEmpNos;   // 수신자 사번 목록
+        private List<Long> fileIds;             // 기존 uploads/ 파일 ID 목록 (선택)
     }
 
     // 임시저장 요청 (수신자 없어도 저장 가능)
