@@ -28,6 +28,9 @@ public class ChatMember {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(name = "custom_name", length = 100)
+    private String customName;
+
     @Column(name = "last_read_at")
     private LocalDateTime lastReadAt;
 

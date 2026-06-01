@@ -102,6 +102,17 @@ public class ChatRoomController {
         return ResponseEntity.ok(ApiResponse.ok("채팅방에서 나갔습니다."));
     }
 
+    // 채팅방 이름 개인 설정 (본인에게만 적용)
+    @PatchMapping("/rooms/{roomId}/name")
+    public ResponseEntity<ApiResponse<Void>> updateMyRoomName(
+            @PathVariable Long roomId,
+            @RequestBody ChatDto.UpdateRoomNameRequest req,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        chatRoomService.updateMyRoomName(roomId, user, req.getName());
+        return ResponseEntity.ok(ApiResponse.ok("채팅방 이름이 변경되었습니다."));
+    }
+
     // 읽음 처리
     @PostMapping("/rooms/{roomId}/read")
     public ResponseEntity<ApiResponse<Void>> markAsRead(
@@ -147,7 +158,12 @@ public class ChatRoomController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("roomId") Long roomId,
             @AuthenticationPrincipal UserDetails userDetails) {
-        resolveUser(userDetails);
+        User user = resolveUser(userDetails);
+        ChatRoom room = chatRoomRepository.findById(roomId)
+                .orElseThrow(() -> new CustomException(ErrorCode.CHAT_ROOM_NOT_FOUND));
+        chatMemberRepository.findByRoomAndUser(room, user)
+                .filter(m -> m.getLeftAt() == null)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_CHAT_MEMBER));
         String key = s3FileService.upload(file, "chat/" + roomId);
         return ResponseEntity.ok(ApiResponse.ok(ChatDto.FileUploadResponse.builder()
                 .fileUrl(key)

@@ -1,6 +1,7 @@
 package com.ang.Backend.domain.mail.service;
 
 import com.ang.Backend.common.enums.MailStatus;
+import com.ang.Backend.common.enums.NotificationType;
 import com.ang.Backend.common.enums.OwnerType;
 import com.ang.Backend.domain.file.dto.FileDto;
 import com.ang.Backend.common.exception.CustomException;
@@ -15,6 +16,7 @@ import com.ang.Backend.domain.mail.entity.MailRecipient;
 import com.ang.Backend.domain.mail.repository.MailAttachmentRepository;
 import com.ang.Backend.domain.mail.repository.MailRecipientRepository;
 import com.ang.Backend.domain.mail.repository.MailRepository;
+import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
@@ -45,6 +47,7 @@ public class MailService {
     private final S3FileService s3FileService;
     private final FileItemRepository fileItemRepository;
     private final UserMembershipRepository userMembershipRepository;
+    private final NotificationService notificationService;
 
     // 서버 시작 시 is_favorite / is_sender_favorite 컬럼의 기존 NULL 값을 0으로 교정
     @EventListener(ApplicationReadyEvent.class)
@@ -107,6 +110,12 @@ public class MailService {
         }
 
         saveRecipients(mail, req.getRecipientEmpNos());
+        req.getRecipientEmpNos().forEach(empNo ->
+                userRepository.findByEmpNo(empNo).ifPresent(recipient ->
+                        notificationService.send(recipient, NotificationType.MAIL,
+                                sender.getName() + "님이 메일을 발신했습니다.", mail.getTitle(), mail.getMailId())
+                )
+        );
         log.info("Mail sent by {} to {} recipients", sender.getEmpNo(), req.getRecipientEmpNos().size());
         return mail.getMailId();
     }
@@ -168,12 +177,13 @@ public class MailService {
             throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
         }
 
-        // 수신자라면 읽음 처리
+        // 수신자라면 읽음 처리 + 알림 삭제
         if (isRecipient) {
             recipients.stream()
                     .filter(r -> r.getRecipient().getUserId().equals(user.getUserId()))
                     .findFirst()
                     .ifPresent(MailRecipient::markAsRead);
+            notificationService.deleteByTarget(user, mailId, NotificationType.MAIL);
         }
 
         List<MailAttachment> attachments = mailAttachmentRepository.findByMail(mail);
@@ -424,8 +434,11 @@ public class MailService {
         }
         mail.setStatus(MailStatus.SENT);
         mail.setSentAt(LocalDateTime.now());
+        recipients.forEach(mr ->
+                notificationService.send(mr.getRecipient(), NotificationType.MAIL,
+                        mail.getSender().getName() + "님이 메일을 발신했습니다.", mail.getTitle(), mail.getMailId())
+        );
         return mail.getMailId();
-        
     }
 
     // 답장
