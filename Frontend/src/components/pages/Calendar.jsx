@@ -52,6 +52,28 @@ const toAiSchedule = (recommendation) => ({
   sourceTitle: recommendation.sourceTitle,
 })
 
+const EVENT_COLORS = [
+  { bg: '#E4F2FF', text: '#0052CC' }, // Blue
+  { bg: '#E3FCEF', text: '#006644' }, // Green
+  { bg: '#FFEBE6', text: '#BF2600' }, // Red
+  { bg: '#FFF0B3', text: '#594300' }, // Yellow
+  { bg: '#EAE6FF', text: '#403294' }, // Purple
+  { bg: '#E6FCFF', text: '#006666' }, // Cyan
+  { bg: '#FFE8D6', text: '#994000' }, // Orange
+  { bg: '#F4F5F7', text: '#42526E' }, // Gray
+  { bg: '#FFE6F0', text: '#99004D' }, // Pink
+  { bg: '#D1F7C4', text: '#005C29' }, // Mint
+]
+
+const getEventColor = (id) => {
+  let hash = 0
+  const str = String(id)
+  for (let i = 0; i < str.length; i += 1) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return EVENT_COLORS[Math.abs(hash) % EVENT_COLORS.length]
+}
+
 export default function Calendar({ showSidebar = true }) {
   const [date, setDate] = useState(new Date())
   const [activeStartDate, setActiveStartDate] = useState(() => {
@@ -316,21 +338,37 @@ export default function Calendar({ showSidebar = true }) {
                           itemClasses += ` calendar-schedule-item--ai-${schedule.aiType}`
                         }
 
+                        let isStart = false;
+                        let isSingle = true;
+
                         if (schedule.startDate && schedule.endDate && !schedule.isAiRecommendation) {
                           if (cellDateStr === schedule.startDate && cellDateStr === schedule.endDate) {
                             itemClasses += ' calendar-schedule-single'
                           } else if (cellDateStr === schedule.startDate) {
                             itemClasses += ' calendar-schedule-start'
+                            isStart = true;
+                            isSingle = false;
                           } else if (cellDateStr === schedule.endDate) {
                             itemClasses += ' calendar-schedule-end'
+                            isSingle = false;
                           } else {
                             itemClasses += ' calendar-schedule-middle'
+                            isSingle = false;
                           }
                         }
 
+                        // 제목 표시: AI추천이거나, 단일일정이거나, 시작일이거나, 일요일(주의 시작)일 때
+                        const showTitle = schedule.isAiRecommendation || isSingle || isStart || cellDate.getDay() === 0;
+
+                        const colorTheme = !schedule.isAiRecommendation ? getEventColor(schedule.id) : null;
+                        const customStyle = colorTheme ? {
+                          backgroundColor: colorTheme.bg,
+                          color: colorTheme.text,
+                        } : {};
+
                         return (
-                          <span key={schedule.id} className={itemClasses} title={schedule.title}>
-                            {schedule.title}
+                          <span key={schedule.id} className={itemClasses} title={schedule.title} style={customStyle}>
+                            {showTitle ? schedule.title : '\u00A0'}
                           </span>
                         )
                       })}
@@ -372,6 +410,7 @@ export default function Calendar({ showSidebar = true }) {
                   <div
                     key={schedule.id}
                     className={`schedule-item ${schedule.isAiRecommendation ? `schedule-item--ai schedule-item--ai-${schedule.aiType}` : ''}`}
+                    style={!schedule.isAiRecommendation ? { borderLeft: `4px solid ${getEventColor(schedule.id).text}` } : {}}
                   >
                     <div className="schedule-time">{normalizeTime(schedule.startTime)} ~ {normalizeTime(schedule.endTime)}</div>
                     <div className="schedule-title">{schedule.title}</div>
