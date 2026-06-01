@@ -1927,12 +1927,12 @@ public class DocumentService {
                     }
 
                     .table-wrap {
-                      width: 100%;
+                      width: 100%%;
                       margin: 8px 0 14px;
                     }
 
                     table {
-                      width: 100%;
+                      width: 100%%;
                       border-collapse: collapse;
                       table-layout: fixed;
                     }
