@@ -331,6 +331,17 @@
   min-width: 0;
 }
 
+.empty-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-md);
+  color: #666;
+  font-size: 15px;
+}
+
 .selected-document {
   width: 100%;
   max-width: none;
@@ -460,8 +471,7 @@
 }
 
 .sort-toggle-btn {
-    width: 32px;
-    height: 32px;
+    width: 40px;
     display: flex;
     align-items: center;
     justify-content: center;

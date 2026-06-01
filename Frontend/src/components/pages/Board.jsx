@@ -35,6 +35,8 @@ export default function Board({ me, currentSubPage = 'board' }) {
   const [attachments, setAttachments] = useState([]);
   const [attachmentPreviews, setAttachmentPreviews] = useState({});
   const [toast, setToast] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -88,6 +90,19 @@ export default function Board({ me, currentSubPage = 'board' }) {
       )
       .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.id - a.id);
   }, [posts, currentSubPage, q, me]);
+
+  const totalPages = Math.max(1, Math.ceil(displayList.length / itemsPerPage));
+  const pagedList = displayList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    // If filters/search change, reset to first page
+    setCurrentPage(1);
+  }, [currentSubPage, q]);
+
+  useEffect(() => {
+    // Clamp currentPage if totalPages decreased
+    setCurrentPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages]);
 
   const resetForm = () => {
     setFormData({ title: '', content: '', type: 'general', pinned: false });
@@ -237,30 +252,59 @@ export default function Board({ me, currentSubPage = 'board' }) {
       </div>
 
       <div className="board-list">
-        <div className="board-list-header">
-          <div></div>
-          <div className="board-list-label">제목</div>
-          <div className="board-list-label">작성자</div>
-          <div className="board-list-label">작성일</div>
-          <div className="board-list-label">조회수</div>
+        <div className="board-list-body">
+          <div className="board-list-header">
+            <div></div>
+            <div className="board-list-label">제목</div>
+            <div className="board-list-label">작성자</div>
+            <div className="board-list-label">작성일</div>
+            <div className="board-list-label">조회수</div>
+          </div>
+
+          {displayList.length > 0 ? (
+            pagedList.map((post) => (
+              <div key={post.id} onClick={() => handleOpenPost(post)} className="board-item">
+                <div className="board-item-pin">{post.pinned ? '📌' : '·'}</div>
+                <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }}>
+                  {post.title}
+                  {post.attachments?.length > 0 && <span className="board-attachment-count">첨부 {post.attachments.length}</span>}
+                </div>
+                <div className="board-item-author">{post.author}</div>
+                <div className="board-item-date">{post.date}</div>
+                <div className="board-item-views">{post.views || 0}</div>
+              </div>
+            ))
+          ) : (
+            <div className="board-empty">해당 메뉴에 등록된 게시글이 없습니다.</div>
+          )}
         </div>
 
-        {displayList.length > 0 ? (
-          displayList.map((post) => (
-            <div key={post.id} onClick={() => handleOpenPost(post)} className="board-item">
-              <div className="board-item-pin">{post.pinned ? '📌' : '·'}</div>
-              <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }}>
-                {post.title}
-                {post.attachments?.length > 0 && <span className="board-attachment-count">첨부 {post.attachments.length}</span>}
-              </div>
-              <div className="board-item-author">{post.author}</div>
-              <div className="board-item-date">{post.date}</div>
-              <div className="board-item-views">{post.views || 0}</div>
-            </div>
-          ))
-        ) : (
-          <div className="board-empty">해당 메뉴에 등록된 게시글이 없습니다.</div>
-        )}
+        <div className="board-pagination" aria-label="게시글 페이지">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+          >
+            이전
+          </button>
+          {Array.from({ length: totalPages }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              className={currentPage === i + 1 ? 'active' : ''}
+              onClick={() => setCurrentPage(i + 1)}
+            >
+              {i + 1}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+          >
+            다음
+          </button>
+        </div>
       </div>
     </div>
   );
