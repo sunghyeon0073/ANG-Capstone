@@ -9,9 +9,8 @@ export const getFileExtension = (doc) => {
 
 export const isPdfDocument = (doc) => {
   const contentType = doc?.fileContentType?.toLowerCase() || ''
-  const previewContentType = doc?.previewFileContentType?.toLowerCase() || ''
   const fileName = getFileName(doc)
-  return contentType.includes('pdf') || previewContentType.includes('pdf') || fileName.endsWith('.pdf')
+  return contentType.includes('pdf') || fileName.endsWith('.pdf')
 }
 
 export const isImageDocument = (doc) => {
@@ -28,8 +27,7 @@ export const isWordDocument = (doc) => {
   const ext = getFileExtension(doc)
   return (
     contentType.includes('wordprocessingml') ||
-    contentType.includes('msword') ||
-    ['doc', 'docx'].includes(ext)
+    ext === 'docx'
   )
 }
 
@@ -67,7 +65,8 @@ export const getDocumentPreviewKind = (doc) => {
     doc?.fileId || doc?.previewFileId || doc?.mockPreviewUrl || doc?.mockPreviewHtml || doc?.mockTableData
 
   if (!hasFile) return 'text'
-  if (doc?.previewFileContentType?.toLowerCase().includes('pdf')) return 'pdf'
+  
+  // 원본 파일 형식을 먼저 확인하여 정확한 라벨을 보장합니다.
   if (isPdfDocument(doc)) return 'pdf'
   if (isImageDocument(doc)) return 'image'
   if (isWordDocument(doc)) return 'word'
@@ -75,6 +74,10 @@ export const getDocumentPreviewKind = (doc) => {
   if (isHwpxDocument(doc)) return 'hwpx'
   if (isHwpDocument(doc)) return 'hwp'
   if (isTextDocument(doc)) return 'text'
+  
+  // 미리보기 파일 형식이 PDF인 경우 (백엔드 변환 결과)
+  if (doc?.previewFileContentType?.toLowerCase().includes('pdf')) return 'pdf'
+  
   if (doc?.fileId || doc?.mockPreviewUrl) return 'file'
   return 'text'
 }
@@ -85,6 +88,12 @@ export const hasInlineFilePreview = (doc) => {
 }
 
 export const getFileTypeLabel = (doc) => {
+  const ext = getFileExtension(doc).toUpperCase()
+  if (ext && ext.length > 0 && ext.length <= 10) {
+    if (ext === 'JPEG') return 'JPG'
+    return ext
+  }
+
   const kind = getDocumentPreviewKind(doc)
   const labels = {
     pdf: 'PDF',

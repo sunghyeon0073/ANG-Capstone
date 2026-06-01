@@ -18,6 +18,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -41,6 +55,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +64,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +73,10 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -165,6 +184,7 @@ public class DocumentService {
 
         AiOutputFormat format = AiOutputFormat.from(outputFormat);
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);
+        log.info("AI document generation started: format={}, promptChars={}", format.extension, finalPrompt.length());
 
         Map<String, String> aiRequest = Map.of("message", finalPrompt);
         @SuppressWarnings("unchecked")
@@ -177,6 +197,10 @@ public class DocumentService {
         String answer = aiResponse != null && aiResponse.get("reply") != null
                 ? aiResponse.get("reply").toString()
                 : "";
+        log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
+        if (cleanParsedContent(answer).isBlank()) {
+            throw new IllegalStateException("AI returned an empty document.");
+        }
 
         String aiTitle = makeAiTitle(answer);
 
@@ -240,15 +264,26 @@ public class DocumentService {
     }
 
     private String buildAiInstruction(String prompt, AiOutputFormat format) {
+        String formatInstruction = format == AiOutputFormat.XLSX
+                ? """
+                For XLSX output, write the useful content as one or more Markdown pipe tables.
+                Use clear header rows and data rows. Do not describe the table in prose unless necessary.
+                """
+                : """
+                If the source document contains tables, preserve them as Markdown pipe tables.
+                Use clear header rows and data rows instead of describing table data in prose.
+                """;
+
         return """
                 Create a polished Korean business document.
                 The first line must be a concise document title as a Markdown H1 heading.
                 Do not use the user's prompt verbatim as the title.
                 Target file format: %s.
+                %s
 
                 User request:
                 %s
-                """.formatted(format.extension.toUpperCase(), prompt);
+                """.formatted(format.extension.toUpperCase(), formatInstruction, prompt);
     }
 
     private DocumentDto.Response saveAiDocument(String aiTitle, String answer, User user, AiOutputFormat format) {
@@ -805,11 +840,7 @@ public class DocumentService {
     }
 
     private String buildDocxDocumentXml(String content) {
-        String paragraphs = cleanParsedContent(content).lines()
-                .map(line -> """
-                        <w:p><w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>
-                        """.formatted(escapeXml(line)))
-                .collect(Collectors.joining());
+        String body = buildDocxBodyXml(content);
 
         return """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -819,10 +850,80 @@ public class DocumentService {
                     <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
                   </w:body>
                 </w:document>
-                """.formatted(paragraphs);
+                """.formatted(body);
+    }
+
+    private String buildDocxBodyXml(String content) {
+        List<String> lines = cleanParsedContent(content).lines().toList();
+        StringBuilder body = new StringBuilder();
+        List<List<String>> tableRows = new ArrayList<>();
+
+        for (String line : lines) {
+            String trimmed = line.strip();
+            if (isMarkdownTableRow(trimmed)) {
+                if (!isMarkdownTableSeparator(trimmed)) {
+                    tableRows.add(splitMarkdownTableRow(trimmed));
+                }
+                continue;
+            }
+
+            if (!tableRows.isEmpty()) {
+                body.append(buildDocxTableXml(tableRows));
+                tableRows.clear();
+            }
+            if (!trimmed.isBlank()) {
+                body.append(buildDocxParagraphXml(trimmed));
+            }
+        }
+
+        if (!tableRows.isEmpty()) {
+            body.append(buildDocxTableXml(tableRows));
+        }
+
+        return body.toString();
+    }
+
+    private String buildDocxParagraphXml(String text) {
+        return """
+                <w:p><w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>
+                """.formatted(escapeXml(text));
+    }
+
+    private String buildDocxTableXml(List<List<String>> rows) {
+        int columnCount = rows.stream().mapToInt(List::size).max().orElse(1);
+        StringBuilder table = new StringBuilder("""
+                <w:tbl>
+                  <w:tblPr>
+                    <w:tblStyle w:val="TableGrid"/>
+                    <w:tblW w:w="0" w:type="auto"/>
+                    <w:tblBorders>
+                      <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                      <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                      <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                      <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                      <w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                      <w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                    </w:tblBorders>
+                  </w:tblPr>
+                """);
+
+        for (List<String> row : rows) {
+            table.append("<w:tr>");
+            for (int i = 0; i < columnCount; i++) {
+                String value = i < row.size() ? row.get(i) : "";
+                table.append("<w:tc><w:tcPr><w:tcW w:w=\"2400\" w:type=\"dxa\"/></w:tcPr>")
+                        .append(buildDocxParagraphXml(value))
+                        .append("</w:tc>");
+            }
+            table.append("</w:tr>");
+        }
+
+        table.append("</w:tbl>");
+        return table.toString();
     }
 
     private byte[] createXlsxBytes(String content) throws IOException {
+        XlsxSheet sheet = parseXlsxSheet(content);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
             addZipEntry(zip, "[Content_Types].xml", """
@@ -832,6 +933,8 @@ public class DocumentService {
                       <Default Extension="xml" ContentType="application/xml"/>
                       <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
                       <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                      <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+                      <Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>
                     </Types>
                     """);
             addZipEntry(zip, "_rels/.rels", """
@@ -844,6 +947,13 @@ public class DocumentService {
                     <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                     <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
                       <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                      <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+                    </Relationships>
+                    """);
+            addZipEntry(zip, "xl/worksheets/_rels/sheet1.xml.rels", """
+                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>
                     </Relationships>
                     """);
             addZipEntry(zip, "xl/workbook.xml", """
@@ -852,27 +962,142 @@ public class DocumentService {
                       <sheets><sheet name="AI Document" sheetId="1" r:id="rId1"/></sheets>
                     </workbook>
                     """);
-            addZipEntry(zip, "xl/worksheets/sheet1.xml", buildXlsxSheetXml(content));
+            addZipEntry(zip, "xl/styles.xml", buildXlsxStylesXml());
+            addZipEntry(zip, "xl/tables/table1.xml", buildXlsxTableXml(sheet));
+            addZipEntry(zip, "xl/worksheets/sheet1.xml", buildXlsxSheetXml(sheet));
         }
         return out.toByteArray();
     }
 
-    private String buildXlsxSheetXml(String content) {
-        List<String> lines = cleanParsedContent(content).lines()
-                .filter(line -> !line.isBlank())
+    private XlsxSheet parseXlsxSheet(String content) {
+        String cleanedContent = cleanParsedContent(content);
+        List<String> lines = cleanedContent.lines().toList();
+        List<List<String>> tableRows = extractMarkdownTableRows(lines);
+        if (tableRows.isEmpty()) {
+            tableRows = lines.stream()
+                    .map(String::strip)
+                    .filter(line -> !line.isBlank())
+                    .map(this::splitSpreadsheetLine)
+                    .toList();
+        }
+
+        if (tableRows.isEmpty()) {
+            tableRows = List.of(
+                    List.of("내용"),
+                    List.of(cleanedContent.isBlank() ? "AI 응답이 비어 있습니다." : cleanedContent)
+            );
+        }
+
+        int columnCount = tableRows.stream().mapToInt(List::size).max().orElse(1);
+        List<String> headers = normalizeXlsxHeaders(tableRows.get(0), columnCount);
+        List<List<String>> rows = new ArrayList<>();
+        rows.add(headers);
+
+        for (int i = 1; i < tableRows.size(); i++) {
+            rows.add(normalizeXlsxRow(tableRows.get(i), columnCount));
+        }
+
+        if (rows.size() == 1) {
+            rows.add(normalizeXlsxRow(List.of(""), columnCount));
+        }
+
+        return new XlsxSheet(rows, columnCount);
+    }
+
+    private List<List<String>> extractMarkdownTableRows(List<String> lines) {
+        List<List<String>> rows = new ArrayList<>();
+        boolean inTable = false;
+
+        for (String line : lines) {
+            String trimmed = line.strip();
+            if (isMarkdownTableRow(trimmed)) {
+                inTable = true;
+                if (!isMarkdownTableSeparator(trimmed)) {
+                    rows.add(splitMarkdownTableRow(trimmed));
+                }
+                continue;
+            }
+
+            if (inTable && !rows.isEmpty()) {
+                break;
+            }
+        }
+
+        return rows;
+    }
+
+    private boolean isMarkdownTableRow(String line) {
+        return line.startsWith("|") && line.endsWith("|") && line.indexOf('|', 1) > 0;
+    }
+
+    private boolean isMarkdownTableSeparator(String line) {
+        return line.replace("|", "")
+                .replace(":", "")
+                .replace("-", "")
+                .replace(" ", "")
+                .isBlank();
+    }
+
+    private List<String> splitMarkdownTableRow(String line) {
+        String trimmed = line.substring(1, line.length() - 1);
+        return java.util.Arrays.stream(trimmed.split("\\|", -1))
+                .map(String::strip)
                 .toList();
-        if (lines.isEmpty()) {
-            lines = List.of("");
+    }
+
+    private List<String> splitSpreadsheetLine(String line) {
+        String delimiter = line.contains("\t") ? "\\t" : ",";
+        String[] cells = line.split(delimiter, -1);
+        if (cells.length == 1) {
+            return List.of(line);
+        }
+        return java.util.Arrays.stream(cells)
+                .map(String::strip)
+                .toList();
+    }
+
+    private List<String> normalizeXlsxHeaders(List<String> headers, int columnCount) {
+        List<String> normalized = new ArrayList<>();
+        for (int i = 0; i < columnCount; i++) {
+            String header = i < headers.size() ? headers.get(i).strip() : "";
+            String candidate = header.isBlank() ? "Column " + (i + 1) : header;
+            String uniqueHeader = candidate;
+            int duplicateIndex = 2;
+            while (normalized.contains(uniqueHeader)) {
+                uniqueHeader = candidate + " " + duplicateIndex++;
+            }
+            normalized.add(uniqueHeader);
+        }
+        return normalized;
+    }
+
+    private List<String> normalizeXlsxRow(List<String> row, int columnCount) {
+        List<String> normalized = new ArrayList<>();
+        for (int i = 0; i < columnCount; i++) {
+            normalized.add(i < row.size() ? row.get(i) : "");
+        }
+        return normalized;
+    }
+
+    private String buildXlsxSheetXml(XlsxSheet sheet) {
+        StringBuilder cols = new StringBuilder();
+        for (int i = 1; i <= sheet.columnCount(); i++) {
+            cols.append("<col min=\"").append(i)
+                    .append("\" max=\"").append(i)
+                    .append("\" width=\"24\" customWidth=\"1\"/>");
         }
 
         StringBuilder rows = new StringBuilder();
-        for (int i = 0; i < lines.size(); i++) {
-            String[] cells = lines.get(i).split("\\t|,");
-            rows.append("<row r=\"").append(i + 1).append("\">");
-            for (int j = 0; j < cells.length; j++) {
-                rows.append("<c r=\"").append(excelColumnName(j + 1)).append(i + 1)
-                        .append("\" t=\"inlineStr\"><is><t>")
-                        .append(escapeXml(cells[j].strip()))
+        for (int i = 0; i < sheet.rows().size(); i++) {
+            List<String> cells = sheet.rows().get(i);
+            int rowNumber = i + 1;
+            rows.append("<row r=\"").append(rowNumber).append("\">");
+            for (int j = 0; j < sheet.columnCount(); j++) {
+                rows.append("<c r=\"").append(excelColumnName(j + 1)).append(rowNumber)
+                        .append("\"")
+                        .append(rowNumber == 1 ? " s=\"1\"" : "")
+                        .append(" t=\"inlineStr\"><is><t>")
+                        .append(escapeXml(cells.get(j)))
                         .append("</t></is></c>");
             }
             rows.append("</row>");
@@ -880,10 +1105,57 @@ public class DocumentService {
 
         return """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <dimension ref="A1:%s%d"/>
+                  <cols>%s</cols>
                   <sheetData>%s</sheetData>
+                  <tableParts count="1"><tablePart r:id="rId1"/></tableParts>
                 </worksheet>
-                """.formatted(rows);
+                """.formatted(excelColumnName(sheet.columnCount()), sheet.rows().size(), cols, rows);
+    }
+
+    private String buildXlsxStylesXml() {
+        return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                  <fonts count="2">
+                    <font><sz val="11"/><name val="Calibri"/></font>
+                    <font><b/><sz val="11"/><name val="Calibri"/></font>
+                  </fonts>
+                  <fills count="2">
+                    <fill><patternFill patternType="none"/></fill>
+                    <fill><patternFill patternType="gray125"/></fill>
+                  </fills>
+                  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+                  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+                  <cellXfs count="2">
+                    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+                    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+                  </cellXfs>
+                  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+                </styleSheet>
+                """;
+    }
+
+    private String buildXlsxTableXml(XlsxSheet sheet) {
+        String ref = "A1:" + excelColumnName(sheet.columnCount()) + sheet.rows().size();
+        StringBuilder columns = new StringBuilder();
+        List<String> headers = sheet.rows().get(0);
+        for (int i = 0; i < sheet.columnCount(); i++) {
+            columns.append("<tableColumn id=\"").append(i + 1)
+                    .append("\" name=\"")
+                    .append(escapeXml(headers.get(i)))
+                    .append("\"/>");
+        }
+
+        return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="AITable" displayName="AITable" ref="%s" totalsRowShown="0">
+                  <autoFilter ref="%s"/>
+                  <tableColumns count="%d">%s</tableColumns>
+                  <tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>
+                </table>
+                """.formatted(ref, ref, sheet.columnCount(), columns);
     }
 
     private String excelColumnName(int index) {
@@ -923,6 +1195,42 @@ public class DocumentService {
                 uploadParsedMarkdown(text, originalName);
                 return text;
             }
+            if (isCsvFile(lowerName, contentType)) {
+                String csv = parseCsvContent(file.getBytes());
+                uploadParsedMarkdown(csv, originalName);
+                return csv;
+            }
+            if (isXlsxFile(lowerName, contentType)) {
+                String xlsx = parseXlsxContentWithPoi(file.getBytes());
+                if (xlsx.isBlank()) {
+                    xlsx = parseXlsxContent(file.getBytes());
+                }
+                if (!xlsx.isBlank()) {
+                    uploadParsedMarkdown(xlsx, originalName);
+                    return xlsx;
+                }
+            }
+            if (isDocxFile(lowerName, contentType)) {
+                String docx = parseDocxContent(file.getBytes());
+                if (!docx.isBlank()) {
+                    uploadParsedMarkdown(docx, originalName);
+                    return docx;
+                }
+            }
+            if (isPdfFile(lowerName, contentType)) {
+                String pdf = parsePdfContent(file.getBytes());
+                if (!pdf.isBlank()) {
+                    uploadParsedMarkdown(pdf, originalName);
+                    return pdf;
+                }
+            }
+            if (isHwpxFile(lowerName, contentType)) {
+                String hwpx = parseHwpxContent(file.getBytes());
+                if (!hwpx.isBlank()) {
+                    uploadParsedMarkdown(hwpx, originalName);
+                    return hwpx;
+                }
+            }
 
             tempFile = Files.createTempFile("kordoc-", "-" + sanitizeFileName(originalName));
             Files.write(tempFile, file.getBytes());
@@ -958,6 +1266,372 @@ public class DocumentService {
             log.debug("Direct kordoc command failed, retrying with npx: {}", e.getMessage());
             return runCommand(List.of("npx", "--no-install", "kordoc", file.toAbsolutePath().toString()));
         }
+    }
+
+    private boolean isCsvFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".csv") || contentType.contains("csv");
+    }
+
+    private boolean isXlsxFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".xlsx") || contentType.contains("spreadsheetml");
+    }
+
+    private boolean isDocxFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".docx") || contentType.contains("wordprocessingml");
+    }
+
+    private boolean isPdfFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".pdf") || contentType.contains("pdf");
+    }
+
+    private boolean isHwpxFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".hwpx") || contentType.contains("hwpx");
+    }
+
+    private String parseCsvContent(byte[] bytes) {
+        String csv = new String(bytes, StandardCharsets.UTF_8).strip();
+        if (csv.isBlank()) {
+            return "";
+        }
+        return csv.lines()
+                .map(line -> String.join("\t", parseCsvLine(line)))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private List<String> parseCsvLine(String line) {
+        List<String> cells = new ArrayList<>();
+        StringBuilder cell = new StringBuilder();
+        boolean quoted = false;
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            if (ch == '"') {
+                if (quoted && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    cell.append('"');
+                    i++;
+                } else {
+                    quoted = !quoted;
+                }
+            } else if (ch == ',' && !quoted) {
+                cells.add(cell.toString().strip());
+                cell.setLength(0);
+            } else {
+                cell.append(ch);
+            }
+        }
+        cells.add(cell.toString().strip());
+        return cells;
+    }
+
+    private String parseXlsxContentWithPoi(byte[] bytes) {
+        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+            DataFormatter formatter = new DataFormatter(java.util.Locale.KOREA);
+            StringBuilder parsed = new StringBuilder();
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                List<List<String>> rows = new ArrayList<>();
+                int maxColumn = 0;
+                for (Row row : sheet) {
+                    int lastCell = row.getLastCellNum();
+                    if (lastCell <= 0) {
+                        continue;
+                    }
+                    List<String> cells = new ArrayList<>();
+                    for (int c = 0; c < lastCell; c++) {
+                        Cell cell = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                        cells.add(cell == null ? "" : formatter.formatCellValue(cell).strip());
+                    }
+                    if (cells.stream().anyMatch(value -> !value.isBlank())) {
+                        maxColumn = Math.max(maxColumn, cells.size());
+                        rows.add(cells);
+                    }
+                }
+
+                if (!rows.isEmpty()) {
+                    if (!parsed.isEmpty()) {
+                        parsed.append("\n\n");
+                    }
+                    parsed.append("[Sheet: ").append(sheet.getSheetName()).append("]\n");
+                    parsed.append(toMarkdownTable(rows, maxColumn));
+                }
+            }
+            return parsed.toString().strip();
+        } catch (Exception e) {
+            log.warn("XLSX POI parsing failed: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    private String parseDocxContent(byte[] bytes) {
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            StringBuilder parsed = new StringBuilder();
+
+            for (XWPFParagraph paragraph : document.getParagraphs()) {
+                String text = paragraph.getText();
+                if (text != null && !text.isBlank()) {
+                    parsed.append(text.strip()).append("\n\n");
+                }
+            }
+
+            for (XWPFTable table : document.getTables()) {
+                List<List<String>> rows = new ArrayList<>();
+                int maxColumn = 0;
+                for (XWPFTableRow row : table.getRows()) {
+                    List<String> cells = new ArrayList<>();
+                    for (XWPFTableCell cell : row.getTableCells()) {
+                        cells.add(cell.getText().replaceAll("\\s+", " ").strip());
+                    }
+                    if (cells.stream().anyMatch(value -> !value.isBlank())) {
+                        maxColumn = Math.max(maxColumn, cells.size());
+                        rows.add(cells);
+                    }
+                }
+                if (!rows.isEmpty()) {
+                    if (!parsed.isEmpty()) {
+                        parsed.append("\n");
+                    }
+                    parsed.append(toMarkdownTable(rows, maxColumn)).append("\n\n");
+                }
+            }
+
+            return parsed.toString().strip();
+        } catch (Exception e) {
+            log.warn("DOCX POI parsing failed: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    private String parsePdfContent(byte[] bytes) {
+        try (PDDocument document = Loader.loadPDF(bytes)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setSortByPosition(true);
+            return cleanParsedContent(stripper.getText(document));
+        } catch (Exception e) {
+            log.warn("PDFBox parsing failed: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    private String parseHwpxContent(byte[] bytes) {
+        try {
+            Map<String, String> entries = unzipXmlEntries(bytes);
+            StringBuilder parsed = new StringBuilder();
+            entries.entrySet().stream()
+                    .filter(entry -> entry.getKey().matches(".*Contents/section\\d+\\.xml") || entry.getKey().matches(".*section\\d+\\.xml"))
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        String sectionText = extractXmlText(entry.getValue());
+                        if (!sectionText.isBlank()) {
+                            if (!parsed.isEmpty()) {
+                                parsed.append("\n\n");
+                            }
+                            parsed.append(sectionText);
+                        }
+                    });
+            return parsed.toString().strip();
+        } catch (Exception e) {
+            log.warn("HWPX parsing failed: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    private String toMarkdownTable(List<List<String>> rows, int maxColumn) {
+        if (rows.isEmpty()) {
+            return "";
+        }
+
+        int columnCount = Math.max(1, maxColumn);
+        List<String> headers = normalizeMarkdownHeader(rows.get(0), columnCount);
+        StringBuilder table = new StringBuilder();
+        appendMarkdownRow(table, headers, columnCount);
+        appendMarkdownSeparator(table, columnCount);
+
+        if (rows.size() == 1) {
+            appendMarkdownRow(table, List.of(""), columnCount);
+        } else {
+            for (int i = 1; i < rows.size(); i++) {
+                appendMarkdownRow(table, rows.get(i), columnCount);
+            }
+        }
+        return table.toString().strip();
+    }
+
+    private List<String> normalizeMarkdownHeader(List<String> row, int columnCount) {
+        List<String> headers = new ArrayList<>();
+        for (int i = 0; i < columnCount; i++) {
+            String value = i < row.size() ? row.get(i) : "";
+            headers.add(value.isBlank() ? "Column " + (i + 1) : value);
+        }
+        return headers;
+    }
+
+    private void appendMarkdownRow(StringBuilder table, List<String> row, int columnCount) {
+        table.append("|");
+        for (int i = 0; i < columnCount; i++) {
+            String value = i < row.size() ? row.get(i) : "";
+            table.append(" ").append(escapeMarkdownTableCell(value)).append(" |");
+        }
+        table.append("\n");
+    }
+
+    private void appendMarkdownSeparator(StringBuilder table, int columnCount) {
+        table.append("|");
+        for (int i = 0; i < columnCount; i++) {
+            table.append(" --- |");
+        }
+        table.append("\n");
+    }
+
+    private String escapeMarkdownTableCell(String value) {
+        return value == null ? "" : value.replace("|", "\\|").replace("\n", " ").strip();
+    }
+
+    private String parseXlsxContent(byte[] bytes) {
+        try {
+            Map<String, String> entries = unzipXmlEntries(bytes);
+            List<String> sharedStrings = parseSharedStrings(entries.getOrDefault("xl/sharedStrings.xml", ""));
+            List<String> sheetNames = entries.keySet().stream()
+                    .filter(name -> name.matches("xl/worksheets/sheet\\d+\\.xml"))
+                    .sorted(Comparator.comparingInt(this::extractSheetIndex))
+                    .toList();
+
+            StringBuilder parsed = new StringBuilder();
+            for (String sheetName : sheetNames) {
+                String sheetText = parseXlsxSheetXml(entries.get(sheetName), sharedStrings);
+                if (!sheetText.isBlank()) {
+                    if (!parsed.isEmpty()) {
+                        parsed.append("\n\n");
+                    }
+                    parsed.append("Sheet ").append(extractSheetIndex(sheetName)).append("\n");
+                    parsed.append(sheetText);
+                }
+            }
+            return parsed.toString().strip();
+        } catch (Exception e) {
+            log.warn("XLSX fallback parsing failed: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    private Map<String, String> unzipXmlEntries(byte[] bytes) throws IOException {
+        Map<String, String> entries = new HashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(bytes), StandardCharsets.UTF_8)) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (!entry.isDirectory() && entry.getName().endsWith(".xml")) {
+                    entries.put(entry.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
+                }
+                zip.closeEntry();
+            }
+        }
+        return entries;
+    }
+
+    private int extractSheetIndex(String name) {
+        Matcher matcher = Pattern.compile("sheet(\\d+)\\.xml").matcher(name);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : Integer.MAX_VALUE;
+    }
+
+    private List<String> parseSharedStrings(String xml) {
+        List<String> strings = new ArrayList<>();
+        Matcher itemMatcher = Pattern.compile("<si\\b[^>]*>(.*?)</si>", Pattern.DOTALL).matcher(xml);
+        while (itemMatcher.find()) {
+            strings.add(extractXmlText(itemMatcher.group(1)));
+        }
+        return strings;
+    }
+
+    private String parseXlsxSheetXml(String xml, List<String> sharedStrings) {
+        if (xml == null || xml.isBlank()) {
+            return "";
+        }
+
+        List<List<String>> rows = new ArrayList<>();
+        Matcher rowMatcher = Pattern.compile("<row\\b[^>]*>(.*?)</row>", Pattern.DOTALL).matcher(xml);
+        while (rowMatcher.find()) {
+            Map<Integer, String> cells = new HashMap<>();
+            Matcher cellMatcher = Pattern.compile("<c\\b([^>]*)>(.*?)</c>", Pattern.DOTALL).matcher(rowMatcher.group(1));
+            int maxColumn = 0;
+            while (cellMatcher.find()) {
+                String attrs = cellMatcher.group(1);
+                int column = extractCellColumn(attrs);
+                if (column <= 0) {
+                    column = maxColumn + 1;
+                }
+                maxColumn = Math.max(maxColumn, column);
+                cells.put(column, parseXlsxCellValue(attrs, cellMatcher.group(2), sharedStrings));
+            }
+
+            if (!cells.isEmpty()) {
+                List<String> row = new ArrayList<>();
+                for (int i = 1; i <= maxColumn; i++) {
+                    row.add(cells.getOrDefault(i, ""));
+                }
+                rows.add(row);
+            }
+        }
+
+        return rows.stream()
+                .map(row -> String.join("\t", row))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private int extractCellColumn(String attrs) {
+        Matcher matcher = Pattern.compile("\\br=\"([A-Z]+)\\d+\"").matcher(attrs);
+        if (!matcher.find()) {
+            return 0;
+        }
+        int column = 0;
+        for (char ch : matcher.group(1).toCharArray()) {
+            column = column * 26 + (ch - 'A' + 1);
+        }
+        return column;
+    }
+
+    private String parseXlsxCellValue(String attrs, String body, List<String> sharedStrings) {
+        if (body.contains("<is")) {
+            return extractXmlText(body);
+        }
+
+        String rawValue = extractFirstTagText(body, "v");
+        if (rawValue.isBlank()) {
+            return "";
+        }
+        if (attrs.contains("t=\"s\"")) {
+            try {
+                int index = Integer.parseInt(rawValue.strip());
+                return index >= 0 && index < sharedStrings.size() ? sharedStrings.get(index) : "";
+            } catch (NumberFormatException ignored) {
+                return "";
+            }
+        }
+        return decodeXml(rawValue.strip());
+    }
+
+    private String extractXmlText(String xml) {
+        Matcher matcher = Pattern.compile("<t\\b[^>]*>(.*?)</t>", Pattern.DOTALL).matcher(xml);
+        List<String> parts = new ArrayList<>();
+        while (matcher.find()) {
+            parts.add(decodeXml(matcher.group(1)));
+        }
+        if (!parts.isEmpty()) {
+            return String.join("", parts).strip();
+        }
+        return decodeXml(xml.replaceAll("<[^>]+>", "")).strip();
+    }
+
+    private String extractFirstTagText(String xml, String tagName) {
+        Matcher matcher = Pattern.compile("<" + tagName + "\\b[^>]*>(.*?)</" + tagName + ">", Pattern.DOTALL).matcher(xml);
+        return matcher.find() ? decodeXml(matcher.group(1)) : "";
+    }
+
+    private String decodeXml(String text) {
+        return text
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&#39;", "'")
+                .replace("&amp;", "&");
     }
 
     private KordocResult runCommand(List<String> command) throws IOException, InterruptedException {
@@ -1034,7 +1708,8 @@ public class DocumentService {
                 log.info("Created HWP preview PDF for {} as {}", originalName, hwpPreview.getOriginalFileName());
                 return hwpPreview;
             }
-            throw new IllegalStateException("HWP preview generation failed. Please check the HWP bridge server and try again.");
+            log.warn("HWP preview generation failed or skipped. The frontend native viewer will be used.");
+            return null;
         }
 
         if (!isConvertibleToPdf(lowerName, contentType)) {
@@ -1218,6 +1893,7 @@ public class DocumentService {
                       font-family: 'Noto Sans CJK KR', 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif;
                       font-size: 11pt;
                       line-height: 1.62;
+                      letter-spacing: 0;
                       overflow-wrap: anywhere;
                       word-break: keep-all;
                       print-color-adjust: exact;
@@ -1228,6 +1904,7 @@ public class DocumentService {
                       margin: 0;
                       font: inherit;
                       white-space: pre-wrap;
+                      tab-size: 4;
                     }
                   </style>
                 </head>
@@ -1344,6 +2021,8 @@ public class DocumentService {
     }
 
     private record AiGeneratedFile(String fileName, String contentType, byte[] bytes) {}
+
+    private record XlsxSheet(List<List<String>> rows, int columnCount) {}
 
     private record KordocResult(int exitCode, String output) {}
 }
