@@ -273,7 +273,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
             </div>
           )}
           {isMy && (
-            <button className="btn btn-primary" onClick={() => setShowUpload(true)} style={{ padding: '4px 12px' }}>
+            <button className="btn btn-primary" onClick={() => setShowUpload(true)} >
               + 업로드
             </button>
           )}
