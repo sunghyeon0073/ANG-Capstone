@@ -3,9 +3,9 @@ package com.ang.Backend.domain.mail.repository;
 import com.ang.Backend.domain.mail.entity.Mail;
 import com.ang.Backend.domain.mail.entity.MailRecipient;
 import com.ang.Backend.domain.user.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,6 +14,7 @@ public interface MailRecipientRepository extends JpaRepository<MailRecipient, Lo
 
     // 수신함: 수신자이고 수신자 삭제 안 된 것
     List<MailRecipient> findByRecipientAndDeletedAtIsNull(User recipient);
+    Page<MailRecipient> findByRecipientAndDeletedAtIsNull(User recipient, Pageable pageable);
 
     // 특정 메일의 수신자 전체
     List<MailRecipient> findByMail(Mail mail);
@@ -26,12 +27,9 @@ public interface MailRecipientRepository extends JpaRepository<MailRecipient, Lo
 
     // 수신 휴지통: 삭제된 것
     List<MailRecipient> findByRecipientAndDeletedAtIsNotNull(User recipient);
+    Page<MailRecipient> findByRecipientAndDeletedAtIsNotNull(User recipient, Pageable pageable);
 
     // 수신 즐겨찾기: 즐겨찾기이고 삭제 안 된 것
     List<MailRecipient> findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(User recipient);
-
-    // 기존 NULL 행 교정
-    @Modifying
-    @Query(value = "UPDATE mail_recipients SET is_favorite = 0 WHERE is_favorite IS NULL", nativeQuery = true)
-    void fixNullFavorite();
+    Page<MailRecipient> findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(User recipient, Pageable pageable);
 }

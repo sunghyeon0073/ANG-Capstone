@@ -6,8 +6,10 @@ import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.notification.dto.NotificationDto;
 import com.ang.Backend.domain.notification.entity.Notification;
 import com.ang.Backend.domain.notification.repository.NotificationRepository;
+import com.ang.Backend.common.response.PageResult;
 import com.ang.Backend.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,11 +39,11 @@ public class NotificationService {
         );
     }
 
-    public List<NotificationDto.Response> getNotifications(User user) {
-        return notificationRepository.findByReceiverOrderByCreatedAtDesc(user)
-                .stream()
-                .map(NotificationDto.Response::from)
-                .toList();
+    public PageResult<NotificationDto.Response> getNotifications(User user, int page, int size) {
+        return PageResult.of(
+                notificationRepository.findByReceiverOrderByCreatedAtDesc(user, PageRequest.of(page, size))
+                        .map(NotificationDto.Response::from)
+        );
     }
 
     @Transactional
