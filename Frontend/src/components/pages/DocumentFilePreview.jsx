@@ -3,6 +3,7 @@ import { renderAsync } from 'docx-preview'
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import { getDocumentPreviewKind, hasInlineFilePreview } from '../../utils/documentFileUtils'
+import HwpViewer from './HwpViewer'
 
 function stripHtml(content) {
   return (content || '')
@@ -232,8 +233,7 @@ export default function DocumentFilePreview({
   const isPdf = previewKind === 'pdf'
   const isWord = previewKind === 'word'
   const isExcel = previewKind === 'excel'
-  const isHwp = previewKind === 'hwp'
-  const isHwpx = previewKind === 'hwpx'
+  const isHwp = previewKind === 'hwp' || previewKind === 'hwpx'
   const hasGeneratedPdfPreview = Boolean(doc?.previewFileId)
 
   const previewClassName = [
@@ -242,7 +242,7 @@ export default function DocumentFilePreview({
     isImage && previewUrl ? 'doc-preview--image' : '',
     isWord ? 'doc-preview--word' : '',
     isExcel ? 'doc-preview--excel' : '',
-    isHwpx || isHwp ? 'doc-preview--word' : '',
+    isHwp ? 'doc-preview--hwp' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -251,7 +251,7 @@ export default function DocumentFilePreview({
     return <ExtractedContentPreview content={doc?.originalContent || '내용이 없습니다.'} />
   }
 
-  if (!hasGeneratedPdfPreview && !hasInlineFilePreview(doc) && !isHwpx && !doc?.mockPreviewHtml && !doc?.mockTableData) {
+  if (!hasGeneratedPdfPreview && !hasInlineFilePreview(doc) && !isHwp && !doc?.mockPreviewHtml && !doc?.mockTableData) {
     return (
       <div className="doc-preview-unsupported">
         <p>{doc.originalFileName || doc.title} 파일은 브라우저에서 직접 미리보기를 지원하지 않습니다.</p>
@@ -268,12 +268,14 @@ export default function DocumentFilePreview({
         <div className="doc-preview-state">미리보기를 불러오는 중...</div>
       ) : previewError ? (
         <div className="doc-preview-state error">{previewError}</div>
+      ) : previewKind === 'hwp' && (previewUrl || previewData) ? (
+        <HwpViewer previewUrl={previewUrl} fileData={previewData} />
+      ) : previewKind === 'hwpx' && (previewUrl || previewData) ? (
+        <HwpxPreview data={previewData} fallbackContent={doc.originalContent} />
       ) : isWord && previewData ? (
         <DocxPreview data={previewData} />
       ) : isExcel && previewData ? (
         <ExcelWorkbookPreview data={previewData} />
-      ) : isHwpx ? (
-        <HwpxPreview data={previewData} fallbackContent={doc.originalContent} />
       ) : (isPdf || hasGeneratedPdfPreview) && previewUrl ? (
         <iframe
           src={previewUrl}
@@ -296,8 +298,6 @@ export default function DocumentFilePreview({
       ) : isExcel && doc.mockTableData ? (
         <ExcelTablePreview tableData={doc.mockTableData} />
       ) : isExcel && doc.originalContent ? (
-        <ExtractedContentPreview content={doc.originalContent} className="doc-preview-word doc-preview-word--text" />
-      ) : isHwp && doc.originalContent ? (
         <ExtractedContentPreview content={doc.originalContent} className="doc-preview-word doc-preview-word--text" />
       ) : (
         <div className="doc-preview-state">미리보기 데이터를 불러올 수 없습니다.</div>

@@ -1708,7 +1708,8 @@ public class DocumentService {
                 log.info("Created HWP preview PDF for {} as {}", originalName, hwpPreview.getOriginalFileName());
                 return hwpPreview;
             }
-            throw new IllegalStateException("HWP preview generation failed. Please check the HWP bridge server and try again.");
+            log.warn("HWP preview generation failed or skipped. The frontend native viewer will be used.");
+            return null;
         }
 
         if (!isConvertibleToPdf(lowerName, contentType)) {

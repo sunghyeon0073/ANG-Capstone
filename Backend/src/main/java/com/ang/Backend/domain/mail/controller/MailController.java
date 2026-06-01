@@ -3,6 +3,7 @@ package com.ang.Backend.domain.mail.controller;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
+import com.ang.Backend.domain.file.dto.FileDto;
 import com.ang.Backend.domain.mail.dto.MailDto;
 import com.ang.Backend.domain.mail.service.MailService;
 import com.ang.Backend.domain.user.entity.User;
@@ -109,6 +110,14 @@ public class MailController {
         User user = resolveUser(userDetails);
         mailService.deleteDraft(mailId, user);
         return ResponseEntity.ok(ApiResponse.ok("임시저장이 삭제되었습니다."));
+    }
+
+    // 메일 첨부 가능한 파일 목록 (본인이 업로드한 파일)
+    @GetMapping("/attachable-files")
+    public ResponseEntity<ApiResponse<List<FileDto>>> getAttachableFiles(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = resolveUser(userDetails);
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getAttachableFiles(user)));
     }
 
     // 파일 다운로드

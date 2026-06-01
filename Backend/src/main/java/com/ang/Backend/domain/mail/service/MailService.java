@@ -1,8 +1,12 @@
 package com.ang.Backend.domain.mail.service;
 
 import com.ang.Backend.common.enums.MailStatus;
+import com.ang.Backend.common.enums.OwnerType;
+import com.ang.Backend.domain.file.dto.FileDto;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
+import com.ang.Backend.domain.file.entity.FileItem;
+import com.ang.Backend.domain.file.repository.FileItemRepository;
 import com.ang.Backend.domain.file.service.S3FileService;
 import com.ang.Backend.domain.mail.dto.MailDto;
 import com.ang.Backend.domain.mail.entity.Mail;
@@ -11,6 +15,7 @@ import com.ang.Backend.domain.mail.entity.MailRecipient;
 import com.ang.Backend.domain.mail.repository.MailAttachmentRepository;
 import com.ang.Backend.domain.mail.repository.MailRecipientRepository;
 import com.ang.Backend.domain.mail.repository.MailRepository;
+import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +28,9 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -35,6 +43,8 @@ public class MailService {
     private final MailAttachmentRepository mailAttachmentRepository;
     private final UserRepository userRepository;
     private final S3FileService s3FileService;
+    private final FileItemRepository fileItemRepository;
+    private final UserMembershipRepository userMembershipRepository;
 
     // 서버 시작 시 is_favorite / is_sender_favorite 컬럼의 기존 NULL 값을 0으로 교정
     @EventListener(ApplicationReadyEvent.class)
@@ -44,19 +54,23 @@ public class MailService {
         mailRecipientRepository.fixNullFavorite();
     }
 
-    // 메일 발송: Mail(SENT) + MailRecipient N개 생성 (파일 첨부 지원)
+    // 메일 발송: Mail(SENT) + MailRecipient N개 생성 (새 파일 업로드 + 기존 uploads/ 파일 첨부 지원)
     @Transactional
     public Long send(MailDto.SendRequest req, User sender, List<MultipartFile> files) {
+        List<Long> fileIds = req.getFileIds() != null ? req.getFileIds() : List.of();
+        boolean hasAttachments = !files.isEmpty() || !fileIds.isEmpty();
+
         Mail mail = Mail.builder()
                 .sender(sender)
                 .title(req.getTitle())
                 .body(req.getBody())
-                .status(files.isEmpty() ? MailStatus.SENT : MailStatus.DRAFT)
-                .sentAt(files.isEmpty() ? LocalDateTime.now() : null)
+                .status(MailStatus.SENT)
+                .sentAt(LocalDateTime.now())
                 .build();
         mailRepository.save(mail);
 
-        if (!files.isEmpty()) {
+        if (hasAttachments) {
+            // 새 파일 업로드
             for (MultipartFile file : files) {
                 String fileUrl = s3FileService.upload(file, "mail/" + mail.getMailId());
                 mailAttachmentRepository.save(MailAttachment.builder()
@@ -65,8 +79,31 @@ public class MailService {
                         .fileName(file.getOriginalFilename())
                         .build());
             }
-            mail.setStatus(MailStatus.SENT);
-            mail.setSentAt(LocalDateTime.now());
+            // 기존 uploads/ 파일 참조
+            if (!fileIds.isEmpty()) {
+                Set<Integer> userScopeIds = userMembershipRepository.findByUser(sender)
+                        .stream()
+                        .map(m -> m.getScope().getScopeId())
+                        .collect(Collectors.toSet());
+                for (Long fileId : fileIds) {
+                    FileItem item = fileItemRepository.findById(fileId)
+                            .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+                    if (item.getOwnerType() == OwnerType.USER) {
+                        if (item.getUploader() == null || !item.getUploader().getUserId().equals(sender.getUserId())) {
+                            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+                        }
+                    } else if (item.getOwnerType() == OwnerType.SCOPE) {
+                        if (!userScopeIds.contains(item.getOwnerId())) {
+                            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+                        }
+                    }
+                    mailAttachmentRepository.save(MailAttachment.builder()
+                            .mail(mail)
+                            .fileUrl(item.getFilePath())
+                            .fileName(item.getOriginalFileName())
+                            .build());
+                }
+            }
         }
 
         saveRecipients(mail, req.getRecipientEmpNos());
@@ -309,6 +346,8 @@ public class MailService {
         mailAttachmentRepository.deleteAll(attachments);
         mailRecipientRepository.deleteAll(mailRecipientRepository.findByMail(mail));
         mailRepository.delete(mail);
+
+
     }
 
     // 파일 다운로드
@@ -415,6 +454,24 @@ public class MailService {
         mailRepository.save(reply);
         saveRecipients(reply, List.of(original.getSender().getEmpNo()));
         return reply.getMailId();
+    }
+
+    // 메일 작성 시 첨부 가능한 파일 목록 (본인 파일 + 소속 scope 공유 파일)
+    public List<FileDto> getAttachableFiles(User user) {
+        List<FileItem> myFiles = fileItemRepository
+                .findByOwnerTypeAndOwnerIdAndDeletedAtIsNull(OwnerType.USER, user.getUserId());
+
+        List<Integer> scopeIds = userMembershipRepository.findByUser(user)
+                .stream()
+                .map(m -> m.getScope().getScopeId())
+                .toList();
+
+        List<FileItem> scopeFiles = scopeIds.isEmpty() ? List.of()
+                : fileItemRepository.findByOwnerTypeAndOwnerIdInAndDeletedAtIsNull(OwnerType.SCOPE, scopeIds);
+
+        return Stream.concat(myFiles.stream(), scopeFiles.stream())
+                .map(FileDto::from)
+                .toList();
     }
 
     // 수신자 저장 공통 로직
