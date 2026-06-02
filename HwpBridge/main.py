@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 try:
     import pythoncom
@@ -32,6 +33,11 @@ CONTENT_TYPES = {
 
 HWP_MAX_ATTEMPTS = int(os.getenv("HWP_MAX_ATTEMPTS", "3"))
 HWP_RETRY_DELAY_SECONDS = float(os.getenv("HWP_RETRY_DELAY_SECONDS", "1"))
+
+
+class CreateHwpRequest(BaseModel):
+    title: str | None = None
+    content: str
 
 
 @app.get("/health")
@@ -80,6 +86,27 @@ async def replace_hwp(
         )
 
 
+@app.post("/hwp/create")
+async def create_hwp(req: CreateHwpRequest):
+    title = (req.title or "ai-document").strip() or "ai-document"
+    content = req.content or ""
+
+    with tempfile.TemporaryDirectory(prefix="ang-hwp-create-") as temp_dir:
+        temp_path = Path(temp_dir)
+        output_path = temp_path / f"{_safe_file_stem(title)}.hwp"
+
+        _create_with_hwp(output_path, title, content)
+
+        if not output_path.exists():
+            raise HTTPException(status_code=500, detail="HWP creation completed but output file was not created")
+
+        return FileResponse(
+            output_path,
+            media_type=CONTENT_TYPES["hwp"],
+            filename=f"{_safe_file_stem(title)}.hwp",
+        )
+
+
 @app.post("/hwp/preview-pdf")
 async def preview_hwp_pdf(file: UploadFile = File(...)):
     with tempfile.TemporaryDirectory(prefix="ang-hwp-preview-") as temp_dir:
@@ -114,6 +141,17 @@ def _replace_with_hwp(input_path: Path, output_path: Path, replacements: list, o
     _save_with_hwp(input_path, output_path, output_format, apply_replacements)
 
 
+def _create_with_hwp(output_path: Path, title: str, content: str) -> None:
+    def write_content(hwp):
+        text = _plain_hwp_content(title, content)
+        hwp.HAction.GetDefault("InsertText", hwp.HParameterSet.HInsertText.HSet)
+        params = hwp.HParameterSet.HInsertText
+        params.Text = text
+        hwp.HAction.Execute("InsertText", params.HSet)
+
+    _save_new_with_hwp(output_path, "hwp", write_content)
+
+
 def _save_with_hwp(input_path: Path, output_path: Path, output_format: str, before_save=None) -> None:
     if pythoncom is None or win32com is None:
         raise HTTPException(status_code=500, detail="pywin32 is required on a Windows host")
@@ -122,6 +160,34 @@ def _save_with_hwp(input_path: Path, output_path: Path, output_format: str, befo
     for attempt in range(1, HWP_MAX_ATTEMPTS + 1):
         try:
             _save_with_hwp_once(input_path, output_path, output_format, before_save)
+            return
+        except HTTPException as exc:
+            last_error = exc
+        except Exception as exc:
+            last_error = exc
+
+        if output_path.exists():
+            try:
+                output_path.unlink()
+            except Exception:
+                pass
+
+        if attempt < HWP_MAX_ATTEMPTS:
+            time.sleep(HWP_RETRY_DELAY_SECONDS)
+
+    if isinstance(last_error, HTTPException):
+        raise last_error
+    raise HTTPException(status_code=500, detail=f"HWP automation failed after {HWP_MAX_ATTEMPTS} attempts: {last_error}") from last_error
+
+
+def _save_new_with_hwp(output_path: Path, output_format: str, before_save=None) -> None:
+    if pythoncom is None or win32com is None:
+        raise HTTPException(status_code=500, detail="pywin32 is required on a Windows host")
+
+    last_error = None
+    for attempt in range(1, HWP_MAX_ATTEMPTS + 1):
+        try:
+            _save_new_with_hwp_once(output_path, output_format, before_save)
             return
         except HTTPException as exc:
             last_error = exc
@@ -173,6 +239,33 @@ def _save_with_hwp_once(input_path: Path, output_path: Path, output_format: str,
         pythoncom.CoUninitialize()
 
 
+def _save_new_with_hwp_once(output_path: Path, output_format: str, before_save=None) -> None:
+    pythoncom.CoInitialize()
+    hwp = None
+    try:
+        hwp = win32com.client.gencache.EnsureDispatch("HWPFrame.HwpObject")
+        _register_file_path_checker(hwp)
+
+        if before_save is not None:
+            before_save(hwp)
+
+        save_format = SAVE_FORMATS[output_format]
+        saved = hwp.SaveAs(str(output_path), save_format)
+        if saved is False:
+            raise HTTPException(status_code=500, detail=f"Failed to save as {save_format}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"HWP automation failed: {exc}") from exc
+    finally:
+        if hwp is not None:
+            try:
+                hwp.Quit()
+            except Exception:
+                pass
+        pythoncom.CoUninitialize()
+
+
 def _register_file_path_checker(hwp) -> None:
     try:
         hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModule")
@@ -189,3 +282,22 @@ def _all_replace(hwp, find_text: str, replace_text: str) -> None:
     params.Direction = 2
     params.FindType = 1
     hwp.HAction.Execute("AllReplace", params.HSet)
+
+
+def _plain_hwp_content(title: str, content: str) -> str:
+    cleaned_title = (title or "").strip()
+    cleaned_content = (content or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    lines = []
+    if cleaned_title:
+        lines.append(cleaned_title)
+        lines.append("")
+    lines.extend(
+        line.replace("#", "").replace("*", "").strip()
+        for line in cleaned_content.split("\n")
+    )
+    return "\r\n".join(lines).strip() + "\r\n"
+
+
+def _safe_file_stem(value: str) -> str:
+    stem = "".join("_" if ch in '\\/:*?"<>|' else ch for ch in (value or "ai-document")).strip()
+    return stem[:60] or "ai-document"

@@ -302,7 +302,7 @@ public class DocumentService {
 
         return transactionTemplate.execute(status -> {
             FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
-            FileItem previewFile = format == AiOutputFormat.PDF
+            FileItem previewFile = (format == AiOutputFormat.PDF || format == AiOutputFormat.HWP)
                     ? fileItem
                     : createAiPreviewFile(aiTitle, answer, user);
 
@@ -788,6 +788,7 @@ public class DocumentService {
                 case PDF -> createPdfBytesFromText(content, title);
                 case DOCX -> createDocxBytes(content);
                 case XLSX -> createXlsxBytes(content);
+                case HWP -> createHwpBytes(content, title);
                 case TXT -> cleanParsedContent(content).getBytes(StandardCharsets.UTF_8);
             };
             return new AiGeneratedFile(fileName, format.contentType, bytes);
@@ -802,6 +803,29 @@ public class DocumentService {
             name = "ai-document";
         }
         return name.length() <= 60 ? name : name.substring(0, 60);
+    }
+
+    private byte[] createHwpBytes(String content, String title) {
+        if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
+            throw new IllegalStateException("HWP_EDIT_BASE_URL is not configured.");
+        }
+
+        Map<String, String> request = Map.of(
+                "title", safeDocumentTitle(title),
+                "content", cleanParsedContent(content)
+        );
+
+        ResponseEntity<byte[]> response = restTemplate.postForEntity(
+                hwpEditBaseUrl.replaceAll("/+$", "") + "/hwp/create",
+                request,
+                byte[].class
+        );
+
+        byte[] body = response.getBody();
+        if (body == null || body.length == 0) {
+            throw new IllegalStateException("HWP bridge returned an empty file.");
+        }
+        return body;
     }
 
     private byte[] createPdfBytesFromText(String content, String title) throws IOException, InterruptedException {
@@ -1713,13 +1737,7 @@ public class DocumentService {
         }
 
         if (isHwpFile(lowerName, contentType)) {
-            log.info("Creating HWP preview through bridge for {} using {}", originalName, hwpEditBaseUrl);
-            FileItem hwpPreview = createHwpBridgePreviewFile(file, user, originalName);
-            if (hwpPreview != null) {
-                log.info("Created HWP preview PDF for {} as {}", originalName, hwpPreview.getOriginalFileName());
-                return hwpPreview;
-            }
-            log.warn("HWP preview generation failed or skipped. The frontend native viewer will be used.");
+            log.info("Skipping HWP preview PDF for {}. The frontend native HWP viewer will use the original file.", originalName);
             return null;
         }
 
@@ -2128,6 +2146,7 @@ public class DocumentService {
         PDF("pdf", "application/pdf"),
         DOCX("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
         XLSX("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        HWP("hwp", "application/x-hwp"),
         TXT("txt", "text/plain; charset=UTF-8");
 
         private final String extension;
