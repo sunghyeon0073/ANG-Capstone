@@ -144,10 +144,12 @@ def _replace_with_hwp(input_path: Path, output_path: Path, replacements: list, o
 def _create_with_hwp(output_path: Path, title: str, content: str) -> None:
     def write_content(hwp):
         text = _plain_hwp_content(title, content)
+        print(f"[hwp/create] inserting text chars={len(text)}", flush=True)
         hwp.HAction.GetDefault("InsertText", hwp.HParameterSet.HInsertText.HSet)
         params = hwp.HParameterSet.HInsertText
         params.Text = text
         hwp.HAction.Execute("InsertText", params.HSet)
+        print("[hwp/create] text inserted", flush=True)
 
     _save_new_with_hwp(output_path, "hwp", write_content)
 
@@ -243,16 +245,24 @@ def _save_new_with_hwp_once(output_path: Path, output_format: str, before_save=N
     pythoncom.CoInitialize()
     hwp = None
     try:
+        print(f"[hwp/create] starting HWP automation output={output_path}", flush=True)
         hwp = win32com.client.gencache.EnsureDispatch("HWPFrame.HwpObject")
+        print("[hwp/create] HWP object created", flush=True)
         _register_file_path_checker(hwp)
+
+        print("[hwp/create] creating new document", flush=True)
+        hwp.Run("FileNew")
+        print("[hwp/create] new document ready", flush=True)
 
         if before_save is not None:
             before_save(hwp)
 
         save_format = SAVE_FORMATS[output_format]
+        print(f"[hwp/create] saving as {save_format}", flush=True)
         saved = hwp.SaveAs(str(output_path), save_format)
         if saved is False:
             raise HTTPException(status_code=500, detail=f"Failed to save as {save_format}")
+        print("[hwp/create] saved", flush=True)
     except HTTPException:
         raise
     except Exception as exc:
