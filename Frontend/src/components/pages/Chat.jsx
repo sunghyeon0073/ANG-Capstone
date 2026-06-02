@@ -8,6 +8,7 @@ import {
   FiRefreshCw,
   FiSearch,
   FiSend,
+  FiUserPlus,
   FiUsers,
   FiX,
 } from 'react-icons/fi'
@@ -15,8 +16,10 @@ import {
   createGroupChatRoom,
   createPrivateChatRoom,
   downloadChatFile,
+  getChatMemberCandidates,
   getChatMessages,
   getChatRooms,
+  inviteChatMembers,
   leaveChatRoom,
   markChatRoomAsRead,
   uploadChatFile,
@@ -31,22 +34,79 @@ const getStoredUser = () => {
   }
 }
 
-const getSocketUrl = () => {
-  if (import.meta.env.VITE_CHAT_WS_URL) return import.meta.env.VITE_CHAT_WS_URL
+const createSockJsWebSocketPath = basePath => {
+  const serverId = String(Math.floor(Math.random() * 1000))
+  const sessionId = Math.random().toString(36).slice(2, 12)
+  return `${basePath}/${serverId}/${sessionId}/websocket`
+}
+
+const getSockJsHttpBases = () => {
+  if (import.meta.env.VITE_CHAT_HTTP_URL) return [import.meta.env.VITE_CHAT_HTTP_URL.replace(/\/$/, '')]
 
   const apiUrl = import.meta.env.VITE_API_URL
   if (apiUrl?.startsWith('http')) {
-    return `${apiUrl.replace(/^http/, 'ws').replace(/\/$/, '')}/ws/websocket`
+    const normalizedApiUrl = apiUrl.replace(/\/$/, '')
+    const withoutApiPath = normalizedApiUrl.replace(/\/api$/, '')
+    return [
+      `${normalizedApiUrl}/ws`,
+      `${withoutApiPath}/ws`,
+    ]
   }
 
   const isLocalVite = ['localhost', '127.0.0.1'].includes(window.location.hostname)
     && window.location.port === '5500'
 
-  if (isLocalVite) return 'ws://localhost:9090/api/ws/websocket'
+  if (isLocalVite) {
+    return [
+      'http://localhost:9090/api/ws',
+      'http://localhost:9090/ws',
+      '/api/ws',
+      '/ws',
+    ]
+  }
+
+  return [
+    '/api/ws',
+    '/ws',
+  ]
+}
+
+const getSocketUrls = () => {
+  if (import.meta.env.VITE_CHAT_WS_URL) return [import.meta.env.VITE_CHAT_WS_URL]
+
+  const apiUrl = import.meta.env.VITE_API_URL
+  if (apiUrl?.startsWith('http')) {
+    const normalizedApiUrl = apiUrl.replace(/^http/, 'ws').replace(/\/$/, '')
+    const withoutApiPath = normalizedApiUrl.replace(/\/api$/, '')
+    return [
+      createSockJsWebSocketPath(`${normalizedApiUrl}/ws`),
+      createSockJsWebSocketPath(`${withoutApiPath}/ws`),
+    ]
+  }
+
+  const isLocalVite = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+    && window.location.port === '5500'
+
+  if (isLocalVite) {
+    return [
+      createSockJsWebSocketPath(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/ws`),
+      createSockJsWebSocketPath('ws://localhost:9090/api/ws'),
+      createSockJsWebSocketPath('ws://localhost:9090/ws'),
+    ]
+  }
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${window.location.host}/api/ws/websocket`
+  return [
+    createSockJsWebSocketPath(`${protocol}://${window.location.host}/api/ws`),
+    createSockJsWebSocketPath(`${protocol}://${window.location.host}/ws`),
+  ]
 }
+
+const toWebSocketBase = httpBase => (
+  httpBase.startsWith('http')
+    ? httpBase.replace(/^http/, 'ws')
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}${httpBase}`
+)
 
 const formatChatTime = value => {
   if (!value) return ''
@@ -87,6 +147,35 @@ const sortOldestFirst = messages => [...messages]
   .sort((a, b) => new Date(a.sentAt || 0).getTime() - new Date(b.sentAt || 0).getTime())
   .map(normalizeMessage)
 
+const normalizeChatRooms = (rooms, currentEmpNo) => {
+  const roomMap = new Map()
+
+  rooms.forEach(room => {
+    const otherMemberKey = room.type === 'PRIVATE'
+      ? room.members
+        ?.filter(member => member.empNo !== currentEmpNo)
+        .map(member => member.empNo)
+        .sort()
+        .join(',')
+      : ''
+    const key = room.type === 'PRIVATE'
+      ? `PRIVATE:${otherMemberKey || room.name || room.roomId}`
+      : `ROOM:${room.roomId}`
+    const previous = roomMap.get(key)
+
+    if (!previous) {
+      roomMap.set(key, room)
+      return
+    }
+
+    const previousTime = new Date(previous.lastMessageAt || 0).getTime()
+    const currentTime = new Date(room.lastMessageAt || 0).getTime()
+    if (currentTime >= previousTime) roomMap.set(key, room)
+  })
+
+  return Array.from(roomMap.values())
+}
+
 const getInitialWindowPosition = () => {
   if (typeof window === 'undefined') return { x: 420, y: 82 }
   return {
@@ -105,6 +194,7 @@ function ChatRoomWindow({
   isConnected,
   onClose,
   onLeave,
+  onOpenInvite,
   onSend,
   onUploadFile,
   onDownloadFile,
@@ -191,6 +281,9 @@ function ChatRoomWindow({
           <span>{room.type === 'GROUP' ? `${room.members?.length || 0}명` : '1:1 채팅'}</span>
         </div>
         <div className="chat-popup-actions">
+          <button type="button" onClick={() => onOpenInvite(room.roomId)} title="인원 추가">
+            <FiUserPlus />
+          </button>
           <button type="button" onClick={() => onLeave(room.roomId)} title="채팅방 나가기">
             나가기
           </button>
@@ -278,12 +371,22 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const [privateEmpNo, setPrivateEmpNo] = useState('')
   const [groupName, setGroupName] = useState('')
   const [groupMembers, setGroupMembers] = useState('')
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [inviteRoomId, setInviteRoomId] = useState(null)
+  const [memberInput, setMemberInput] = useState('')
+  const [memberCandidates, setMemberCandidates] = useState([])
+  const [memberSearch, setMemberSearch] = useState('')
+  const [selectedMemberEmpNos, setSelectedMemberEmpNos] = useState([])
+  const [modalRoomName, setModalRoomName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [socketStatus, setSocketStatus] = useState('disconnected')
   const [windowPosition, setWindowPosition] = useState(getInitialWindowPosition)
 
   const socketRef = useRef(null)
+  const socketUrlIndexRef = useRef(0)
+  const socketReconnectTimerRef = useRef(null)
+  const socketManualCloseRef = useRef(false)
   const chatWindowRef = useRef(null)
   const subscribedRoomsRef = useRef(new Set())
   const openRoomIdsRef = useRef([])
@@ -303,14 +406,14 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     setError('')
     try {
       const data = await getChatRooms()
-      setRooms(data)
+      setRooms(normalizeChatRooms(data, currentEmpNo))
     } catch (err) {
       console.error('채팅방 목록 조회 실패', err)
       setError('채팅방 목록을 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentEmpNo])
 
   const loadMessages = useCallback(async roomId => {
     try {
@@ -362,11 +465,16 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     }
   }, [loadRooms])
 
-  const connectSocket = useCallback(() => {
+  const connectSocket = useCallback((urlIndex = socketUrlIndexRef.current) => {
     if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return
 
     const token = localStorage.getItem('token')
-    const socket = new WebSocket(getSocketUrl())
+    const socketUrls = getSocketUrls()
+    const socketUrl = socketUrls[urlIndex] || socketUrls[0]
+    socketUrlIndexRef.current = urlIndex
+    socketManualCloseRef.current = false
+
+    const socket = new WebSocket(socketUrl)
     socketRef.current = socket
     setSocketStatus('connecting')
 
@@ -397,6 +505,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         const frame = parseStompFrame(rawFrame.replace(/\0$/, ''))
 
         if (frame.command === 'CONNECTED') {
+          socketUrlIndexRef.current = urlIndex
           setSocketStatus('connected')
           sendStompFrame('SUBSCRIBE', { id: 'chat-invite', destination: '/user/queue/invite' })
           openRoomIdsRef.current.forEach(subscribeRoom)
@@ -417,14 +526,22 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     }
 
     socket.onerror = event => {
-      console.error('채팅 웹소켓 연결 실패', event)
-      setSocketStatus('error')
-      setError('실시간 채팅 서버에 연결하지 못했습니다.')
+      console.error(`채팅 웹소켓 연결 실패: ${socketUrl}`, event)
     }
 
     socket.onclose = () => {
-      setSocketStatus('disconnected')
       subscribedRoomsRef.current.clear()
+
+      if (!socketManualCloseRef.current && urlIndex < socketUrls.length - 1) {
+        socketRef.current = null
+        socketUrlIndexRef.current = urlIndex + 1
+        socketReconnectTimerRef.current = window.setTimeout(() => {
+          connectSocket(urlIndex + 1)
+        }, 350)
+        return
+      }
+
+      setSocketStatus(socketManualCloseRef.current ? 'disconnected' : 'error')
     }
   }, [handleStompMessage, sendSockJsPayload, sendStompFrame, subscribeRoom])
 
@@ -433,6 +550,10 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     connectSocket()
 
     return () => {
+      socketManualCloseRef.current = true
+      if (socketReconnectTimerRef.current) {
+        window.clearTimeout(socketReconnectTimerRef.current)
+      }
       socketRef.current?.close()
     }
   }, [connectSocket, loadRooms])
@@ -508,6 +629,105 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     }
   }
 
+  const normalizeCandidate = candidate => ({
+    empNo: candidate.empNo || candidate.employeeNo || candidate.username || candidate.userEmpNo,
+    name: candidate.name || candidate.userName || candidate.employeeName || candidate.empNo || candidate.employeeNo,
+    department: candidate.department || candidate.dept || candidate.departmentName || '',
+    position: candidate.position || candidate.rank || candidate.roleName || '',
+  })
+
+  const loadMemberCandidates = async () => {
+    try {
+      const data = await getChatMemberCandidates()
+      const candidates = data
+        .map(normalizeCandidate)
+        .filter(candidate => candidate.empNo && candidate.empNo !== currentEmpNo)
+      setMemberCandidates(candidates)
+    } catch (err) {
+      console.error('채팅 인원 목록 조회 실패', err)
+      setError('인원 목록을 불러오지 못했습니다.')
+    }
+  }
+
+  const closeMemberModal = () => {
+    setIsCreateModalOpen(false)
+    setInviteRoomId(null)
+    setMemberInput('')
+    setMemberSearch('')
+    setSelectedMemberEmpNos([])
+    setModalRoomName('')
+  }
+
+  const openCreateMemberModal = () => {
+    setInviteRoomId(null)
+    setMemberInput('')
+    setMemberSearch('')
+    setSelectedMemberEmpNos([])
+    setModalRoomName('')
+    setIsCreateModalOpen(true)
+    loadMemberCandidates()
+  }
+
+  const openInviteMemberModal = roomId => {
+    setInviteRoomId(roomId)
+    setMemberInput('')
+    setMemberSearch('')
+    setSelectedMemberEmpNos([])
+    setModalRoomName('')
+    setIsCreateModalOpen(true)
+    loadMemberCandidates()
+  }
+
+  const toggleMemberSelection = empNo => {
+    setSelectedMemberEmpNos(prev => (
+      prev.includes(empNo)
+        ? prev.filter(item => item !== empNo)
+        : [...prev, empNo]
+    ))
+  }
+
+  const getInputEmpNos = () => {
+    const typedEmpNos = memberInput
+      .split(/[,\s]+/)
+      .map(value => value.trim())
+      .filter(Boolean)
+
+    return Array.from(new Set([...selectedMemberEmpNos, ...typedEmpNos]))
+  }
+
+  const submitMemberModal = async event => {
+    event.preventDefault()
+    const empNos = getInputEmpNos()
+    if (empNos.length === 0) return
+
+    try {
+      if (inviteRoomId) {
+        await inviteChatMembers(inviteRoomId, empNos)
+        await loadRooms()
+        await loadMessages(inviteRoomId)
+        closeMemberModal()
+        return
+      }
+
+      if (empNos.length === 1) {
+        const roomId = await createPrivateChatRoom(empNos[0])
+        await loadRooms()
+        await openRoom({ roomId, name: empNos[0], type: 'PRIVATE', members: [] })
+        closeMemberModal()
+        return
+      }
+
+      const roomName = modalRoomName.trim() || `${empNos.length + 1}명 채팅`
+      const roomId = await createGroupChatRoom({ name: roomName, memberEmpNos: empNos })
+      await loadRooms()
+      await openRoom({ roomId, name: roomName, type: 'GROUP', members: [] })
+      closeMemberModal()
+    } catch (err) {
+      console.error(inviteRoomId ? '채팅방 인원 추가 실패' : '채팅방 생성 실패', err)
+      setError(inviteRoomId ? '인원을 추가하지 못했습니다. 사번을 확인해주세요.' : '채팅방을 만들지 못했습니다. 사번을 확인해주세요.')
+    }
+  }
+
   const sendMessage = (roomId, payload) => {
     const sent = sendStompFrame('SEND', {
       destination: '/app/chat.send',
@@ -560,6 +780,19 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       setError('채팅방에서 나가지 못했습니다.')
     }
   }
+
+  const filteredMemberCandidates = memberCandidates.filter(candidate => {
+    const keyword = memberSearch.trim().toLowerCase()
+    if (!keyword) return true
+
+    return candidate.name?.toLowerCase().includes(keyword)
+      || candidate.empNo?.toLowerCase().includes(keyword)
+      || candidate.department?.toLowerCase().includes(keyword)
+      || candidate.position?.toLowerCase().includes(keyword)
+  })
+
+  const selectedMemberCandidates = selectedMemberEmpNos
+    .map(empNo => memberCandidates.find(candidate => candidate.empNo === empNo) || { empNo, name: empNo })
 
   const openRooms = openRoomIds
     .map(roomId => rooms.find(room => room.roomId === roomId) || { roomId, name: '채팅방', members: [] })
@@ -639,6 +872,80 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         </div>
       )}
 
+      {isCreateModalOpen && (
+        <div className="chat-member-modal-backdrop" onMouseDown={closeMemberModal}>
+          <form className="chat-member-modal" onSubmit={submitMemberModal} onMouseDown={event => event.stopPropagation()}>
+            <div className="chat-member-modal-header">
+              <strong>{inviteRoomId ? '인원 추가' : '새 채팅'}</strong>
+              <button type="button" onClick={closeMemberModal}>
+                <FiX />
+              </button>
+            </div>
+            {!inviteRoomId && (
+              <input
+                value={modalRoomName}
+                onChange={event => setModalRoomName(event.target.value)}
+                placeholder="그룹 채팅방 이름 (선택)"
+              />
+            )}
+            <div className="chat-member-search">
+              <FiSearch />
+              <input
+                value={memberSearch}
+                onChange={event => setMemberSearch(event.target.value)}
+                placeholder="이름, 사번, 부서 검색"
+                autoFocus
+              />
+            </div>
+            {selectedMemberCandidates.length > 0 && (
+              <div className="chat-selected-members">
+                {selectedMemberCandidates.map(member => (
+                  <button
+                    type="button"
+                    key={member.empNo}
+                    onClick={() => toggleMemberSelection(member.empNo)}
+                  >
+                    {member.name}
+                    <span>×</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="chat-member-list">
+              {filteredMemberCandidates.length === 0 ? (
+                <div className="chat-member-empty">선택할 인원이 없습니다.</div>
+              ) : (
+                filteredMemberCandidates.map(member => (
+                  <button
+                    type="button"
+                    className={`chat-member-item ${selectedMemberEmpNos.includes(member.empNo) ? 'selected' : ''}`}
+                    key={member.empNo}
+                    onClick={() => toggleMemberSelection(member.empNo)}
+                  >
+                    <span className="chat-member-avatar">{member.name?.[0] || member.empNo?.[0] || '?'}</span>
+                    <span className="chat-member-info">
+                      <strong>{member.name}</strong>
+                      <small>{member.empNo}{member.department ? ` · ${member.department}` : ''}{member.position ? ` · ${member.position}` : ''}</small>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            <input
+              value={memberInput}
+              onChange={event => setMemberInput(event.target.value)}
+              placeholder="목록에 없으면 사번 직접 입력"
+            />
+            <p>
+              선택 1명은 1:1 채팅, 여러 명은 그룹 채팅으로 생성됩니다.
+            </p>
+            <button type="submit" className="chat-member-submit-button">
+              {inviteRoomId ? '추가하기' : '채팅 시작'}
+            </button>
+          </form>
+        </div>
+      )}
+
       <div className="chat-shell">
         <aside className="chat-sidebar-panel">
           <div className="chat-search">
@@ -683,9 +990,14 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         <main className="chat-room-panel">
           <div className="chat-room-panel-header">
             <strong>채팅방</strong>
-            <span className={`chat-status ${socketStatus}`}>
-              {socketStatus === 'connected' ? '실시간 연결됨' : '연결 준비 중'}
-            </span>
+            <div className="chat-room-header-actions">
+              <span className={`chat-status ${socketStatus}`}>
+                {socketStatus === 'connected' ? '실시간 연결됨' : socketStatus === 'error' ? '실시간 연결 실패' : '연결 준비 중'}
+              </span>
+              <button type="button" className="chat-new-room-button" onClick={openCreateMemberModal}>
+                <FiPlus />
+              </button>
+            </div>
           </div>
 
           {loading ? (
@@ -736,6 +1048,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
             isConnected={socketStatus === 'connected'}
             onClose={closeRoom}
             onLeave={leaveRoom}
+            onOpenInvite={openInviteMemberModal}
             onSend={sendMessage}
             onUploadFile={uploadFile}
             onDownloadFile={downloadFile}

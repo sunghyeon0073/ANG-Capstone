@@ -44,6 +44,80 @@ import {
   sortMailsLatestFirst,
 } from '../mail/mailUtils'
 
+const MAIL_PAGE_SIZE = 15
+
+const emptyPageInfo = {
+  page: 0,
+  size: MAIL_PAGE_SIZE,
+  totalElements: 0,
+  totalPages: 1,
+}
+
+const toFiniteNumber = (value, fallback) => {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : fallback
+}
+
+const getMailTimeValue = (mail) => {
+  const dateValue = mail?.sentAt || mail?.createdAt || mail?.updatedAt
+  if (!dateValue) return 0
+
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(dateValue)
+  const date = new Date(hasTimeZone ? dateValue : `${dateValue}Z`)
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime()
+}
+
+const normalizePageResult = (response, fallbackPage = 0, fallbackSize = MAIL_PAGE_SIZE) => {
+  const data = getResponseData(response)
+  if (Array.isArray(data)) {
+    const size = fallbackSize || MAIL_PAGE_SIZE
+    const sortedData = [...data].sort((first, second) => getMailTimeValue(second) - getMailTimeValue(first))
+    const totalElements = sortedData.length
+    const totalPages = Math.max(Math.ceil(totalElements / size), 1)
+    const startIndex = fallbackPage * size
+    const items = totalElements > size ? sortedData.slice(startIndex, startIndex + size) : sortedData
+
+    return {
+      items,
+      pageInfo: {
+        ...emptyPageInfo,
+        page: fallbackPage,
+        size,
+        totalElements,
+        totalPages,
+      },
+    }
+  }
+
+  const items = data.content || data.items || data.data || []
+  const page = toFiniteNumber(
+    data.number ?? data.pageNumber ?? data.currentPage ?? data.page?.number ?? data.page?.pageNumber ?? data.page,
+    fallbackPage
+  )
+  const size = toFiniteNumber(
+    data.size ?? data.pageSize ?? data.pageable?.pageSize ?? data.page?.size ?? data.page?.pageSize,
+    fallbackSize
+  )
+  const totalElements = toFiniteNumber(
+    data.totalElements ?? data.totalCount ?? data.total ?? data.page?.totalElements ?? data.page?.totalCount,
+    items.length
+  )
+  const totalPages = Math.max(
+    toFiniteNumber(data.totalPages ?? data.page?.totalPages, Math.ceil(totalElements / (size || MAIL_PAGE_SIZE))),
+    1
+  )
+
+  return {
+    items,
+    pageInfo: {
+      page,
+      size,
+      totalElements,
+      totalPages,
+    },
+  }
+}
+
 export default function Mail({ currentSubPage = 'mail-inbox', user, contactRequest, onContactRequestHandled, onSubPageChange }) {
   const organizationContact = contactRequest?.channel === 'mail' ? contactRequest.contact : null
   const organizationRecipient = organizationContact?.empNo || ''
@@ -55,6 +129,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
   const [selectedId, setSelectedId] = useState(null)
   const [selectedMailKeys, setSelectedMailKeys] = useState([])
   const [query, setQuery] = useState('')
+  const [mailPage, setMailPage] = useState(0)
+  const [pageInfo, setPageInfo] = useState(emptyPageInfo)
 
   // 작성 폼 상태: 제목, 본문, 선택된 수신자를 관리합니다.
   const [draft, setDraft] = useState({ subject: '', body: '' })
@@ -89,12 +165,21 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
   ))
   const selectedMailKeySet = useMemo(() => new Set(selectedMailKeys), [selectedMailKeys])
 
+  const changeMailPage = (nextPage) => {
+    const maxPage = Math.max((pageInfo.totalPages || 1) - 1, 0)
+    setMailPage(Math.min(Math.max(nextPage, 0), maxPage))
+    setSelectedId(null)
+    setSelectedMailKeys([])
+  }
+
   // 사이드바 메뉴가 바뀌면 현재 메일함을 바꾸고 목록 화면으로 초기화합니다.
   useEffect(() => {
     setActiveBox(normalizeMailboxId(currentSubPage || 'mail-inbox'))
     setViewMode('list')
     setSelectedId(null)
     setSelectedMailKeys([])
+    setMailPage(0)
+    setPageInfo(emptyPageInfo)
   }, [currentSubPage])
 
   // 조직도에서 "메일 보내기"로 넘어온 수신자가 있으면 한 번만 작성 폼에 반영합니다.
@@ -165,27 +250,43 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       if (currentBox === 'mail-compose') {
         setMails([])
         setSelectedId(null)
+        setPageInfo(emptyPageInfo)
         return
       }
 
       // 받은/보낸/임시/중요/휴지통마다 사용하는 API가 달라서 여기서 분기합니다.
+      const pageInfoParts = []
+      const mapPageItems = (response, mapper) => {
+        const page = normalizePageResult(response, mailPage, MAIL_PAGE_SIZE)
+        pageInfoParts.push(page.pageInfo)
+        return page.items.map(mapper)
+      }
+
       const loaders = currentBox === 'mail-sent'
-        ? [getSentMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'sent')))]
+        ? [getSentMails(mailPage, MAIL_PAGE_SIZE).then(res => mapPageItems(res, mail => mapSummary(mail, 'sent')))]
         : currentBox === 'mail-drafts'
-          ? [getDraftMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'draft')))]
+          ? [getDraftMails(mailPage, MAIL_PAGE_SIZE).then(res => mapPageItems(res, mail => mapSummary(mail, 'draft')))]
         : currentBox === 'mail-important'
-          ? [getFavoriteMails().then(res => getResponseData(res).map(mail => {
+          ? [getFavoriteMails(mailPage, MAIL_PAGE_SIZE).then(res => mapPageItems(res, mail => {
               const box = currentEmpNo && mail.senderEmpNo === currentEmpNo ? 'sent' : 'inbox'
               return mapSummary(mail, box, [String(mail.mailId)])
             }))]
         : currentBox === 'mail-trash'
           ? [
-              getInboxTrashMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'inbox'))),
-              getSentTrashMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'sent'))),
+              getInboxTrashMails(mailPage, MAIL_PAGE_SIZE).then(res => mapPageItems(res, mail => mapSummary(mail, 'inbox'))),
+              getSentTrashMails(mailPage, MAIL_PAGE_SIZE).then(res => mapPageItems(res, mail => mapSummary(mail, 'sent'))),
             ]
-          : [getInboxMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'inbox')))]
+          : [getInboxMails(mailPage, MAIL_PAGE_SIZE).then(res => mapPageItems(res, mail => mapSummary(mail, 'inbox')))]
 
       const loaded = (await Promise.all(loaders)).flat()
+      const nextPageInfo = pageInfoParts.length > 1
+        ? pageInfoParts.reduce((acc, page) => ({
+            page: mailPage,
+            size: MAIL_PAGE_SIZE,
+            totalElements: acc.totalElements + page.totalElements,
+            totalPages: Math.max(acc.totalPages, page.totalPages),
+          }), { ...emptyPageInfo, page: mailPage, totalElements: 0 })
+        : (pageInfoParts[0] || emptyPageInfo)
       const filtered = await Promise.all(loaded.map(async mail => {
         let enrichedMail = mail
 
@@ -215,18 +316,20 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
 
       const sortedMails = sortMailsLatestFirst(filtered)
       setMails(sortedMails)
+      setPageInfo(nextPageInfo)
       setSelectedId(null)
       setSelectedMailKeys([])
     } catch (error) {
       console.error('메일 목록 로드 실패', error)
       setMails([])
+      setPageInfo(emptyPageInfo)
       setSelectedId(null)
       setSelectedMailKeys([])
       setErrorMessage('메일 목록을 불러오지 못했습니다.')
     } finally {
       setIsLoading(false)
     }
-  }, [currentBox, user?.empNo])
+  }, [currentBox, currentEmpNo, mailPage])
 
   useEffect(() => {
     loadMails()
@@ -779,14 +882,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
 
   // 화면 렌더링: 작성 화면과 목록/상세 화면을 현재 메일함 상태에 맞춰 나눠 보여줍니다.
   return (
-    <div className="mail-page">
-      <div className="mail-header">
-        <div>
-          <div className="mail-eyebrow">MAIL</div>
-          <h1>{config.title}</h1>
-        </div>
-      </div>
-
+    <div className={`mail-page ${isComposePage ? 'mail-compose-page' : ''}`}>
       {errorMessage && <div className="mail-error">{errorMessage}</div>}
       {attachmentMessage && <div className="mail-error">{attachmentMessage}</div>}
 
@@ -829,6 +925,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
               selectedMails={selectedMails}
               selectedMailKeySet={selectedMailKeySet}
               isLoading={isLoading}
+              pageInfo={pageInfo}
               hasSelectedMails={hasSelectedMails}
               canBulkMoveToTrash={canBulkMoveToTrash}
               canBulkToggleImportant={canBulkToggleImportant}
@@ -837,6 +934,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
               canBulkPermanentDelete={canBulkPermanentDelete}
               onQueryChange={setQuery}
               onRefresh={loadMails}
+              onPageChange={changeMailPage}
               onMoveSelectedToTrash={moveSelectedToTrash}
               onToggleSelectedImportant={toggleSelectedImportant}
               onCancelSelectedSentMails={cancelSelectedSentMails}

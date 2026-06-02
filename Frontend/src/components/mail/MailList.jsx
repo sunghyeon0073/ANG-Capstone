@@ -33,6 +33,7 @@ export default function MailList({
   mails,
   visibleMails,
   query,
+  pageInfo,
   selectedMails,
   selectedMailKeySet,
   isLoading,
@@ -44,6 +45,7 @@ export default function MailList({
   canBulkPermanentDelete,
   onQueryChange,
   onRefresh,
+  onPageChange,
   onMoveSelectedToTrash,
   onToggleSelectedImportant,
   onCancelSelectedSentMails,
@@ -55,39 +57,46 @@ export default function MailList({
   getMailKey,
   getReadStatusLabel,
 }) {
+  const currentPage = pageInfo?.page ?? 0
+  const totalPages = Math.max(pageInfo?.totalPages ?? 1, 1)
+  const totalElements = pageInfo?.totalElements ?? mails.length
+  const pageSize = pageInfo?.size || visibleMails.length || 1
+  const rangeStart = totalElements === 0 ? 0 : currentPage * pageSize + 1
+  const rangeEnd = Math.min((currentPage + 1) * pageSize, totalElements)
+
   return (
     <section className="mail-list-panel">
       <div className="mail-list-title">
         <div className="mail-list-heading">
           <h2>{config.title}</h2>
-          <span>{visibleMails.length}</span>
+          <span>{totalElements}</span>
         </div>
         <div className="mail-list-controls">
           {hasSelectedMails && (
-            <div className="mail-selection-actions" aria-label="선택 메일 작업">
+            <div className="mail-selection-actions" aria-label="선택한 메일 작업">
               <span>{selectedMails.length}개 선택</span>
               {canBulkMoveToTrash && (
-                <button type="button" onClick={onMoveSelectedToTrash} aria-label="선택 메일 삭제" title="삭제">
+                <button type="button" onClick={onMoveSelectedToTrash} aria-label="선택한 메일 삭제" title="삭제">
                   <FiTrash2 />
                 </button>
               )}
               {canBulkToggleImportant && (
-                <button type="button" onClick={onToggleSelectedImportant} aria-label="선택 메일 중요 표시" title="중요 표시">
+                <button type="button" onClick={onToggleSelectedImportant} aria-label="선택한 메일 중요 표시" title="중요 표시">
                   <FiStar />
                 </button>
               )}
               {canBulkCancelSent && (
-                <button type="button" onClick={onCancelSelectedSentMails} aria-label="선택 메일 발송취소" title="발송취소">
+                <button type="button" onClick={onCancelSelectedSentMails} aria-label="선택한 메일 발송취소" title="발송취소">
                   <FiX />
                 </button>
               )}
               {canBulkRestore && (
-                <button type="button" onClick={onRestoreSelectedMails} aria-label="선택 메일 복원" title="복원">
+                <button type="button" onClick={onRestoreSelectedMails} aria-label="선택한 메일 복원" title="복원">
                   <FiArchive />
                 </button>
               )}
               {canBulkPermanentDelete && (
-                <button type="button" onClick={onPermanentlyDeleteSelectedMails} aria-label="선택 메일 완전 삭제" title="완전 삭제">
+                <button type="button" onClick={onPermanentlyDeleteSelectedMails} aria-label="선택한 메일 완전 삭제" title="완전 삭제">
                   <FiTrash2 />
                 </button>
               )}
@@ -101,8 +110,29 @@ export default function MailList({
               placeholder="메일 검색"
             />
           </div>
-          <span className="mail-list-total">전체 {mails.length}개</span>
-          <button className="mail-icon-btn" aria-label="새로고침" onClick={onRefresh}>
+          <span className="mail-list-total">
+            {totalElements === 0 ? '전체 0개' : `전체 ${totalElements}개 중 ${rangeStart}-${rangeEnd}`}
+          </span>
+          <div className="mail-pagination">
+            <button
+              type="button"
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage <= 0 || isLoading}
+              aria-label="Previous page"
+            >
+              ‹
+            </button>
+            <span>{currentPage + 1} / {totalPages}</span>
+            <button
+              type="button"
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages - 1 || isLoading}
+              aria-label="Next page"
+            >
+              ›
+            </button>
+          </div>
+          <button className="mail-icon-btn" aria-label="Refresh" onClick={onRefresh}>
             <FiRefreshCcw />
           </button>
         </div>
@@ -149,8 +179,8 @@ export default function MailList({
                     onToggleImportant(mail.id)
                   }}
                   disabled={mail.box === 'draft'}
-                  aria-label={mail.important ? '중요 표시 해제' : '중요 표시'}
-                  title={mail.important ? '중요 표시 해제' : '중요 표시'}
+                  aria-label={mail.important ? '중요 해제' : '중요 표시'}
+                  title={mail.important ? '중요 해제' : '중요 표시'}
                 >
                   <FiStar />
                 </button>
@@ -173,7 +203,7 @@ export default function MailList({
                   {mail.preview && (
                     <span className="mail-list-preview">- {mail.preview}</span>
                   )}
-                  {mail.attachments.length > 0 && <FiPaperclip aria-label="첨부파일 있음" />}
+                  {mail.attachments.length > 0 && <FiPaperclip aria-label="첨부 있음" />}
                 </div>
                 <time className="mail-list-date">{`${mail.date} ${mail.time}`}</time>
               </div>
