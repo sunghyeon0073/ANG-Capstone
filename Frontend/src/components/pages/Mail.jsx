@@ -67,8 +67,38 @@ const getMailTimeValue = (mail) => {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime()
 }
 
+const getObjectValue = (value, keys) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  return keys.find(key => value[key] !== undefined)
+}
+
+const pickArrayValue = (value) => {
+  if (Array.isArray(value)) return value
+  if (!value || typeof value !== 'object') return []
+
+  const arrayKey = getObjectValue(value, ['content', 'items', 'mails', 'mailList', 'list', 'rows', 'records', 'result', 'results', 'data'])
+  const candidate = arrayKey ? value[arrayKey] : undefined
+
+  if (Array.isArray(candidate)) return candidate
+  if (candidate && typeof candidate === 'object') return pickArrayValue(candidate)
+
+  return []
+}
+
+const pickPageValue = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+
+  const hasPageShape = ['content', 'items', 'mails', 'mailList', 'list', 'rows', 'records', 'totalElements', 'totalCount', 'total', 'totalPages']
+    .some(key => value[key] !== undefined)
+
+  if (hasPageShape) return value
+
+  const nestedKey = getObjectValue(value, ['data', 'result', 'results', 'page', 'mailPage', 'mailList', 'mails'])
+  return nestedKey ? pickPageValue(value[nestedKey]) : value
+}
+
 const normalizePageResult = (response, fallbackPage = 0, fallbackSize = MAIL_PAGE_SIZE) => {
-  const data = getResponseData(response)
+  const data = pickPageValue(getResponseData(response))
   if (Array.isArray(data)) {
     const size = fallbackSize || MAIL_PAGE_SIZE
     const sortedData = [...data].sort((first, second) => getMailTimeValue(second) - getMailTimeValue(first))
@@ -89,21 +119,22 @@ const normalizePageResult = (response, fallbackPage = 0, fallbackSize = MAIL_PAG
     }
   }
 
-  const items = data.content || data.items || data.data || []
+  const pageData = data && typeof data === 'object' ? data : {}
+  const items = pickArrayValue(pageData)
   const page = toFiniteNumber(
-    data.number ?? data.pageNumber ?? data.currentPage ?? data.page?.number ?? data.page?.pageNumber ?? data.page,
+    pageData.number ?? pageData.pageNumber ?? pageData.currentPage ?? pageData.page?.number ?? pageData.page?.pageNumber ?? pageData.page,
     fallbackPage
   )
   const size = toFiniteNumber(
-    data.size ?? data.pageSize ?? data.pageable?.pageSize ?? data.page?.size ?? data.page?.pageSize,
+    pageData.size ?? pageData.pageSize ?? pageData.pageable?.pageSize ?? pageData.page?.size ?? pageData.page?.pageSize,
     fallbackSize
   )
   const totalElements = toFiniteNumber(
-    data.totalElements ?? data.totalCount ?? data.total ?? data.page?.totalElements ?? data.page?.totalCount,
+    pageData.totalElements ?? pageData.totalCount ?? pageData.total ?? pageData.page?.totalElements ?? pageData.page?.totalCount,
     items.length
   )
   const totalPages = Math.max(
-    toFiniteNumber(data.totalPages ?? data.page?.totalPages, Math.ceil(totalElements / (size || MAIL_PAGE_SIZE))),
+    toFiniteNumber(pageData.totalPages ?? pageData.page?.totalPages, Math.ceil(totalElements / (size || MAIL_PAGE_SIZE))),
     1
   )
 
