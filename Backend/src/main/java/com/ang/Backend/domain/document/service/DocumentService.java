@@ -28,6 +28,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
@@ -183,6 +184,16 @@ public class DocumentService {
         }
 
         AiOutputFormat format = AiOutputFormat.from(outputFormat);
+        if (format == AiOutputFormat.HWP) {
+            return editHwpWithAi(prompt, user, sourceDocId, attachedDocIds);
+        }
+        if (format == AiOutputFormat.DOCX) {
+            DocxEditSource docxSource = findDocxEditSource(sourceDocId, attachedDocIds);
+            if (docxSource != null) {
+                return editDocxWithAi(prompt, user, docxSource);
+            }
+        }
+
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);
         log.info("AI document generation started: format={}, promptChars={}", format.extension, finalPrompt.length());
 
@@ -205,6 +216,356 @@ public class DocumentService {
         String aiTitle = makeAiTitle(answer);
 
         return saveAiDocument(aiTitle, answer, user, format);
+    }
+
+    private DocumentDto.Response editHwpWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds) {
+        HwpEditSource source = findHwpEditSource(sourceDocId, attachedDocIds);
+        String finalPrompt = buildHwpEditPrompt(prompt, source);
+        log.info("AI HWP edit plan started: sourceDocId={}, promptChars={}", source.docId(), finalPrompt.length());
+
+        Map<String, String> aiRequest = Map.of("message", finalPrompt);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> aiResponse = restTemplate.postForObject(
+                aiBaseUrl + "/chat",
+                aiRequest,
+                Map.class
+        );
+
+        String answer = aiResponse != null && aiResponse.get("reply") != null
+                ? aiResponse.get("reply").toString()
+                : "";
+        AiTextEditPlan plan = parseAiTextEditPlan(answer);
+        log.info("AI HWP edit plan finished: sourceDocId={}, replacements={}", source.docId(), plan.replacements().size());
+
+        try {
+            Resource resource = fileService.loadFileAsResource(source.fileId());
+            byte[] originalBytes = resource.getInputStream().readAllBytes();
+            ResponseEntity<byte[]> response = callHwpBridge(originalBytes, source.originalName(), plan.replacements(), "hwp");
+            byte[] body = response.getBody();
+            if (body == null || body.length == 0) {
+                throw new IllegalStateException("HWP bridge returned an empty file.");
+            }
+
+            String title = plan.title().isBlank()
+                    ? safeDocumentTitle(source.title() + "-AI edited")
+                    : safeDocumentTitle(plan.title());
+            String fileName = buildEditedFileName(source.originalName(), "hwp");
+            AiGeneratedFile generatedFile = new AiGeneratedFile(fileName, resolveEditedContentType("hwp", response.getHeaders().getContentType()), body);
+
+            return saveAiEditedHwpDocument(title, prompt, answer, source, generatedFile, user);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read original HWP file.", e);
+        }
+    }
+
+    private DocumentDto.Response editDocxWithAi(String prompt, User user, DocxEditSource source) {
+        String finalPrompt = buildDocxEditPrompt(prompt, source);
+        log.info("AI DOCX edit plan started: sourceDocId={}, promptChars={}", source.docId(), finalPrompt.length());
+
+        Map<String, String> aiRequest = Map.of("message", finalPrompt);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> aiResponse = restTemplate.postForObject(
+                aiBaseUrl + "/chat",
+                aiRequest,
+                Map.class
+        );
+
+        String answer = aiResponse != null && aiResponse.get("reply") != null
+                ? aiResponse.get("reply").toString()
+                : "";
+        AiTextEditPlan plan = parseAiTextEditPlan(answer);
+        log.info("AI DOCX edit plan finished: sourceDocId={}, replacements={}", source.docId(), plan.replacements().size());
+
+        try {
+            Resource resource = fileService.loadFileAsResource(source.fileId());
+            byte[] originalBytes = resource.getInputStream().readAllBytes();
+            byte[] editedBytes = applyDocxReplacements(originalBytes, plan.replacements());
+            String title = plan.title().isBlank()
+                    ? safeDocumentTitle(source.title() + "-AI edited")
+                    : safeDocumentTitle(plan.title());
+            String fileName = buildEditedFileName(source.originalName(), "docx");
+            AiGeneratedFile generatedFile = new AiGeneratedFile(fileName, AiOutputFormat.DOCX.contentType, editedBytes);
+
+            return saveAiEditedDocxDocument(title, prompt, answer, source, generatedFile, user);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to edit original DOCX file.", e);
+        }
+    }
+
+    private HwpEditSource findHwpEditSource(Long sourceDocId, List<Long> attachedDocIds) {
+        LinkedHashSet<Long> docIds = new LinkedHashSet<>();
+        if (sourceDocId != null) {
+            docIds.add(sourceDocId);
+        }
+        if (attachedDocIds != null) {
+            attachedDocIds.stream()
+                    .filter(Objects::nonNull)
+                    .forEach(docIds::add);
+        }
+        if (docIds.isEmpty()) {
+            throw new IllegalArgumentException("HWP AI editing requires an attached original HWP document.");
+        }
+
+        HwpEditSource source = transactionTemplate.execute(status -> {
+            for (Long docId : docIds) {
+                DocumentEntity doc = documentRepository.findById(docId).orElse(null);
+                if (doc == null || doc.getFile() == null) {
+                    continue;
+                }
+                FileItem file = doc.getFile();
+                String originalName = file.getOriginalFileName() != null ? file.getOriginalFileName() : "document.hwp";
+                String lowerName = originalName.toLowerCase();
+                String contentType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+                if (isHwpFile(lowerName, contentType)) {
+                    return new HwpEditSource(
+                            doc.getDocId(),
+                            doc.getTitle() != null ? doc.getTitle() : originalName,
+                            doc.getOriginalContent() != null ? doc.getOriginalContent() : "",
+                            file.getFileId(),
+                            originalName,
+                            file.getContentType() != null ? file.getContentType() : "application/x-hwp"
+                    );
+                }
+            }
+            return null;
+        });
+
+        if (source == null) {
+            throw new IllegalArgumentException("Attached documents do not include an editable HWP file.");
+        }
+        return source;
+    }
+
+    private DocxEditSource findDocxEditSource(Long sourceDocId, List<Long> attachedDocIds) {
+        LinkedHashSet<Long> docIds = new LinkedHashSet<>();
+        if (sourceDocId != null) {
+            docIds.add(sourceDocId);
+        }
+        if (attachedDocIds != null) {
+            attachedDocIds.stream()
+                    .filter(Objects::nonNull)
+                    .forEach(docIds::add);
+        }
+        if (docIds.isEmpty()) {
+            return null;
+        }
+
+        return transactionTemplate.execute(status -> {
+            for (Long docId : docIds) {
+                DocumentEntity doc = documentRepository.findById(docId).orElse(null);
+                if (doc == null || doc.getFile() == null) {
+                    continue;
+                }
+                FileItem file = doc.getFile();
+                String originalName = file.getOriginalFileName() != null ? file.getOriginalFileName() : "document.docx";
+                String lowerName = originalName.toLowerCase();
+                String contentType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
+                if (isDocxFile(lowerName, contentType)) {
+                    return new DocxEditSource(
+                            doc.getDocId(),
+                            doc.getTitle() != null ? doc.getTitle() : originalName,
+                            doc.getOriginalContent() != null ? doc.getOriginalContent() : "",
+                            file.getFileId(),
+                            originalName
+                    );
+                }
+            }
+            return null;
+        });
+    }
+
+    private String buildHwpEditPrompt(String prompt, HwpEditSource source) {
+        String content = source.originalContent();
+        if (content.length() > 18000) {
+            content = content.substring(0, 18000);
+        }
+
+        return """
+                You are editing an existing Korean HWP document.
+                Do not rewrite the whole document.
+                Return JSON only. Do not include Markdown, code fences, explanations, or prose.
+
+                Your job:
+                - Keep the original HWP file and layout.
+                - Produce only minimal find/replace operations.
+                - The "find" value must be exact text that exists in the parsed original text.
+                - The "replace" value should contain the edited text.
+                - For insertion, choose a nearby existing sentence as "find" and replace it with that same sentence plus the inserted text.
+                - Do not add Markdown headings, bullets, or tables unless the user explicitly asks for those literal characters.
+
+                JSON schema:
+                {
+                  "title": "short edited document title",
+                  "replacements": [
+                    {"find": "exact original text", "replace": "new text"}
+                  ]
+                }
+
+                [Original HWP Title]
+                %s
+
+                [Parsed Original HWP Text]
+                %s
+
+                [User Edit Request]
+                %s
+                """.formatted(source.title(), content, prompt);
+    }
+
+    private String buildDocxEditPrompt(String prompt, DocxEditSource source) {
+        String content = source.originalContent();
+        if (content.length() > 18000) {
+            content = content.substring(0, 18000);
+        }
+
+        return """
+                You are editing an existing Korean DOCX document.
+                Do not rewrite the whole document.
+                Return JSON only. Do not include Markdown, code fences, explanations, or prose.
+
+                Your job:
+                - Keep the original DOCX layout, tables, images, and styles.
+                - Produce only minimal find/replace operations.
+                - The "find" value must be exact text that exists in the parsed original text.
+                - The "replace" value should contain the edited text.
+                - For insertion, choose a nearby existing sentence as "find" and replace it with that same sentence plus the inserted text.
+                - Do not add Markdown headings, bullets, or tables unless the user explicitly asks for those literal characters.
+
+                JSON schema:
+                {
+                  "title": "short edited document title",
+                  "replacements": [
+                    {"find": "exact original text", "replace": "new text"}
+                  ]
+                }
+
+                [Original DOCX Title]
+                %s
+
+                [Parsed Original DOCX Text]
+                %s
+
+                [User Edit Request]
+                %s
+                """.formatted(source.title(), content, prompt);
+    }
+
+    @SuppressWarnings("unchecked")
+    private AiTextEditPlan parseAiTextEditPlan(String answer) {
+        if (answer == null || answer.isBlank()) {
+            throw new IllegalStateException("AI returned an empty HWP edit plan.");
+        }
+
+        String json = extractJsonObject(answer);
+        try {
+            Map<String, Object> parsed = objectMapper.readValue(json, Map.class);
+            String title = parsed.get("title") != null ? parsed.get("title").toString().strip() : "";
+            Object rawReplacements = parsed.get("replacements");
+            if (!(rawReplacements instanceof List<?> rawList)) {
+                throw new IllegalArgumentException("AI HWP edit plan must include replacements.");
+            }
+
+            List<Map<String, String>> replacements = new ArrayList<>();
+            for (Object item : rawList) {
+                if (!(item instanceof Map<?, ?> rawMap)) {
+                    continue;
+                }
+                Object findValue = rawMap.get("find");
+                Object replaceValue = rawMap.get("replace");
+                String find = findValue != null ? findValue.toString().strip() : "";
+                String replace = replaceValue != null ? replaceValue.toString() : "";
+                if (!find.isBlank() && !find.equals(replace)) {
+                    replacements.add(Map.of("find", find, "replace", replace));
+                }
+            }
+
+            if (replacements.isEmpty()) {
+                throw new IllegalStateException("AI returned no usable HWP replacements.");
+            }
+            return new AiTextEditPlan(title, replacements);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("AI returned an invalid HWP edit plan: " + answer, e);
+        }
+    }
+
+    private String extractJsonObject(String answer) {
+        String normalized = answer.replaceAll("(?s)<think>.*?</think>", "").strip();
+        int first = normalized.indexOf('{');
+        int last = normalized.lastIndexOf('}');
+        if (first < 0 || last <= first) {
+            throw new IllegalStateException("AI HWP edit plan did not contain a JSON object.");
+        }
+        return normalized.substring(first, last + 1);
+    }
+
+    private DocumentDto.Response saveAiEditedHwpDocument(
+            String title,
+            String prompt,
+            String aiPlan,
+            HwpEditSource source,
+            AiGeneratedFile generatedFile,
+            User user) {
+        return transactionTemplate.execute(status -> {
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+
+            DocumentEntity doc = DocumentEntity.builder()
+                    .title(title)
+                    .file(fileItem)
+                    .previewFile(fileItem)
+                    .owner(user)
+                    .status(DocumentStatus.DRAFT)
+                    .originalContent("""
+                            AI HWP edit based on source document: %s
+
+                            User request:
+                            %s
+                            """.formatted(source.title(), prompt))
+                    .aiSummary(aiPlan)
+                    .isAiGenerated(true)
+                    .build();
+
+            DocumentDto.Response res = DocumentDto.Response.fromEntity(documentRepository.save(doc));
+            res.setCanDelete(true);
+            return res;
+        });
+    }
+
+    private DocumentDto.Response saveAiEditedDocxDocument(
+            String title,
+            String prompt,
+            String aiPlan,
+            DocxEditSource source,
+            AiGeneratedFile generatedFile,
+            User user) {
+        return transactionTemplate.execute(status -> {
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            FileItem previewFile = createAiPreviewFile(title, """
+                    AI DOCX edit based on source document: %s
+
+                    User request:
+                    %s
+                    """.formatted(source.title(), prompt), user);
+
+            DocumentEntity doc = DocumentEntity.builder()
+                    .title(title)
+                    .file(fileItem)
+                    .previewFile(previewFile)
+                    .owner(user)
+                    .status(DocumentStatus.DRAFT)
+                    .originalContent("""
+                            AI DOCX edit based on source document: %s
+
+                            User request:
+                            %s
+                            """.formatted(source.title(), prompt))
+                    .aiSummary(aiPlan)
+                    .isAiGenerated(true)
+                    .build();
+
+            DocumentDto.Response res = DocumentDto.Response.fromEntity(documentRepository.save(doc));
+            res.setCanDelete(true);
+            return res;
+        });
     }
 
     private String buildAiPrompt(String prompt, Long sourceDocId, List<Long> attachedDocIds, AiOutputFormat format) {
@@ -415,9 +776,17 @@ public class DocumentService {
             String originalName,
             DocumentDto.HwpReplaceRequest request,
             String outputFormat) {
+        return callHwpBridge(originalBytes, originalName, request.getReplacements(), outputFormat);
+    }
+
+    private ResponseEntity<byte[]> callHwpBridge(
+            byte[] originalBytes,
+            String originalName,
+            Object replacements,
+            String outputFormat) {
         String replacementsJson;
         try {
-            replacementsJson = objectMapper.writeValueAsString(request.getReplacements());
+            replacementsJson = objectMapper.writeValueAsString(replacements);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Failed to serialize replacement list.", e);
         }
@@ -872,6 +1241,134 @@ public class DocumentService {
             addZipEntry(zip, "word/document.xml", buildDocxDocumentXml(content));
         }
         return out.toByteArray();
+    }
+
+    private byte[] applyDocxReplacements(byte[] originalBytes, List<Map<String, String>> replacements) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int applied = 0;
+
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(originalBytes))) {
+            applied += applyDocxParagraphReplacements(document.getParagraphs(), replacements);
+            applied += applyDocxTableReplacements(document.getTables(), replacements);
+
+            for (var header : document.getHeaderList()) {
+                applied += applyDocxParagraphReplacements(header.getParagraphs(), replacements);
+                applied += applyDocxTableReplacements(header.getTables(), replacements);
+            }
+            for (var footer : document.getFooterList()) {
+                applied += applyDocxParagraphReplacements(footer.getParagraphs(), replacements);
+                applied += applyDocxTableReplacements(footer.getTables(), replacements);
+            }
+
+            document.write(out);
+        }
+
+        if (applied == 0) {
+            throw new IllegalStateException("No DOCX replacement text matched the original document.");
+        }
+        return out.toByteArray();
+    }
+
+    private int applyDocxTableReplacements(List<XWPFTable> tables, List<Map<String, String>> replacements) {
+        int applied = 0;
+        for (XWPFTable table : tables) {
+            for (XWPFTableRow row : table.getRows()) {
+                for (XWPFTableCell cell : row.getTableCells()) {
+                    applied += applyDocxParagraphReplacements(cell.getParagraphs(), replacements);
+                    applied += applyDocxTableReplacements(cell.getTables(), replacements);
+                }
+            }
+        }
+        return applied;
+    }
+
+    private int applyDocxParagraphReplacements(List<XWPFParagraph> paragraphs, List<Map<String, String>> replacements) {
+        int applied = 0;
+        for (XWPFParagraph paragraph : paragraphs) {
+            applied += replaceDocxRunsInPlace(paragraph, replacements);
+            applied += replaceDocxParagraphFallback(paragraph, replacements);
+        }
+        return applied;
+    }
+
+    private int replaceDocxRunsInPlace(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
+        int applied = 0;
+        for (XWPFRun run : paragraph.getRuns()) {
+            String text = run.getText(0);
+            if (text == null || text.isEmpty()) {
+                continue;
+            }
+
+            String replaced = text;
+            for (Map<String, String> replacement : replacements) {
+                String find = replacement.getOrDefault("find", "");
+                if (find.isBlank()) {
+                    continue;
+                }
+                String replace = replacement.getOrDefault("replace", "");
+                if (replaced.contains(find)) {
+                    replaced = replaced.replace(find, replace);
+                    applied++;
+                }
+            }
+
+            if (!replaced.equals(text)) {
+                setRunText(run, replaced);
+            }
+        }
+        return applied;
+    }
+
+    private int replaceDocxParagraphFallback(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
+        String text = paragraph.getText();
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+
+        String replaced = text;
+        int applied = 0;
+        for (Map<String, String> replacement : replacements) {
+            String find = replacement.getOrDefault("find", "");
+            if (find.isBlank()) {
+                continue;
+            }
+            String replace = replacement.getOrDefault("replace", "");
+            if (replaced.contains(find)) {
+                replaced = replaced.replace(find, replace);
+                applied++;
+            }
+        }
+
+        if (applied == 0 || replaced.equals(text)) {
+            return 0;
+        }
+
+        var firstRunProperties = paragraph.getRuns().isEmpty()
+                ? null
+                : paragraph.getRuns().get(0).getCTR().getRPr();
+        var copiedProperties = firstRunProperties != null
+                ? (org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr) firstRunProperties.copy()
+                : null;
+
+        for (int i = paragraph.getRuns().size() - 1; i >= 0; i--) {
+            paragraph.removeRun(i);
+        }
+
+        XWPFRun run = paragraph.createRun();
+        if (copiedProperties != null) {
+            run.getCTR().setRPr(copiedProperties);
+        }
+        setRunText(run, replaced);
+        return applied;
+    }
+
+    private void setRunText(XWPFRun run, String text) {
+        String[] lines = text.split("\\R", -1);
+        run.setText(lines.length > 0 ? lines[0] : "", 0);
+        for (int i = 1; i < lines.length; i++) {
+            run.addBreak();
+            run.setText(lines[i]);
+        }
     }
 
     private String buildDocxDocumentXml(String content) {
@@ -2170,6 +2667,23 @@ public class DocumentService {
     }
 
     private record AiGeneratedFile(String fileName, String contentType, byte[] bytes) {}
+
+    private record HwpEditSource(
+            Long docId,
+            String title,
+            String originalContent,
+            Long fileId,
+            String originalName,
+            String contentType) {}
+
+    private record DocxEditSource(
+            Long docId,
+            String title,
+            String originalContent,
+            Long fileId,
+            String originalName) {}
+
+    private record AiTextEditPlan(String title, List<Map<String, String>> replacements) {}
 
     private record XlsxSheet(List<List<String>> rows, int columnCount) {}
 
