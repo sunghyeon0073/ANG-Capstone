@@ -5,6 +5,16 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
 
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:ap-northeast-3}
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID}
+        secret-key: ${AWS_SECRET_ACCESS_KEY}
+      s3:
+        bucket: ${S3_BUCKET:ang-s3-bucket-418295679042-ap-northeast-3-an}
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -65,9 +75,3 @@ logging:
     com.ang: debug
     org.hibernate.SQL: debug
     org.springframework.security: warn
-
-cloud:
-  aws:
-    region: ap-northeast-3
-    s3:
-      bucket: ang-s3-bucket-418295679042-ap-northeast-3-an
