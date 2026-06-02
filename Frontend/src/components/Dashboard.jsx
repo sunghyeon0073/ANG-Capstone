@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null)
   const [currentPage, setCurrentPage] = useState('home-dashboard')
   const [contactRequest, setContactRequest] = useState(null)
+  const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -114,6 +115,8 @@ export default function Dashboard() {
         onLogout={handleLogout}
         currentPage={currentPage}
         onPageChange={handlePageChange}
+        onOpenChatWindow={() => setIsChatWindowOpen(true)}
+        isChatWindowOpen={isChatWindowOpen}
       />
       <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document') ? 'full-width' : ''}`}>
         {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && (
@@ -126,6 +129,13 @@ export default function Dashboard() {
           {renderPage()}
         </div>
       </div>
+      {isChatWindowOpen && (
+        <Chat
+          user={user}
+          windowMode
+          onCloseChatWindow={() => setIsChatWindowOpen(false)}
+        />
+      )}
       <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} />
     </div>
   )
