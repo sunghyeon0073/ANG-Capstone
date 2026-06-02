@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -72,8 +73,14 @@ public class UserService {
         return "image/jpeg";
     }
 
+    private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of("image/jpeg", "image/png");
+
     @Transactional
     public UserDto uploadProfileImage(Integer userId, MultipartFile file) {
+        String ct = file.getContentType();
+        if (ct == null || !ALLOWED_IMAGE_TYPES.contains(ct.toLowerCase())) {
+            throw new CustomException(ErrorCode.INVALID_FILE_TYPE);
+        }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         if (user.getProfileImageUrl() != null) {
