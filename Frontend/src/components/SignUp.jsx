@@ -1,9 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signUp } from '../api/authApi'
-import { getScopes } from '../api/scopeApi'
+import { getSignupScopesTree } from '../api/scopeApi'
 
 const normalizeScopeType = (scope) => scope?.scopeType ?? scope?.type ?? ''
+const scopeTypeOrder = { COMPANY: 0, DEPARTMENT: 1, TEAM: 2 }
+
+const sortScopes = (left, right) => {
+  const typeDiff = (scopeTypeOrder[normalizeScopeType(left)] ?? 99) - (scopeTypeOrder[normalizeScopeType(right)] ?? 99)
+
+  if (typeDiff !== 0) return typeDiff
+
+  return (left.name || '').localeCompare(right.name || '', 'ko')
+}
+
+const formatScopeLabel = (scope) => {
+  const scopeType = normalizeScopeType(scope)
+
+  if (scopeType === 'TEAM') return `${scope.name} (팀)`
+  if (scopeType === 'DEPARTMENT') return `${scope.name} (부서)`
+
+  return scope.name
+}
+
+const flattenScopes = (scopes) => scopes.flatMap((scope) => [scope, ...flattenScopes(scope.children || [])])
 
 export default function SignUp() {
   const [formData, setFormData] = useState({
@@ -14,20 +34,20 @@ export default function SignUp() {
     password: '',
     passwordConfirm: ''
   })
-  const [scopes, setScopes] = useState([])
-  const [selectedDeptId, setSelectedDeptId] = useState('')
-  const [selectedTeamId, setSelectedTeamId] = useState('')
+  const [scopeTrees, setScopeTrees] = useState([])
+  const [selectedCompanyId, setSelectedCompanyId] = useState('')
+  const [selectedScopeId, setSelectedScopeId] = useState('')
   const [scopeLoading, setScopeLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
     const fetchScopes = async () => {
       try {
-        const res = await getScopes()
-        setScopes(Array.isArray(res.data?.data) ? res.data.data : [])
+        const res = await getSignupScopesTree()
+        setScopeTrees(Array.isArray(res.data?.data) ? res.data.data : [])
       } catch (error) {
-        console.error('부서 목록 로드 실패', error)
-        setScopes([])
+        console.error('조직 목록 로드 실패', error)
+        setScopeTrees([])
       } finally {
         setScopeLoading(false)
       }
@@ -36,27 +56,28 @@ export default function SignUp() {
     fetchScopes()
   }, [])
 
-  const departments = useMemo(() => {
-    return scopes
-      .filter((scope) => normalizeScopeType(scope) === 'DEPARTMENT')
-      .sort((left, right) => (left.name || '').localeCompare(right.name || '', 'ko'))
-  }, [scopes])
+  const companies = useMemo(() => {
+    return scopeTrees
+      .filter((scope) => normalizeScopeType(scope) === 'COMPANY')
+      .sort(sortScopes)
+  }, [scopeTrees])
 
-  const teams = useMemo(() => {
-    if (!selectedDeptId) return []
+  const selectedCompany = useMemo(
+    () => companies.find((company) => String(company.id) === selectedCompanyId) || null,
+    [companies, selectedCompanyId]
+  )
 
-    return scopes
-      .filter(
-        (scope) =>
-          normalizeScopeType(scope) === 'TEAM' &&
-          String(scope.parentId ?? '') === selectedDeptId
-      )
-      .sort((left, right) => (left.name || '').localeCompare(right.name || '', 'ko'))
-  }, [scopes, selectedDeptId])
+  const availableScopes = useMemo(() => {
+    if (!selectedCompany) return []
 
-  const selectedTeam = useMemo(
-    () => teams.find((team) => String(team.id) === selectedTeamId) || null,
-    [teams, selectedTeamId]
+    return flattenScopes(selectedCompany.children || [])
+      .filter((scope) => normalizeScopeType(scope) !== 'COMPANY')
+      .sort(sortScopes)
+  }, [selectedCompany])
+
+  const selectedScope = useMemo(
+    () => availableScopes.find((scope) => String(scope.id) === selectedScopeId) || null,
+    [availableScopes, selectedScopeId]
   )
 
   const handleChange = (e) => {
@@ -74,12 +95,12 @@ export default function SignUp() {
       return
     }
     
-    if (!selectedDeptId) {
+    if (!selectedCompanyId) {
       alert('학교를 선택해주세요.')
       return
     }
 
-    if (!selectedTeam) {
+    if (!selectedScope) {
       alert('부서를 선택해주세요.')
       return
     }
@@ -89,7 +110,7 @@ export default function SignUp() {
         name: formData.name,
         empNo: formData.employeeId,
         birthdate: formData.birthDate,
-        scopeCode: selectedTeam.scopeCode,
+        scopeId: Number(selectedScope.id),
         email: formData.email,
         password: formData.password,
         passwordConfirm: formData.passwordConfirm
@@ -188,18 +209,18 @@ export default function SignUp() {
               <label htmlFor="departmentSelect">학교</label>
               <select
                 id="departmentSelect"
-                value={selectedDeptId}
+                value={selectedCompanyId}
                 onChange={(e) => {
-                  setSelectedDeptId(e.target.value)
-                  setSelectedTeamId('')
+                  setSelectedCompanyId(e.target.value)
+                  setSelectedScopeId('')
                 }}
                 required
                 disabled={scopeLoading}
               >
                 <option value="">학교를 선택하세요</option>
-                {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
                   </option>
                 ))}
               </select>
@@ -209,15 +230,15 @@ export default function SignUp() {
               <label htmlFor="teamSelect">부서</label>
               <select
                 id="teamSelect"
-                value={selectedTeamId}
-                onChange={(e) => setSelectedTeamId(e.target.value)}
+                value={selectedScopeId}
+                onChange={(e) => setSelectedScopeId(e.target.value)}
                 required
-                disabled={!selectedDeptId || scopeLoading}
+                disabled={!selectedCompanyId || scopeLoading}
               >
-                <option value="">{selectedDeptId ? '부서를 선택하세요' : '학교를 먼저 선택하세요'}</option>
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}
+                <option value="">{selectedCompanyId ? '부서를 선택하세요' : '학교를 먼저 선택하세요'}</option>
+                {availableScopes.map((scope) => (
+                  <option key={scope.id} value={scope.id}>
+                    {formatScopeLabel(scope)}
                   </option>
                 ))}
               </select>
