@@ -214,7 +214,7 @@ def _save_with_hwp_once(input_path: Path, output_path: Path, output_format: str,
     pythoncom.CoInitialize()
     hwp = None
     try:
-        hwp = win32com.client.gencache.EnsureDispatch("HWPFrame.HwpObject")
+        hwp = win32com.client.Dispatch("HWPFrame.HwpObject")
         _register_file_path_checker(hwp)
 
         opened = hwp.Open(str(input_path), "HWP", "forceopen:true")
@@ -246,7 +246,7 @@ def _save_new_with_hwp_once(output_path: Path, output_format: str, before_save=N
     hwp = None
     try:
         print(f"[hwp/create] starting HWP automation output={output_path}", flush=True)
-        hwp = win32com.client.gencache.EnsureDispatch("HWPFrame.HwpObject")
+        hwp = win32com.client.Dispatch("HWPFrame.HwpObject")
         print("[hwp/create] HWP object created", flush=True)
         _register_file_path_checker(hwp)
 
