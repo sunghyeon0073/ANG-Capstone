@@ -15,6 +15,9 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     // 채팅방 메시지 내역 (최신순)
     Page<ChatMessage> findByRoomOrderBySentAtDesc(ChatRoom room, Pageable pageable);
 
+    // 채팅방 전체 메시지 삭제
+    void deleteByRoom(ChatRoom room);
+
     // 안읽음 메시지 수 (SYSTEM 제외, 내가 보낸 것 제외)
     @Query("""
         SELECT COUNT(m) FROM ChatMessage m

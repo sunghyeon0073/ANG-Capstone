@@ -25,6 +25,12 @@ public class ChatDto {
     @Data
     public static class InviteRequest {
         private List<String> empNos;
+        private String name;  // PRIVATE→GROUP 전환 시 그룹명 (없으면 멤버 이름 자동 조합)
+    }
+
+    @Data
+    public static class UpdateRoomNameRequest {
+        private String name;  // null 또는 빈 문자열이면 기본 이름으로 초기화
     }
 
     @Data
@@ -48,14 +54,18 @@ public class ChatDto {
         private List<MemberInfo> members;
 
         public static RoomSummary from(ChatRoom room, long unreadCount,
-                                       List<MemberInfo> members, User me) {
-            String displayName = room.getName();
-            if (room.getType().name().equals("PRIVATE")) {
+                                       List<MemberInfo> members, User me, String customName) {
+            String displayName;
+            if (customName != null && !customName.isBlank()) {
+                displayName = customName;
+            } else if (room.getType().name().equals("PRIVATE")) {
                 displayName = members.stream()
                         .filter(m -> !m.getEmpNo().equals(me.getEmpNo()))
                         .map(MemberInfo::getName)
                         .findFirst()
                         .orElse(room.getName());
+            } else {
+                displayName = room.getName();
             }
             return RoomSummary.builder()
                     .roomId(room.getId())

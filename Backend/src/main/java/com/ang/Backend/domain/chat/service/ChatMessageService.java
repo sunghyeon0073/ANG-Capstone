@@ -18,6 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ChatMessageService {
+    
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatRoomService chatRoomService;
@@ -62,6 +63,5 @@ public class ChatMessageService {
                 .findByRoomOrderBySentAtDesc(room, PageRequest.of(page, size))
                 .map(ChatDto.MessageResponse::from)
                 .toList();
-
     }
 }
