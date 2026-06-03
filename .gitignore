@@ -45,6 +45,9 @@ mariadb_data/
 ### Frontend ###
 Frontend/node_modules/
 
+# Root node_modules
+node_modules/
+
 ### AI ###
 AI/__pycache__/
 AI/.env

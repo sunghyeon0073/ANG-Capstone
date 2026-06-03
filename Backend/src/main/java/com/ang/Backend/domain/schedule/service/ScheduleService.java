@@ -6,7 +6,10 @@ import com.ang.Backend.domain.schedule.dto.ScheduleDto;
 import com.ang.Backend.domain.schedule.entity.Schedule;
 import com.ang.Backend.domain.schedule.repository.ScheduleRepository;
 import com.ang.Backend.domain.user.entity.User;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,12 +19,25 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
+    private final JdbcTemplate jdbcTemplate;
+
+    @PostConstruct
+    public void fixLegacyDbSchema() {
+        try {
+            // 과거 버전의 엔티티에서 생성된 NOT NULL 컬럼을 제거하거나 NULL 허용으로 변경
+            jdbcTemplate.execute("ALTER TABLE schedules MODIFY COLUMN schedule_date DATE NULL");
+            log.info("Successfully modified legacy schedule_date column to be nullable.");
+        } catch (Exception e) {
+            log.warn("Legacy schedule_date column might not exist or already modified. (ignore if safe) - {}", e.getMessage());
+        }
+    }
 
     public List<ScheduleDto.Response> getSchedules(User owner, LocalDate startDate, LocalDate endDate) {
         List<Schedule> schedules;
@@ -110,6 +126,10 @@ public class ScheduleService {
 
     @Transactional
     public ScheduleDto.Response create(ScheduleDto.SaveRequest request, User owner) {
+        if (request.getEndDate().isBefore(request.getStartDate())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT, "종료일은 시작일보다 앞설 수 없습니다.");
+        }
+
         Schedule schedule = Schedule.builder()
                 .owner(owner)
                 .startDate(request.getStartDate())
@@ -125,6 +145,10 @@ public class ScheduleService {
 
     @Transactional
     public ScheduleDto.Response update(Long scheduleId, ScheduleDto.SaveRequest request, User owner) {
+        if (request.getEndDate().isBefore(request.getStartDate())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT, "종료일은 시작일보다 앞설 수 없습니다.");
+        }
+
         Schedule schedule = getOwnedSchedule(scheduleId, owner);
         schedule.update(
                 request.getStartDate(),

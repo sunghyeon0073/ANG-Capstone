@@ -3,6 +3,7 @@ package com.ang.Backend.domain.mail.controller;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
+import com.ang.Backend.common.response.PageResult;
 import com.ang.Backend.domain.file.dto.FileDto;
 import com.ang.Backend.domain.mail.dto.MailDto;
 import com.ang.Backend.domain.mail.service.MailService;
@@ -51,26 +52,32 @@ public class MailController {
 
     // 수신함 목록
     @GetMapping("/inbox")
-    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getInbox(
+    public ResponseEntity<ApiResponse<PageResult<MailDto.MailSummary>>> getInbox(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(mailService.getInbox(user)));
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getInbox(user, page, size)));
     }
 
     // 발신함 목록
     @GetMapping("/sent")
-    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getSent(
+    public ResponseEntity<ApiResponse<PageResult<MailDto.MailSummary>>> getSent(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(mailService.getSent(user)));
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getSent(user, page, size)));
     }
 
     // 임시저장 목록
     @GetMapping("/draft")
-    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getDrafts(
+    public ResponseEntity<ApiResponse<PageResult<MailDto.MailSummary>>> getDrafts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(mailService.getDrafts(user)));
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getDrafts(user, page, size)));
     }
 
     // 메일 상세 조회 (수신자이면 읽음 자동 처리)
@@ -216,26 +223,32 @@ public class MailController {
 
     // 즐겨찾기 통합 목록
     @GetMapping("/favorites")
-    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getFavorites(
+    public ResponseEntity<ApiResponse<PageResult<MailDto.MailSummary>>> getFavorites(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(mailService.getFavorites(user)));
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getFavorites(user, page, size)));
     }
 
     // 수신 휴지통 목록
     @GetMapping("/trash/inbox")
-    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getInboxTrash(
+    public ResponseEntity<ApiResponse<PageResult<MailDto.MailSummary>>> getInboxTrash(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(mailService.getInboxTrash(user)));
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getInboxTrash(user, page, size)));
     }
 
     // 발신 휴지통 목록
     @GetMapping("/trash/sent")
-    public ResponseEntity<ApiResponse<List<MailDto.MailSummary>>> getSentTrash(
+    public ResponseEntity<ApiResponse<PageResult<MailDto.MailSummary>>> getSentTrash(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(mailService.getSentTrash(user)));
+        return ResponseEntity.ok(ApiResponse.ok(mailService.getSentTrash(user, page, size)));
     }
 
     // 수신 휴지통에서 복원

@@ -20,7 +20,7 @@ public class S3FileService {
 
     private final S3Client s3Client;
 
-    @Value("${cloud.aws.s3.bucket}")
+    @Value("${spring.cloud.aws.s3.bucket}")
     private String bucket;
 
     public String upload(MultipartFile file) {
@@ -55,7 +55,7 @@ public class S3FileService {
             );
 
             return key;
-        } catch (IOException e) {
+        } catch (IOException | software.amazon.awssdk.core.exception.SdkException e) {
             throw new com.ang.Backend.common.exception.CustomException(
                     com.ang.Backend.common.exception.ErrorCode.FILE_UPLOAD_FAILED);
         }

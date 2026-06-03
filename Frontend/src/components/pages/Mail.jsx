@@ -10,6 +10,7 @@ import {
   FiPaperclip,
   FiRefreshCcw,
   FiSearch,
+  FiSend,
   FiStar,
   FiTrash2,
   FiX,
@@ -28,6 +29,8 @@ import {
   getMailReadStatus,
   getSentMails,
   getSentTrashMails,
+  permanentDeleteInboxTrashMail,
+  permanentDeleteSentTrashMail,
   restoreInboxMail,
   restoreSentMail,
   saveMailDraft,
@@ -40,7 +43,7 @@ import {
 } from '../../api/mailApi'
 import { searchUsers } from '../../api/userApi'
 
-// 메일함 메뉴별 화면 제목과 빈 목록 안내 문구입니다.
+// 메일함 메뉴별 제목과 빈 목록 문구를 한 곳에서 관리합니다.
 const mailboxConfig = {
   'mail-compose': { title: '메일 작성', empty: '' },
   'mail-inbox': { title: '받은 메일함', empty: '받은 메일이 없습니다.' },
@@ -50,7 +53,7 @@ const mailboxConfig = {
   'mail-trash': { title: '휴지통', empty: '휴지통에 메일이 없습니다.' },
 }
 
-// API 응답과 날짜/파일 정보를 화면에서 사용할 형태로 바꾸는 공통 함수입니다.
+// 공통 유틸: API 응답, 날짜, 파일 크기처럼 여러 곳에서 쓰는 값을 화면용으로 바꿉니다.
 const getInitial = (name) => name?.charAt(0) || '?'
 const getResponseData = (response) => response?.data?.data ?? response?.data ?? []
 const normalizeMailboxId = (id) => (id === 'mail-draft' ? 'mail-drafts' : id)
@@ -103,12 +106,14 @@ const getReadStatusLabel = (mail) => {
   return `일부 읽음 (${readCount}/${mail.readStatuses.length})`
 }
 
+// 수신자 API 응답과 메일 상세의 수신자 정보를 작성 폼에서 쓰는 형태로 통일합니다.
 const mapRecipientSelection = (recipient) => ({
   empNo: recipient.empNo || recipient.recipientEmpNo,
   name: recipient.name || recipient.recipientName || recipient.empNo || recipient.recipientEmpNo,
 })
+const getMailKey = (mail) => `${mail.box}-${mail.id}`
 
-// 목록 API 응답을 왼쪽 메일 목록에서 표시할 기본 데이터로 변환합니다.
+// 목록 API 응답을 메일 리스트에서 쓰는 공통 데이터 구조로 변환합니다.
 const mapSummary = (mail, box, importantIds = []) => {
   const dateValue = mail.sentAt || mail.createdAt
   const { date, time } = formatDateTime(dateValue)
@@ -137,7 +142,7 @@ const mapSummary = (mail, box, importantIds = []) => {
   }
 }
 
-// 상세 응답의 본문, 수신자, 첨부파일을 선택된 메일 데이터에 합칩니다.
+// 상세 API 응답의 본문, 수신자, 첨부파일을 기존 목록 데이터에 합칩니다.
 const mergeDetail = (mail, detail) => {
   const dateValue = detail.sentAt || detail.createdAt
   const { date, time } = formatDateTime(dateValue)
@@ -168,22 +173,27 @@ const mergeDetail = (mail, detail) => {
 export default function Mail({ currentSubPage = 'mail-inbox', user, contactRequest, onContactRequestHandled, onSubPageChange }) {
   const organizationContact = contactRequest?.channel === 'mail' ? contactRequest.contact : null
   const organizationRecipient = organizationContact?.empNo || ''
-  // 현재 열린 메일함과 오른쪽 상세 화면에서 선택된 메일을 관리합니다.
+
+  // 화면 상태: 현재 메일함, 목록/상세 모드, 선택 메일, 검색어를 관리합니다.
   const [activeBox, setActiveBox] = useState(normalizeMailboxId(currentSubPage || 'mail-inbox'))
   const [viewMode, setViewMode] = useState('list')
   const [mails, setMails] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedMailKeys, setSelectedMailKeys] = useState([])
   const [query, setQuery] = useState('')
-  // 작성 폼의 제목, 내용, 수신자 정보를 관리합니다.
+
+  // 작성 폼 상태: 제목, 본문, 선택된 수신자를 관리합니다.
   const [draft, setDraft] = useState({ subject: '', body: '' })
   const [selectedRecipients, setSelectedRecipients] = useState(() => (
     organizationRecipient ? [mapRecipientSelection(organizationContact)] : []
   ))
-  // 새 첨부는 저장/발송 시 업로드하고, 기존 임시저장 첨부는 그대로 유지합니다.
+
+  // 첨부 상태: 새로 선택한 파일과 이미 서버에 저장된 임시메일 첨부를 나눠 관리합니다.
   const [draftAttachments, setDraftAttachments] = useState([])
   const [savedDraftAttachments, setSavedDraftAttachments] = useState([])
   const [draftMailId, setDraftMailId] = useState(null)
-  // 수신자 검색창과 검색 결과 드롭다운 상태입니다.
+
+  // 수신자 검색 상태: 검색어, 검색 결과, 드롭다운 열림 여부, 로딩/에러를 관리합니다.
   const [recipientQuery, setRecipientQuery] = useState('')
   const [recipientOptions, setRecipientOptions] = useState([])
   const [isRecipientListOpen, setIsRecipientListOpen] = useState(false)
@@ -203,14 +213,17 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     &&
     !selectedRecipients.some(recipient => recipient.empNo === option.empNo)
   ))
+  const selectedMailKeySet = useMemo(() => new Set(selectedMailKeys), [selectedMailKeys])
 
-  // 사이드바에서 선택한 메일 메뉴를 현재 화면에 반영합니다.
+  // 사이드바 메뉴가 바뀌면 현재 메일함을 바꾸고 목록 화면으로 초기화합니다.
   useEffect(() => {
     setActiveBox(normalizeMailboxId(currentSubPage || 'mail-inbox'))
     setViewMode('list')
     setSelectedId(null)
+    setSelectedMailKeys([])
   }, [currentSubPage])
 
+  // 조직도에서 "메일 보내기"로 넘어온 수신자가 있으면 한 번만 작성 폼에 반영합니다.
   useEffect(() => {
     if (!organizationRecipient) return undefined
 
@@ -218,7 +231,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     return () => window.clearTimeout(timerId)
   }, [organizationRecipient, onContactRequestHandled])
 
-  // 이름 또는 사번으로 검색한 사용자를 받는 사람 후보로 표시합니다.
+  // 수신자 검색: 이름 또는 사번으로 멤버를 조회해 드롭다운 후보에 표시합니다.
   const loadRecipientOptions = useCallback(async (keyword) => {
     const trimmedKeyword = keyword.trim()
 
@@ -241,6 +254,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }, [])
 
+  // 작성 화면에서 수신자 드롭다운이 열려 있을 때 검색어 변경을 약간 지연해 API 호출합니다.
   useEffect(() => {
     if (!isComposePage || !isRecipientListOpen) return
 
@@ -251,6 +265,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     return () => window.clearTimeout(timer)
   }, [isComposePage, isRecipientListOpen, recipientQuery, loadRecipientOptions])
 
+  // 수신자 드롭다운 바깥을 클릭하면 드롭다운을 닫습니다.
   useEffect(() => {
     if (!isRecipientListOpen) return
 
@@ -266,7 +281,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }, [isRecipientListOpen])
 
-  // 선택한 메일함에 맞는 목록을 조회하고 첫 메일을 기본 선택합니다.
+  // 메일 목록 조회: 현재 메일함에 맞는 API를 호출하고 최신순으로 정렬합니다.
   const loadMails = useCallback(async () => {
     setIsLoading(true)
     setErrorMessage('')
@@ -279,7 +294,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
         return
       }
 
-      // 받은/보낸/임시/중요/휴지통 메뉴별 API를 선택합니다.
+      // 받은/보낸/임시/중요/휴지통마다 사용하는 API가 달라서 여기서 분기합니다.
       const loaders = currentBox === 'mail-sent'
         ? [getSentMails().then(res => getResponseData(res).map(mail => mapSummary(mail, 'sent')))]
         : currentBox === 'mail-drafts'
@@ -300,7 +315,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       const filtered = await Promise.all(loaded.map(async mail => {
         let enrichedMail = mail
 
-        // 받은 메일 상세 조회는 읽음 처리되므로, 이미 읽은 메일만 목록 미리보기를 채웁니다.
+        // 받은 메일 상세 조회는 읽음 처리되므로, 안읽은 받은메일은 목록 미리보기를 강제로 불러오지 않습니다.
         const canLoadPreviewWithoutChangingReadState = ['sent', 'draft'].includes(mail.box)
           || (mail.box === 'inbox' && !mail.unread)
 
@@ -327,10 +342,12 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       const sortedMails = sortMailsLatestFirst(filtered)
       setMails(sortedMails)
       setSelectedId(null)
+      setSelectedMailKeys([])
     } catch (error) {
       console.error('메일 목록 로드 실패', error)
       setMails([])
       setSelectedId(null)
+      setSelectedMailKeys([])
       setErrorMessage('메일 목록을 불러오지 못했습니다.')
     } finally {
       setIsLoading(false)
@@ -341,7 +358,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     loadMails()
   }, [loadMails])
 
-  // 입력한 검색어로 현재 목록의 제목, 보낸 사람, 본문을 필터링합니다.
+  // 목록 검색: 제목, 보낸 사람, 받는 사람, 미리보기, 본문을 기준으로 필터링합니다.
   const visibleMails = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
 
@@ -354,12 +371,38 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     })
   }, [mails, query])
 
-  // 선택된 메일이 없으면 목록의 첫 메일을 상세 화면에 보여줍니다.
+  const selectedMails = useMemo(() => (
+    visibleMails.filter(mail => selectedMailKeySet.has(getMailKey(mail)))
+  ), [visibleMails, selectedMailKeySet])
+  const hasSelectedMails = selectedMails.length > 0
+  const canBulkMoveToTrash = hasSelectedMails && currentBox !== 'mail-trash'
+  const canBulkToggleImportant = selectedMails.some(mail => mail.box !== 'draft' && currentBox !== 'mail-trash')
+  const canBulkCancelSent = selectedMails.some(mail => mail.box === 'sent' && mail.status === 'SENT' && currentBox !== 'mail-trash')
+  const canBulkRestore = hasSelectedMails && currentBox === 'mail-trash'
+  const canBulkPermanentDelete = hasSelectedMails && currentBox === 'mail-trash'
+
+  // 현재 선택된 메일을 계산합니다. 선택된 메일이 없으면 상세 화면에서 안내만 보여줍니다.
   const selectedMail = useMemo(() => {
     return visibleMails.find(mail => mail.id === selectedId) || null
   }, [visibleMails, selectedId])
 
-  // 메일 선택 시 아직 가져오지 않은 본문과 첨부파일 상세를 조회합니다.
+  const toggleMailSelection = (event, mail) => {
+    event.stopPropagation()
+    const mailKey = getMailKey(mail)
+
+    setSelectedMailKeys(prev => (
+      event.target.checked
+        ? [...new Set([...prev, mailKey])]
+        : prev.filter(key => key !== mailKey)
+    ))
+  }
+
+  const removeSelectedKeys = (keysToRemove) => {
+    const removeSet = new Set(keysToRemove)
+    setSelectedMailKeys(prev => prev.filter(key => !removeSet.has(key)))
+  }
+
+  // 메일 상세 조회: 목록에는 없는 본문, 수신자, 첨부파일 정보를 필요할 때 불러옵니다.
   const selectMail = async (id, refreshDetail = false) => {
     setSelectedId(id)
     setErrorMessage('')
@@ -396,7 +439,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }, [viewMode, selectedMail?.id, selectedMail?.isDetailLoaded])
 
-  // 별표 클릭 시 받은/보낸 메일에 맞는 중요 메일 상태를 저장합니다.
+  // 중요 표시: 받은메일과 보낸메일이 서로 다른 API를 쓰므로 메일 종류에 따라 분기합니다.
   const toggleImportant = async (id) => {
     const target = mails.find(mail => mail.id === id)
     if (!target || target.box === 'draft') return
@@ -425,7 +468,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
-  // 임시저장 메일을 이어 쓸 때 기존 내용과 첨부파일을 작성 화면에 불러옵니다.
+  // 임시메일 이어쓰기: 기존 제목/본문/수신자/첨부를 작성 화면에 다시 채웁니다.
   const openDraft = (mail) => {
     setDraft({
       subject: mail.subject === '(제목 없음)' ? '' : mail.subject,
@@ -444,7 +487,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     onSubPageChange?.('mail-compose')
   }
 
-  // 선택한 수신자는 칩으로 표시하고, 발송 요청에는 사번을 전달합니다.
+  // 수신자 선택/삭제: 화면에는 이름 칩을 보여주고, 요청에는 empNo만 전달합니다.
   const addRecipient = (recipient) => {
     setSelectedRecipients(prev => (
       prev.some(item => item.empNo === recipient.empNo)
@@ -461,7 +504,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     setSelectedRecipients(prev => prev.filter(recipient => recipient.empNo !== empNo))
   }
 
-  // 사용자가 선택한 새 파일을 중복 없이 작성 중 첨부 목록에 추가합니다.
+  // 파일 선택: 브라우저에서 고른 새 파일을 중복 없이 작성 중 첨부 목록에 추가합니다.
   const handleAttachmentSelect = (event) => {
     const selectedFiles = Array.from(event.target.files || [])
     if (selectedFiles.length === 0) return
@@ -479,7 +522,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     setDraftAttachments(prev => prev.filter((_, fileIndex) => fileIndex !== index))
   }
 
-  // 메일이 먼저 저장되어 생성된 mailId에 새 첨부파일을 연결합니다.
+  // 파일 업로드: 백엔드는 mailId가 있어야 파일을 연결하므로 저장된 메일 ID에 새 파일을 업로드합니다.
   const uploadAttachments = async (mailId) => {
     if (draftAttachments.length === 0) {
       setAttachmentMessage('')
@@ -509,7 +552,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     return failedUploads.length === 0
   }
 
-  // 첨부파일을 blob으로 받아 브라우저 다운로드를 시작합니다.
+  // 파일 다운로드: attachmentId로 파일 blob을 받아 브라우저 다운로드를 시작합니다.
   const downloadAttachment = async (file) => {
     setErrorMessage('')
 
@@ -529,7 +572,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
-  // 메일 종류에 맞는 삭제 API를 호출해 목록에서 제거합니다.
+  // 삭제 처리: 메일 종류에 맞는 삭제 API를 호출하고 목록에서 제거합니다.
   const moveToTrash = async (id) => {
     const target = mails.find(mail => mail.id === id)
     if (!target) return
@@ -553,6 +596,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
+  // 휴지통 복원: 받은메일/보낸메일 휴지통 API가 달라서 box 기준으로 분기합니다.
   const restoreMail = async (id) => {
     const target = mails.find(mail => mail.id === id)
     if (!target) return
@@ -575,7 +619,150 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
-  // 새 작성은 임시저장하고, 이어 쓰는 임시메일은 기존 mailId로 수정 저장합니다.
+  // 휴지통 완전삭제: 복원할 수 없는 삭제 API를 호출합니다.
+  const permanentlyDeleteMail = async (id) => {
+    const target = mails.find(mail => mail.id === id)
+    if (!target || currentBox !== 'mail-trash') return
+    if (!window.confirm('이 메일을 완전히 삭제하시겠습니까? 삭제 후에는 복원할 수 없습니다.')) return
+
+    setErrorMessage('')
+
+    try {
+      if (target.box === 'sent') {
+        await permanentDeleteSentTrashMail(id)
+      } else {
+        await permanentDeleteInboxTrashMail(id)
+      }
+
+      setMails(prev => prev.filter(mail => mail.id !== id))
+      setSelectedId(null)
+      setViewMode('list')
+    } catch (error) {
+      console.error('메일 완전 삭제 실패', error)
+      setErrorMessage('메일을 완전히 삭제하지 못했습니다.')
+    }
+  }
+
+  // 체크박스로 선택한 메일들을 현재 보관함에 맞는 일괄 액션으로 처리합니다.
+  const moveSelectedToTrash = async () => {
+    const targets = selectedMails.filter(mail => currentBox !== 'mail-trash')
+    if (targets.length === 0) return
+
+    setErrorMessage('')
+
+    try {
+      await Promise.all(targets.map(mail => {
+        if (mail.box === 'draft') return deleteDraftMail(mail.id)
+        if (mail.box === 'sent') return deleteSentMail(mail.id)
+        return deleteInboxMail(mail.id)
+      }))
+
+      const removedKeys = targets.map(getMailKey)
+      setMails(prev => prev.filter(mail => !removedKeys.includes(getMailKey(mail))))
+      removeSelectedKeys(removedKeys)
+      setSelectedId(prev => (targets.some(mail => mail.id === prev) ? null : prev))
+    } catch (error) {
+      console.error('선택 메일 삭제 실패', error)
+      setErrorMessage('선택한 메일을 삭제하지 못했습니다.')
+    }
+  }
+
+  const toggleSelectedImportant = async () => {
+    const targets = selectedMails.filter(mail => mail.box !== 'draft' && currentBox !== 'mail-trash')
+    if (targets.length === 0) return
+
+    setErrorMessage('')
+
+    try {
+      const results = await Promise.all(targets.map(async mail => {
+        const response = mail.box === 'sent'
+          ? await toggleSentFavorite(mail.id)
+          : await toggleInboxFavorite(mail.id)
+
+        return [getMailKey(mail), Boolean(getResponseData(response))]
+      }))
+      const nextImportantByKey = new Map(results)
+
+      setMails(prev => {
+        const updated = prev.map(mail => (
+          nextImportantByKey.has(getMailKey(mail))
+            ? { ...mail, important: nextImportantByKey.get(getMailKey(mail)) }
+            : mail
+        ))
+
+        return currentBox === 'mail-important'
+          ? updated.filter(mail => !nextImportantByKey.has(getMailKey(mail)) || mail.important)
+          : updated
+      })
+      removeSelectedKeys(targets.map(getMailKey))
+    } catch (error) {
+      console.error('선택 메일 중요 표시 실패', error)
+      setErrorMessage('선택한 메일의 중요 표시를 변경하지 못했습니다.')
+    }
+  }
+
+  const cancelSelectedSentMails = async () => {
+    const targets = selectedMails.filter(mail => mail.box === 'sent' && mail.status === 'SENT' && currentBox !== 'mail-trash')
+    if (targets.length === 0) return
+
+    setErrorMessage('')
+
+    try {
+      await Promise.all(targets.map(mail => cancelMail(mail.id)))
+      setSelectedMailKeys([])
+      await loadMails()
+    } catch (error) {
+      console.error('선택 메일 발송 취소 실패', error)
+      setErrorMessage('선택한 메일을 발송 취소하지 못했습니다. 이미 읽은 수신자가 있으면 취소할 수 없습니다.')
+    }
+  }
+
+  const restoreSelectedMails = async () => {
+    const targets = selectedMails.filter(() => currentBox === 'mail-trash')
+    if (targets.length === 0) return
+
+    setErrorMessage('')
+
+    try {
+      await Promise.all(targets.map(mail => (
+        mail.box === 'sent' ? restoreSentMail(mail.id) : restoreInboxMail(mail.id)
+      )))
+
+      const restoredKeys = targets.map(getMailKey)
+      setMails(prev => prev.filter(mail => !restoredKeys.includes(getMailKey(mail))))
+      removeSelectedKeys(restoredKeys)
+      setSelectedId(prev => (targets.some(mail => mail.id === prev) ? null : prev))
+    } catch (error) {
+      console.error('선택 메일 복원 실패', error)
+      setErrorMessage('선택한 메일을 복원하지 못했습니다.')
+    }
+  }
+
+  const permanentlyDeleteSelectedMails = async () => {
+    const targets = selectedMails.filter(() => currentBox === 'mail-trash')
+    if (targets.length === 0) return
+    if (!window.confirm('선택한 메일을 완전히 삭제하시겠습니까? 삭제 후에는 복원할 수 없습니다.')) return
+
+    setErrorMessage('')
+
+    try {
+      await Promise.all(targets.map(mail => (
+        mail.box === 'sent'
+          ? permanentDeleteSentTrashMail(mail.id)
+          : permanentDeleteInboxTrashMail(mail.id)
+      )))
+
+      const removedKeys = targets.map(getMailKey)
+      setMails(prev => prev.filter(mail => !removedKeys.includes(getMailKey(mail))))
+      removeSelectedKeys(removedKeys)
+      setSelectedId(prev => (targets.some(mail => mail.id === prev) ? null : prev))
+    } catch (error) {
+      console.error('선택 메일 완전 삭제 실패', error)
+      setErrorMessage('선택한 메일을 완전히 삭제하지 못했습니다.')
+    }
+  }
+
+  // 임시저장: 새 메일은 draft로 만들고, 기존 임시메일은 같은 mailId로 수정 저장합니다.
   const saveDraft = async () => {
     const recipientEmpNos = selectedRecipients.map(recipient => recipient.empNo)
 
@@ -619,7 +806,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
-  // 작성 화면에서 보낸 메일을 생성한 뒤, 응답받은 mailId에 새 첨부파일을 연결합니다.
+  // 보내기: 첨부가 없으면 바로 발송하고, 첨부가 있으면 draft 생성 -> 파일 업로드 -> 발송 순서로 처리합니다.
   const submitDraft = async (event) => {
     event.preventDefault()
 
@@ -643,13 +830,21 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       if (draftMailId) {
         const response = await updateMailDraft(draftMailId, payload)
         mailId = getResponseData(response)
+      } else if (draftAttachments.length > 0) {
+        const response = await saveMailDraft(payload)
+        mailId = getResponseData(response)
+        setDraftMailId(mailId)
       } else {
         const response = await sendMail(payload)
         mailId = getResponseData(response)
       }
 
-      await uploadAttachments(mailId)
-      if (draftMailId) {
+      const shouldSendSavedDraft = Boolean(draftMailId) || draftAttachments.length > 0
+      const isUploadSuccessful = await uploadAttachments(mailId)
+
+      if (!isUploadSuccessful) return
+
+      if (shouldSendSavedDraft) {
         await sendMailDraft(mailId)
       }
 
@@ -674,7 +869,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
-  // 아직 읽은 수신자가 없는 보낸 메일은 발송을 취소할 수 있습니다.
+  // 발송 취소: 아직 읽은 수신자가 없는 보낸 메일만 취소할 수 있습니다.
   const cancelSentMail = async (id) => {
     setErrorMessage('')
 
@@ -688,6 +883,27 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
+  // 임시보관함 바로 보내기: 저장된 draft를 수정 없이 발송합니다.
+  const sendSavedDraft = async (id) => {
+    setErrorMessage('')
+    setIsSubmitting(true)
+
+    try {
+      await sendMailDraft(id)
+      await loadMails()
+      setSelectedId(null)
+      setActiveBox('mail-sent')
+      setViewMode('list')
+      onSubPageChange?.('mail-sent')
+    } catch (error) {
+      console.error('임시메일 발송 실패', error)
+      setErrorMessage('임시저장 메일을 발송하지 못했습니다. 수신자와 저장 내용을 확인해주세요.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // 화면 렌더링: 작성 화면과 목록/상세 화면을 현재 메일함 상태에 맞춰 나눠 보여줍니다.
   return (
     <div className="mail-page">
       <div className="mail-header">
@@ -700,6 +916,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       {errorMessage && <div className="mail-error">{errorMessage}</div>}
       {attachmentMessage && <div className="mail-error">{attachmentMessage}</div>}
 
+      {/* 메일 작성 화면 */}
       {isComposePage ? (
         <form className="mail-compose-panel" onSubmit={submitDraft}>
           <label className="mail-compose-row mail-recipient-row">
@@ -835,28 +1052,59 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
         </form>
       ) : (
         <>
-          {viewMode === 'list' && (
-            <div className="mail-toolbar">
-            <div className="mail-search">
-              <FiSearch />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="메일 검색"
-              />
-            </div>
-            <button className="mail-icon-btn" aria-label="새로고침" onClick={loadMails}>
-              <FiRefreshCcw />
-            </button>
-            </div>
-          )}
-
           <div className={`mail-shell mail-${viewMode}-view`}>
             {viewMode === 'list' && (
+              // 메일 목록: 제목, 미리보기, 읽음 상태, 중요 표시, 날짜를 한 줄로 표시합니다.
               <section className="mail-list-panel">
               <div className="mail-list-title">
-                <h2>{config.title}</h2>
-                <span>{visibleMails.length}</span>
+                <div className="mail-list-heading">
+                  <h2>{config.title}</h2>
+                  <span>{visibleMails.length}</span>
+                </div>
+                <div className="mail-list-controls">
+                  {hasSelectedMails && (
+                    <div className="mail-selection-actions" aria-label="선택 메일 작업">
+                      <span>{selectedMails.length}개 선택</span>
+                      {canBulkMoveToTrash && (
+                        <button type="button" onClick={moveSelectedToTrash} aria-label="선택 메일 삭제" title="삭제">
+                          <FiTrash2 />
+                        </button>
+                      )}
+                      {canBulkToggleImportant && (
+                        <button type="button" onClick={toggleSelectedImportant} aria-label="선택 메일 중요 표시" title="중요 표시">
+                          <FiStar />
+                        </button>
+                      )}
+                      {canBulkCancelSent && (
+                        <button type="button" onClick={cancelSelectedSentMails} aria-label="선택 메일 발송취소" title="발송취소">
+                          <FiX />
+                        </button>
+                      )}
+                      {canBulkRestore && (
+                        <button type="button" onClick={restoreSelectedMails} aria-label="선택 메일 복원" title="복원">
+                          <FiArchive />
+                        </button>
+                      )}
+                      {canBulkPermanentDelete && (
+                        <button type="button" onClick={permanentlyDeleteSelectedMails} aria-label="선택 메일 완전 삭제" title="완전 삭제">
+                          <FiTrash2 />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="mail-search">
+                    <FiSearch />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="메일 검색"
+                    />
+                  </div>
+                  <span className="mail-list-total">전체 {mails.length}개</span>
+                  <button className="mail-icon-btn" aria-label="새로고침" onClick={loadMails}>
+                    <FiRefreshCcw />
+                  </button>
+                </div>
               </div>
 
               {isLoading ? (
@@ -868,7 +1116,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
                   {visibleMails.map(mail => (
                     <div
                       key={`${mail.box}-${mail.id}`}
-                      className={`mail-list-item ${mail.unread ? 'unread' : ''}`}
+                      className={`mail-list-item ${mail.unread ? 'unread' : ''} ${selectedMailKeySet.has(getMailKey(mail)) ? 'selected' : ''}`}
                       role="button"
                       tabIndex={0}
                       onClick={() => openMailDetail(mail.id)}
@@ -880,6 +1128,14 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
                         }
                       }}
                     >
+                      <label className="mail-list-check" onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedMailKeySet.has(getMailKey(mail))}
+                          onChange={(event) => toggleMailSelection(event, mail)}
+                          aria-label={`${mail.subject} 선택`}
+                        />
+                      </label>
                       <button
                         type="button"
                         className={`mail-list-star ${mail.important ? 'active' : ''}`}
@@ -923,6 +1179,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
             )}
 
             {viewMode === 'detail' && (
+              // 메일 상세: 본문, 첨부파일, 현재 메일함에 맞는 액션 버튼을 표시합니다.
               <section className="mail-detail-panel">
                 <button type="button" className="mail-back-btn" onClick={returnToMailList}>
                   <FiArrowLeft />
@@ -946,43 +1203,64 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
                       </div>
                     </div>
                     <div className="mail-actions">
-                      <button
-                        onClick={() => toggleImportant(selectedMail.id)}
-                        aria-label="중요 표시"
-                        title={selectedMail.important ? '중요 해제' : '중요 표시'}
-                      >
-                        <FiStar className={selectedMail.important ? 'mail-star-active' : ''} />
-                      </button>
                       {currentBox === 'mail-trash' ? (
-                        <button onClick={() => restoreMail(selectedMail.id)} aria-label="복원" title="복원">
-                          <FiArchive />
-                        </button>
+                        <>
+                          <button onClick={() => restoreMail(selectedMail.id)} aria-label="복원" title="복원">
+                            <FiArchive />
+                          </button>
+                          <button onClick={() => permanentlyDeleteMail(selectedMail.id)} aria-label="완전 삭제" title="완전 삭제">
+                            <FiTrash2 />
+                          </button>
+                        </>
+                      ) : selectedMail.box === 'draft' ? (
+                        <>
+                          <button onClick={() => moveToTrash(selectedMail.id)} aria-label="삭제" title="삭제">
+                            <FiTrash2 />
+                          </button>
+                          <button onClick={() => openDraft(selectedMail)} aria-label="이어쓰기" title="이어쓰기">
+                            <FiEdit3 />
+                          </button>
+                          <button
+                            onClick={() => sendSavedDraft(selectedMail.id)}
+                            aria-label="바로 보내기"
+                            title="바로 보내기"
+                            disabled={isSubmitting}
+                          >
+                            <FiSend />
+                          </button>
+                        </>
                       ) : (
-                        <button onClick={() => moveToTrash(selectedMail.id)} aria-label="삭제" title="삭제">
-                          <FiTrash2 />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => toggleImportant(selectedMail.id)}
+                            aria-label="중요 표시"
+                            title={selectedMail.important ? '중요 해제' : '중요 표시'}
+                          >
+                            <FiStar className={selectedMail.important ? 'mail-star-active' : ''} />
+                          </button>
+                          <button onClick={() => moveToTrash(selectedMail.id)} aria-label="삭제" title="삭제">
+                            <FiTrash2 />
+                          </button>
+                          {selectedMail.box === 'sent' && selectedMail.status === 'SENT' && (
+                            <button onClick={() => cancelSentMail(selectedMail.id)} aria-label="발송취소" title="발송취소">
+                              <FiX />
+                            </button>
+                          )}
+                          {selectedMail.box !== 'sent' && (
+                            <button
+                              aria-label="답장"
+                              title="답장"
+                              onClick={() => {
+                                setActiveBox('mail-compose')
+                                setViewMode('list')
+                                onSubPageChange?.('mail-compose')
+                              }}
+                            >
+                              <FiCornerUpLeft />
+                            </button>
+                          )}
+                        </>
                       )}
-                      {selectedMail.box === 'draft' && (
-                        <button onClick={() => openDraft(selectedMail)} aria-label="임시저장 이어쓰기" title="임시저장 이어쓰기">
-                          <FiEdit3 />
-                        </button>
-                      )}
-                      {selectedMail.box === 'sent' && selectedMail.status === 'SENT' && (
-                        <button onClick={() => cancelSentMail(selectedMail.id)} aria-label="발송취소" title="발송취소">
-                          <FiX />
-                        </button>
-                      )}
-                      <button
-                        aria-label="답장"
-                        title="답장"
-                        onClick={() => {
-                          setActiveBox('mail-compose')
-                          setViewMode('list')
-                          onSubPageChange?.('mail-compose')
-                        }}
-                      >
-                        <FiCornerUpLeft />
-                      </button>
                     </div>
                   </div>
 

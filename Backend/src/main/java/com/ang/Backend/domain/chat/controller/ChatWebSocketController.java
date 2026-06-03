@@ -1,9 +1,13 @@
 package com.ang.Backend.domain.chat.controller;
 
+import com.ang.Backend.common.enums.NotificationType;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.chat.dto.ChatDto;
+import com.ang.Backend.domain.chat.repository.ChatMemberRepository;
+import com.ang.Backend.domain.chat.repository.ChatRoomRepository;
 import com.ang.Backend.domain.chat.service.ChatMessageService;
+import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +24,9 @@ public class ChatWebSocketController {
     private final ChatMessageService chatMessageService;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ChatMemberRepository chatMemberRepository;
+    private final NotificationService notificationService;
 
     // 메시지 발송: 클라이언트 → /app/chat.send
     @MessageMapping("/chat.send")
@@ -28,6 +35,20 @@ public class ChatWebSocketController {
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
         ChatDto.MessageResponse response = chatMessageService.save(req, sender);
         messagingTemplate.convertAndSend("/topic/room." + req.getRoomId(), response);
+
+        chatRoomRepository.findById(req.getRoomId()).ifPresent(room -> {
+            String title = room.getType() == com.ang.Backend.common.enums.ChatRoomType.PRIVATE
+                    ? sender.getName() + "님이 메시지를 보냈습니다."
+                    : room.getName() + "에 알림이 있습니다.";
+            chatMemberRepository.findByRoomAndLeftAtIsNull(room).stream()
+                    .filter(m -> !m.getUser().getUserId().equals(sender.getUserId()))
+                    .forEach(m -> notificationService.send(
+                            m.getUser(), NotificationType.CHAT,
+                            title,
+                            req.getContent(),
+                            req.getRoomId()
+                    ));
+        });
     }
 
     // 읽음 처리: 클라이언트 → /app/chat.read  (payload: roomId as String)

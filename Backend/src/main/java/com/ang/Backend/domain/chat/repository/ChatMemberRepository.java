@@ -16,6 +16,9 @@ public interface ChatMemberRepository extends JpaRepository<ChatMember, Long> {
     // 특정 멤버 조회 (탈퇴 여부 무관)
     Optional<ChatMember> findByRoomAndUser(ChatRoom room, User user);
 
+    // 채팅방 전체 멤버 조회 (퇴장 포함)
+    List<ChatMember> findByRoom(ChatRoom room);
+
     // 내가 속한 활성 채팅방 멤버 목록
     List<ChatMember> findByUserAndLeftAtIsNull(User user);
 }

@@ -1,7 +1,9 @@
 package com.ang.Backend.domain.mail.service;
 
 import com.ang.Backend.common.enums.MailStatus;
+import com.ang.Backend.common.enums.NotificationType;
 import com.ang.Backend.common.enums.OwnerType;
+import com.ang.Backend.common.response.PageResult;
 import com.ang.Backend.domain.file.dto.FileDto;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
@@ -15,18 +17,21 @@ import com.ang.Backend.domain.mail.entity.MailRecipient;
 import com.ang.Backend.domain.mail.repository.MailAttachmentRepository;
 import com.ang.Backend.domain.mail.repository.MailRecipientRepository;
 import com.ang.Backend.domain.mail.repository.MailRepository;
+import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -45,14 +50,7 @@ public class MailService {
     private final S3FileService s3FileService;
     private final FileItemRepository fileItemRepository;
     private final UserMembershipRepository userMembershipRepository;
-
-    // 서버 시작 시 is_favorite / is_sender_favorite 컬럼의 기존 NULL 값을 0으로 교정
-    @EventListener(ApplicationReadyEvent.class)
-    @Transactional
-    public void fixNullFavoriteColumns() {
-        mailRepository.fixNullSenderFavorite();
-        mailRecipientRepository.fixNullFavorite();
-    }
+    private final NotificationService notificationService;
 
     // 메일 발송: Mail(SENT) + MailRecipient N개 생성 (새 파일 업로드 + 기존 uploads/ 파일 첨부 지원)
     @Transactional
@@ -69,46 +67,61 @@ public class MailService {
                 .build();
         mailRepository.save(mail);
 
-        if (hasAttachments) {
-            // 새 파일 업로드
-            for (MultipartFile file : files) {
-                String fileUrl = s3FileService.upload(file, "mail/" + mail.getMailId());
-                mailAttachmentRepository.save(MailAttachment.builder()
-                        .mail(mail)
-                        .fileUrl(fileUrl)
-                        .fileName(file.getOriginalFilename())
-                        .build());
-            }
-            // 기존 uploads/ 파일 참조
-            if (!fileIds.isEmpty()) {
-                Set<Integer> userScopeIds = userMembershipRepository.findByUser(sender)
-                        .stream()
-                        .map(m -> m.getScope().getScopeId())
-                        .collect(Collectors.toSet());
-                for (Long fileId : fileIds) {
-                    FileItem item = fileItemRepository.findById(fileId)
-                            .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
-                    if (item.getOwnerType() == OwnerType.USER) {
-                        if (item.getUploader() == null || !item.getUploader().getUserId().equals(sender.getUserId())) {
-                            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
-                        }
-                    } else if (item.getOwnerType() == OwnerType.SCOPE) {
-                        if (!userScopeIds.contains(item.getOwnerId())) {
-                            throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
-                        }
-                    }
+        List<String> uploadedKeys = new ArrayList<>();
+        try {
+            if (hasAttachments) {
+                // 새 파일 업로드
+                for (MultipartFile file : files) {
+                    String fileUrl = s3FileService.upload(file, "mail/" + mail.getMailId());
+                    uploadedKeys.add(fileUrl);
                     mailAttachmentRepository.save(MailAttachment.builder()
                             .mail(mail)
-                            .fileUrl(item.getFilePath())
-                            .fileName(item.getOriginalFileName())
+                            .fileUrl(fileUrl)
+                            .fileName(file.getOriginalFilename())
                             .build());
                 }
+                // 기존 uploads/ 파일 참조
+                if (!fileIds.isEmpty()) {
+                    Set<Integer> userScopeIds = userMembershipRepository.findByUser(sender)
+                            .stream()
+                            .map(m -> m.getScope().getScopeId())
+                            .collect(Collectors.toSet());
+                    for (Long fileId : fileIds) {
+                        FileItem item = fileItemRepository.findById(fileId)
+                                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+                        if (item.getOwnerType() == OwnerType.USER) {
+                            if (item.getUploader() == null || !item.getUploader().getUserId().equals(sender.getUserId())) {
+                                throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+                            }
+                        } else if (item.getOwnerType() == OwnerType.SCOPE) {
+                            if (!userScopeIds.contains(item.getOwnerId())) {
+                                throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
+                            }
+                        }
+                        mailAttachmentRepository.save(MailAttachment.builder()
+                                .mail(mail)
+                                .fileUrl(item.getFilePath())
+                                .fileName(item.getOriginalFileName())
+                                .build());
+                    }
+                }
             }
-        }
 
-        saveRecipients(mail, req.getRecipientEmpNos());
-        log.info("Mail sent by {} to {} recipients", sender.getEmpNo(), req.getRecipientEmpNos().size());
-        return mail.getMailId();
+            saveRecipients(mail, req.getRecipientEmpNos());
+            req.getRecipientEmpNos().forEach(empNo ->
+                    userRepository.findByEmpNo(empNo).ifPresent(recipient ->
+                            notificationService.send(recipient, NotificationType.MAIL,
+                                    sender.getName() + "님이 메일을 발신했습니다.", mail.getTitle(), mail.getMailId())
+                    )
+            );
+            log.info("Mail sent by {} to {} recipients", sender.getEmpNo(), req.getRecipientEmpNos().size());
+            return mail.getMailId();
+        } catch (Exception e) {
+            uploadedKeys.forEach(key -> {
+                try { s3FileService.delete(key); } catch (Exception ignored) {}
+            });
+            throw e;
+        }
     }
 
     // 임시저장: status=DRAFT, sentAt=null
@@ -129,28 +142,32 @@ public class MailService {
     }
 
     // 수신함 목록 (삭제되지 않은 것)
-    public List<MailDto.MailSummary> getInbox(User user) {
-        return mailRecipientRepository.findByRecipientAndDeletedAtIsNull(user)
-                .stream()
-                .map(MailDto.MailSummary::fromRecipient)
-                .toList();
+    public PageResult<MailDto.MailSummary> getInbox(User user, int page, int size) {
+        return PageResult.of(
+                mailRecipientRepository.findByRecipientAndDeletedAtIsNull(
+                                user, PageRequest.of(page, size, Sort.by("mail.sentAt").descending()))
+                        .map(MailDto.MailSummary::fromRecipient)
+        );
     }
 
     // 발신함 목록 (SENT + CANCELLED, 발신자 삭제 안 된 것)
-    public List<MailDto.MailSummary> getSent(User user) {
-        return mailRepository.findBySenderAndSenderDeletedAtIsNullAndStatusIn(
-                        user, List.of(MailStatus.SENT, MailStatus.CANCELLED))
-                .stream()
-                .map(MailDto.MailSummary::fromMail)
-                .toList();
+    public PageResult<MailDto.MailSummary> getSent(User user, int page, int size) {
+        return PageResult.of(
+                mailRepository.findBySenderAndSenderDeletedAtIsNullAndStatusIn(
+                                user, List.of(MailStatus.SENT, MailStatus.CANCELLED),
+                                PageRequest.of(page, size, Sort.by("sentAt").descending()))
+                        .map(MailDto.MailSummary::fromMail)
+        );
     }
 
     // 임시저장 목록
-    public List<MailDto.MailSummary> getDrafts(User user) {
-        return mailRepository.findBySenderAndStatus(user, MailStatus.DRAFT)
-                .stream()
-                .map(MailDto.MailSummary::fromMail)
-                .toList();
+    public PageResult<MailDto.MailSummary> getDrafts(User user, int page, int size) {
+        return PageResult.of(
+                mailRepository.findBySenderAndStatus(
+                                user, MailStatus.DRAFT,
+                                PageRequest.of(page, size, Sort.by("createdAt").descending()))
+                        .map(MailDto.MailSummary::fromMail)
+        );
     }
 
     // 메일 상세 조회 + 수신자이면 읽음 처리
@@ -168,12 +185,13 @@ public class MailService {
             throw new CustomException(ErrorCode.MAIL_ACCESS_DENIED);
         }
 
-        // 수신자라면 읽음 처리
+        // 수신자라면 읽음 처리 + 알림 삭제
         if (isRecipient) {
             recipients.stream()
                     .filter(r -> r.getRecipient().getUserId().equals(user.getUserId()))
                     .findFirst()
                     .ifPresent(MailRecipient::markAsRead);
+            notificationService.deleteByTarget(user, mailId, NotificationType.MAIL);
         }
 
         List<MailAttachment> attachments = mailAttachmentRepository.findByMail(mail);
@@ -253,27 +271,49 @@ public class MailService {
         return mail.isSenderFavorite();
     }
 
-    // 즐겨찾기 통합 목록 (수신 즐겨찾기 + 발신 즐겨찾기)
-    public List<MailDto.MailSummary> getFavorites(User user) {
-        List<MailDto.MailSummary> result = new java.util.ArrayList<>();
-        mailRecipientRepository.findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(user)
-                .stream().map(MailDto.MailSummary::fromRecipient).forEach(result::add);
-        mailRepository.findBySenderAndIsSenderFavoriteTrueAndSenderDeletedAtIsNull(user)
-                .stream().map(MailDto.MailSummary::fromMail).forEach(result::add);
-        return result;
+    // 즐겨찾기 통합 목록 (수신 즐겨찾기 + 발신 즐겨찾기 - in-memory 페이징)
+    public PageResult<MailDto.MailSummary> getFavorites(User user, int page, int size) {
+        List<MailDto.MailSummary> all = Stream.concat(
+                mailRecipientRepository.findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(user)
+                        .stream().map(MailDto.MailSummary::fromRecipient),
+                mailRepository.findBySenderAndIsSenderFavoriteTrueAndSenderDeletedAtIsNull(user)
+                        .stream().map(MailDto.MailSummary::fromMail)
+        ).sorted(Comparator.comparing(MailDto.MailSummary::getSentAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+
+        int total = all.size();
+        int from = page * size;
+        int to = Math.min(from + size, total);
+        List<MailDto.MailSummary> content = from >= total ? List.of() : all.subList(from, to);
+        int totalPages = total == 0 ? 1 : (int) Math.ceil((double) total / size);
+
+        return PageResult.<MailDto.MailSummary>builder()
+                .content(content)
+                .page(page)
+                .size(size)
+                .totalElements(total)
+                .totalPages(totalPages)
+                .hasNext(to < total)
+                .build();
     }
 
     // 수신 휴지통 목록
-    public List<MailDto.MailSummary> getInboxTrash(User user) {
-        return mailRecipientRepository.findByRecipientAndDeletedAtIsNotNull(user)
-                .stream().map(MailDto.MailSummary::fromRecipient).toList();
+    public PageResult<MailDto.MailSummary> getInboxTrash(User user, int page, int size) {
+        return PageResult.of(
+                mailRecipientRepository.findByRecipientAndDeletedAtIsNotNull(
+                                user, PageRequest.of(page, size, Sort.by("mail.sentAt").descending()))
+                        .map(MailDto.MailSummary::fromRecipient)
+        );
     }
 
     // 발신 휴지통 목록
-    public List<MailDto.MailSummary> getSentTrash(User user) {
-        return mailRepository.findBySenderAndSenderDeletedAtIsNotNullAndStatusIn(
-                        user, List.of(MailStatus.SENT, MailStatus.CANCELLED))
-                .stream().map(MailDto.MailSummary::fromMail).toList();
+    public PageResult<MailDto.MailSummary> getSentTrash(User user, int page, int size) {
+        return PageResult.of(
+                mailRepository.findBySenderAndSenderDeletedAtIsNotNullAndStatusIn(
+                                user, List.of(MailStatus.SENT, MailStatus.CANCELLED),
+                                PageRequest.of(page, size, Sort.by("sentAt").descending()))
+                        .map(MailDto.MailSummary::fromMail)
+        );
     }
 
     // 수신 휴지통에서 복원
@@ -424,8 +464,11 @@ public class MailService {
         }
         mail.setStatus(MailStatus.SENT);
         mail.setSentAt(LocalDateTime.now());
+        recipients.forEach(mr ->
+                notificationService.send(mr.getRecipient(), NotificationType.MAIL,
+                        mail.getSender().getName() + "님이 메일을 발신했습니다.", mail.getTitle(), mail.getMailId())
+        );
         return mail.getMailId();
-        
     }
 
     // 답장
