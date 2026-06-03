@@ -4,6 +4,7 @@ import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.schedule.dto.ScheduleDto;
 import com.ang.Backend.domain.schedule.entity.Schedule;
+import com.ang.Backend.domain.schedule.entity.ScheduleType;
 import com.ang.Backend.domain.schedule.repository.ScheduleRepository;
 import com.ang.Backend.domain.user.entity.User;
 import jakarta.annotation.PostConstruct;
@@ -36,6 +37,13 @@ public class ScheduleService {
             log.info("Successfully modified legacy schedule_date column to be nullable.");
         } catch (Exception e) {
             log.warn("Legacy schedule_date column might not exist or already modified. (ignore if safe) - {}", e.getMessage());
+        }
+        
+        try {
+            jdbcTemplate.execute("ALTER TABLE schedules ADD COLUMN schedule_type VARCHAR(20) DEFAULT 'PERSONAL' NOT NULL");
+            log.info("Successfully added schedule_type column.");
+        } catch (Exception e) {
+            log.warn("schedule_type column might already exist. - {}", e.getMessage());
         }
     }
 
@@ -137,6 +145,7 @@ public class ScheduleService {
                 .title(request.getTitle().trim())
                 .startTime(request.getStartTime())
                 .endTime(request.getEndTime())
+                .type(request.getType() != null ? request.getType() : ScheduleType.PERSONAL)
                 .description(normalizeDescription(request.getDescription()))
                 .build();
 
@@ -156,6 +165,7 @@ public class ScheduleService {
                 request.getTitle().trim(),
                 request.getStartTime(),
                 request.getEndTime(),
+                request.getType() != null ? request.getType() : ScheduleType.PERSONAL,
                 normalizeDescription(request.getDescription())
         );
         return ScheduleDto.Response.from(schedule);

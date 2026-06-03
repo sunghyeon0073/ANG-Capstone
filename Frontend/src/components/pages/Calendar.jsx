@@ -47,6 +47,7 @@ const buildSchedulePayload = (formData) => {
   const endDate = String(formData.endDate || '').trim()
   const startTime = String(formData.startTime || '').trim()
   const endTime = String(formData.endTime || '').trim()
+  const type = String(formData.type || 'PERSONAL').trim()
   const title = String(formData.title || '').trim()
   const description = String(formData.description || '').trim() || null
 
@@ -80,6 +81,7 @@ const buildSchedulePayload = (formData) => {
     endDate,
     startTime: toApiTime(startTime),
     endTime: toApiTime(endTime),
+    type,
     description,
   }
 }
@@ -210,6 +212,7 @@ const parseExcelSchedules = (arrayBuffer) => {
       endDate,
       startTime,
       endTime,
+      type: 'PERSONAL',
       description,
     })
   })
@@ -401,10 +404,7 @@ export default function Calendar({ showSidebar = true }) {
 
   const getScheduleGroup = (schedule) => {
     if (schedule.isAiRecommendation) return 'ai'
-
-    const content = `${schedule.title || ''} ${schedule.description || ''}`.toLowerCase()
-    if (/부서|팀|회의|보고|공유|운영|정기/.test(content)) return 'department'
-    return 'my'
+    return schedule.type === 'DEPARTMENT' ? 'department' : 'my'
   }
 
   const toggleFilter = (filter) => {
@@ -444,6 +444,7 @@ export default function Calendar({ showSidebar = true }) {
       endDate: baseDateString,
       startTime: '09:00',
       endTime: '10:00',
+      type: 'PERSONAL',
       description: '',
     })
   }
@@ -800,6 +801,18 @@ export default function Calendar({ showSidebar = true }) {
 
           <div className="calendar-excel-template">
             예시 컬럼: 날짜, 제목, 시작시간, 종료시간, 설명
+          </div>
+
+          <div className="form-group">
+            <label>일정 분류</label>
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              className="calendar-input"
+            >
+              <option value="PERSONAL">내 일정</option>
+              <option value="DEPARTMENT">부서 일정</option>
+            </select>
           </div>
 
           <div className="form-group">

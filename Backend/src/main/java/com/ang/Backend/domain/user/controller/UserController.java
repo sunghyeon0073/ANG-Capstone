@@ -1,4 +1,4 @@
-package com.ang.Backend.domain.user.Controller;
+package com.ang.Backend.domain.user.controller;
 
 import com.ang.Backend.common.response.ApiResponse;
 import com.ang.Backend.domain.user.dto.UserDto;
