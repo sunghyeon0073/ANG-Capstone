@@ -22,11 +22,13 @@ export const downloadMailFile = (attachmentId) => api.get(`/mail/files/${attachm
   responseType: 'blob',
 });
 
-export const getInboxMails = () => api.get('/mail/inbox');
+const pageParams = (page = 0, size = 15) => ({ params: { page, size } });
 
-export const getSentMails = () => api.get('/mail/sent');
+export const getInboxMails = (page, size) => api.get('/mail/inbox', pageParams(page, size));
 
-export const getDraftMails = () => api.get('/mail/draft');
+export const getSentMails = (page, size) => api.get('/mail/sent', pageParams(page, size));
+
+export const getDraftMails = (page, size) => api.get('/mail/draft', pageParams(page, size));
 
 export const getMailDetail = (mailId) => api.get(`/mail/${mailId}`);
 
@@ -44,11 +46,11 @@ export const toggleInboxFavorite = (mailId) => api.post(`/mail/${mailId}/favorit
 
 export const toggleSentFavorite = (mailId) => api.post(`/mail/${mailId}/favorite/sent`);
 
-export const getFavoriteMails = () => api.get('/mail/favorites');
+export const getFavoriteMails = (page, size) => api.get('/mail/favorites', pageParams(page, size));
 
-export const getInboxTrashMails = () => api.get('/mail/trash/inbox');
+export const getInboxTrashMails = (page, size) => api.get('/mail/trash/inbox', pageParams(page, size));
 
-export const getSentTrashMails = () => api.get('/mail/trash/sent');
+export const getSentTrashMails = (page, size) => api.get('/mail/trash/sent', pageParams(page, size));
 
 export const restoreInboxMail = (mailId) => api.post(`/mail/${mailId}/restore/inbox`);
 

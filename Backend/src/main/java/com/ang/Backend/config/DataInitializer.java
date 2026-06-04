@@ -92,15 +92,14 @@ public class DataInitializer {
     }
 
     private void initScopes() {
-        insertScopeIfAbsent("COMPANY01",      "영진전문대학교",   ScopeType.COMPANY,    null);
-        insertScopeIfAbsent("DEPT_EDU",       "평생교육원",   ScopeType.DEPARTMENT, "COMPANY01");
-        
-        insertScopeIfAbsent("ANG-EDU-OP_COMM", "평생교육원 운영위원회", ScopeType.TEAM, "DEPT_EDU");
-        insertScopeIfAbsent("ANG-EDU-STAND_COMM", "상임위원", ScopeType.TEAM, "DEPT_EDU");
-        insertScopeIfAbsent("ANG-EDU-LONG_CARE", "장기요양교육센터", ScopeType.TEAM, "DEPT_EDU");
-        insertScopeIfAbsent("ANG-EDU-EMERGENCY", "응급구조교육센터", ScopeType.TEAM, "DEPT_EDU");
-        insertScopeIfAbsent("ANG-EDU-NATIONAL", "국고/일반과정(지역사회 협력·기여)", ScopeType.TEAM, "DEPT_EDU");
-        insertScopeIfAbsent("ANG-EDU-ADMIN", "행정지원", ScopeType.TEAM, "DEPT_EDU");
+        insertScopeIfAbsent("COMPANY01",         "영진전문대학교",                       ScopeType.COMPANY,    null);
+        insertScopeIfAbsent("DEPT_EDU",          "평생교육원",                           ScopeType.DEPARTMENT, "COMPANY01");
+        insertScopeIfAbsent("ANG-EDU-OP_COMM",   "평생교육원 운영위원회",                 ScopeType.TEAM,       "DEPT_EDU");
+        insertScopeIfAbsent("ANG-EDU-STAND_COMM","상임위원",                             ScopeType.TEAM,       "DEPT_EDU");
+        insertScopeIfAbsent("ANG-EDU-LONG_CARE", "장기요양교육센터",                      ScopeType.TEAM,       "DEPT_EDU");
+        insertScopeIfAbsent("ANG-EDU-EMERGENCY", "응급구조교육센터",                      ScopeType.TEAM,       "DEPT_EDU");
+        insertScopeIfAbsent("ANG-EDU-NATIONAL",  "국고/일반과정(지역사회 협력·기여)",      ScopeType.TEAM,       "DEPT_EDU");
+        insertScopeIfAbsent("ANG-EDU-ADMIN",     "행정지원",                             ScopeType.TEAM,       "DEPT_EDU");
     }
 
     private void initUsers() {
