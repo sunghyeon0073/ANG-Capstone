@@ -1,6 +1,7 @@
 package com.ang.Backend.domain.schedule.dto;
 
 import com.ang.Backend.domain.schedule.entity.Schedule;
+import com.ang.Backend.domain.schedule.entity.ScheduleType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
@@ -34,6 +35,9 @@ public class ScheduleDto {
         private LocalTime endTime;
 
         private String description;
+
+        @NotNull
+        private ScheduleType type;
     }
 
     @Getter
@@ -46,6 +50,7 @@ public class ScheduleDto {
         private LocalTime startTime;
         private LocalTime endTime;
         private String description;
+        private ScheduleType type;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -58,6 +63,7 @@ public class ScheduleDto {
                     .startTime(schedule.getStartTime())
                     .endTime(schedule.getEndTime())
                     .description(schedule.getDescription())
+                    .type(schedule.getType())
                     .createdAt(schedule.getCreatedAt())
                     .updatedAt(schedule.getUpdatedAt())
                     .build();

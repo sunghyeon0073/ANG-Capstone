@@ -4,12 +4,10 @@ import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.schedule.dto.ScheduleDto;
 import com.ang.Backend.domain.schedule.entity.Schedule;
+import com.ang.Backend.domain.schedule.entity.ScheduleType;
 import com.ang.Backend.domain.schedule.repository.ScheduleRepository;
 import com.ang.Backend.domain.user.entity.User;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,25 +17,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
-    private final JdbcTemplate jdbcTemplate;
-
-    @PostConstruct
-    public void fixLegacyDbSchema() {
-        try {
-            // 과거 버전의 엔티티에서 생성된 NOT NULL 컬럼을 제거하거나 NULL 허용으로 변경
-            jdbcTemplate.execute("ALTER TABLE schedules MODIFY COLUMN schedule_date DATE NULL");
-            log.info("Successfully modified legacy schedule_date column to be nullable.");
-        } catch (Exception e) {
-            log.warn("Legacy schedule_date column might not exist or already modified. (ignore if safe) - {}", e.getMessage());
-        }
-    }
 
     public List<ScheduleDto.Response> getSchedules(User owner, LocalDate startDate, LocalDate endDate) {
         List<Schedule> schedules;
@@ -138,6 +123,7 @@ public class ScheduleService {
                 .startTime(request.getStartTime())
                 .endTime(request.getEndTime())
                 .description(normalizeDescription(request.getDescription()))
+                .type(request.getType() != null ? request.getType() : ScheduleType.PERSONAL)
                 .build();
 
         return ScheduleDto.Response.from(scheduleRepository.save(schedule));
@@ -156,7 +142,8 @@ public class ScheduleService {
                 request.getTitle().trim(),
                 request.getStartTime(),
                 request.getEndTime(),
-                normalizeDescription(request.getDescription())
+                normalizeDescription(request.getDescription()),
+                request.getType() != null ? request.getType() : schedule.getType()
         );
         return ScheduleDto.Response.from(schedule);
     }

@@ -81,6 +81,7 @@ const buildSchedulePayload = (formData) => {
     startTime: toApiTime(startTime),
     endTime: toApiTime(endTime),
     description,
+    type: formData.type || 'PERSONAL',
   }
 }
 
@@ -332,6 +333,7 @@ export default function Calendar({ showSidebar = true }) {
     startTime: '09:00',
     endTime: '10:00',
     description: '',
+    type: 'PERSONAL',
   })
   const [selectedDate, setSelectedDate] = useState(null)
   const [isExcelConfirmOpen, setIsExcelConfirmOpen] = useState(false)
@@ -401,6 +403,8 @@ export default function Calendar({ showSidebar = true }) {
 
   const getScheduleGroup = (schedule) => {
     if (schedule.isAiRecommendation) return 'ai'
+    if (schedule.type === 'DEPARTMENT') return 'department'
+    if (schedule.type === 'PERSONAL') return 'my'
 
     const content = `${schedule.title || ''} ${schedule.description || ''}`.toLowerCase()
     if (/부서|팀|회의|보고|공유|운영|정기/.test(content)) return 'department'
@@ -564,7 +568,7 @@ export default function Calendar({ showSidebar = true }) {
 
     try {
       await deleteSchedule(schedule.id)
-      setSchedules((prev) => prev.filter((item) => item.id !== schedule.id))
+      fetchCalendarData()
     } catch (error) {
       alert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
     }
@@ -800,6 +804,32 @@ export default function Calendar({ showSidebar = true }) {
 
           <div className="calendar-excel-template">
             예시 컬럼: 날짜, 제목, 시작시간, 종료시간, 설명
+          </div>
+
+          <div className="form-group">
+            <label>일정 구분</label>
+            <div className="calendar-type-selector">
+              <label className={`calendar-type-option ${formData.type === 'PERSONAL' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="scheduleType"
+                  value="PERSONAL"
+                  checked={formData.type === 'PERSONAL'}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                />
+                개인 일정
+              </label>
+              <label className={`calendar-type-option ${formData.type === 'DEPARTMENT' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="scheduleType"
+                  value="DEPARTMENT"
+                  checked={formData.type === 'DEPARTMENT'}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                />
+                부서 일정
+              </label>
+            </div>
           </div>
 
           <div className="form-group">
