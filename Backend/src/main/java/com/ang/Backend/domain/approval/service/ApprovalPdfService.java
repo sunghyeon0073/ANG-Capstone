@@ -1,0 +1,103 @@
+package com.ang.Backend.domain.approval.service;
+
+import com.ang.Backend.common.enums.ApprovalLineStatus;
+import com.ang.Backend.domain.approval.entity.ApprovalDoc;
+import com.ang.Backend.domain.approval.entity.ApprovalLine;
+import com.ang.Backend.domain.approval.event.ApprovalCompletedEvent;
+import com.ang.Backend.domain.approval.repository.ApprovalDocRepository;
+import com.ang.Backend.domain.approval.repository.ApprovalLineRepository;
+import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
+import java.io.ByteArrayOutputStream;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ApprovalPdfService {
+
+    private final ApprovalDocRepository docRepository;
+    private final ApprovalLineRepository lineRepository;
+    private final TemplateEngine templateEngine;
+    private final S3Client s3Client;
+
+    @Value("${spring.cloud.aws.s3.bucket}")
+    private String bucket;
+
+    @Value("${spring.cloud.aws.region.static}")
+    private String region;
+
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional
+    public void onApprovalCompleted(ApprovalCompletedEvent event) {
+        Long docId = event.getDocId();
+        try {
+            ApprovalDoc doc = docRepository.findById(docId).orElse(null);
+            if (doc == null) {
+                log.warn("PDF 생성 실패: 문서를 찾을 수 없습니다. docId={}", docId);
+                return;
+            }
+
+            List<ApprovalLine> approvedLines = lineRepository.findByDocAndStatus(doc, ApprovalLineStatus.APPROVED);
+
+            // Thymeleaf 렌더링
+            Context ctx = new Context();
+            ctx.setVariable("doc", doc);
+            ctx.setVariable("approvalLines", approvedLines);
+            String html = templateEngine.process("approval/approval-document", ctx);
+
+            // HTML → PDF
+            byte[] pdfBytes = renderPdf(html);
+
+            // S3 업로드
+            String key = "approvals/pdf/" + docId + "/" + UUID.randomUUID() + ".pdf";
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .contentType("application/pdf")
+                            .build(),
+                    RequestBody.fromBytes(pdfBytes)
+            );
+
+            String pdfUrl = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key;
+            doc.setFinalPdfUrl(pdfUrl);
+            docRepository.save(doc);
+
+            log.info("PDF 생성 완료: docId={}, url={}", docId, pdfUrl);
+        } catch (Exception e) {
+            log.error("PDF 생성 실패: docId={}", docId, e);
+        }
+    }
+
+    private byte[] renderPdf(String html) throws Exception {
+        try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
+            PdfRendererBuilder builder = new PdfRendererBuilder();
+            builder.withHtmlContent(html, null);
+            // 한글 폰트 설정
+            builder.useFont(
+                    () -> getClass().getResourceAsStream("/fonts/NanumGothic.ttf"),
+                    "NanumGothic"
+            );
+            builder.toStream(os);
+            builder.run();
+            return os.toByteArray();
+        }
+    }
+}

@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import jakarta.annotation.PostConstruct;
@@ -11,6 +12,7 @@ import java.util.TimeZone;
 
 @SpringBootApplication
 @EnableScheduling
+@EnableAsync
 public class SpringBootDeveloperApplication {
 
     @PostConstruct

@@ -52,6 +52,10 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:5.3.0")
     implementation("org.apache.pdfbox:pdfbox:3.0.3")
 
+    // 전자결재 PDF 생성
+    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
+    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")

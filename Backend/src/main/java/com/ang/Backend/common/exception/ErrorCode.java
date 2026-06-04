@@ -52,6 +52,13 @@ public enum ErrorCode {
     APPROVAL_NOT_FOUND(HttpStatus.NOT_FOUND, "결재 문서를 찾을 수 없습니다."),
     APPROVAL_ALREADY_PROCESSED(HttpStatus.CONFLICT, "이미 처리된 결재입니다."),
     DELEGATE_NOT_FOUND(HttpStatus.NOT_FOUND, "결재 대리인 지정을 찾을 수 없습니다."),
+    APPROVAL_TEMPLATE_NOT_FOUND(HttpStatus.NOT_FOUND, "결재 양식을 찾을 수 없습니다."),
+    APPROVAL_DOC_NOT_FOUND(HttpStatus.NOT_FOUND, "결재 문서를 찾을 수 없습니다."),
+    APPROVAL_NOT_MODIFIABLE(HttpStatus.CONFLICT, "수정 가능한 상태(임시저장)가 아닙니다."),
+    APPROVAL_NOT_CANCELLABLE(HttpStatus.CONFLICT, "이미 진행 중인 문서는 회수할 수 없습니다."),
+    APPROVAL_NOT_YOUR_TURN(HttpStatus.FORBIDDEN, "현재 결재 차례가 아닙니다."),
+    APPROVAL_SIGN_NOT_FOUND(HttpStatus.NOT_FOUND, "등록된 서명 이미지가 없습니다."),
+    APPROVAL_MY_LINE_NOT_FOUND(HttpStatus.NOT_FOUND, "즐겨찾기 결재선을 찾을 수 없습니다."),
 
     // 게시판
     BOARD_NOT_FOUND(HttpStatus.NOT_FOUND, "게시글을 찾을 수 없습니다."),
