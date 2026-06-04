@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import time
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 
 import ollama
@@ -78,13 +79,31 @@ def chat(req: ChatRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Ollama request failed: {exc}") from exc
 
-    reply = ""
-    if isinstance(response, dict):
-        reply = str(response.get("message", {}).get("content", "") or "")
-    else:
-        reply = str(getattr(getattr(response, "message", None), "content", "") or "")
+    reply = _extract_ollama_reply(response)
+    if not reply.strip():
+        raise HTTPException(status_code=502, detail="Ollama returned an empty reply")
 
     return {"reply": reply}
+
+
+def _extract_ollama_reply(response) -> str:
+    if hasattr(response, "model_dump"):
+        response = response.model_dump()
+
+    if isinstance(response, Mapping):
+        message = response.get("message") or {}
+        if hasattr(message, "model_dump"):
+            message = message.model_dump()
+        if isinstance(message, Mapping):
+            return str(message.get("content") or "")
+        return str(getattr(message, "content", "") or "")
+
+    message = getattr(response, "message", None)
+    if hasattr(message, "model_dump"):
+        message = message.model_dump()
+    if isinstance(message, Mapping):
+        return str(message.get("content") or "")
+    return str(getattr(message, "content", "") or "")
 
 
 @app.post("/hwp/replace")
