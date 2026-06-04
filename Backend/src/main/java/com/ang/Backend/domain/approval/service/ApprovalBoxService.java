@@ -1,5 +1,7 @@
 package com.ang.Backend.domain.approval.service;
 
+import com.ang.Backend.common.enums.ApprovalLineStatus;
+import com.ang.Backend.common.enums.ApprovalLineType;
 import com.ang.Backend.common.enums.ApprovalStatus;
 import com.ang.Backend.common.response.PageResult;
 import com.ang.Backend.domain.approval.dto.ApprovalDocDto;
@@ -11,6 +13,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -20,7 +24,7 @@ public class ApprovalBoxService {
 
     public PageResult<ApprovalDocDto.BoxResponse> getPendingInbox(User user, String keyword, int page, int size) {
         return PageResult.of(
-                docRepository.findPendingInbox(user.getUserId(), keyword,
+                docRepository.findPendingInbox(user.getUserId(), ApprovalLineStatus.ACTIVE, keyword,
                         PageRequest.of(page, size, Sort.by("createdAt").descending()))
                         .map(ApprovalDocDto.BoxResponse::from)
         );
@@ -29,6 +33,7 @@ public class ApprovalBoxService {
     public PageResult<ApprovalDocDto.BoxResponse> getCompletedInbox(User user, int page, int size) {
         return PageResult.of(
                 docRepository.findCompletedInbox(user.getUserId(),
+                        List.of(ApprovalLineStatus.APPROVED, ApprovalLineStatus.REJECTED),
                         PageRequest.of(page, size, Sort.by("createdAt").descending()))
                         .map(ApprovalDocDto.BoxResponse::from)
         );
@@ -64,6 +69,7 @@ public class ApprovalBoxService {
     public PageResult<ApprovalDocDto.BoxResponse> getReceivedInbox(User user, int page, int size) {
         return PageResult.of(
                 docRepository.findReceivedInbox(user.getUserId(),
+                        ApprovalLineType.RECEIVER, ApprovalStatus.APPROVED,
                         PageRequest.of(page, size, Sort.by("createdAt").descending()))
                         .map(ApprovalDocDto.BoxResponse::from)
         );

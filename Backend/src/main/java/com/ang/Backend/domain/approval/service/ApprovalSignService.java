@@ -6,6 +6,7 @@ import com.ang.Backend.domain.approval.dto.ApprovalSignDto;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.io.IOException;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -88,7 +90,8 @@ public class ApprovalSignService {
         try {
             String key = url.substring(url.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
             s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("S3 서명 파일 삭제 실패: url={}, error={}", url, e.getMessage());
         }
     }
 }

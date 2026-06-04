@@ -125,11 +125,12 @@ public class ApprovalDocService {
         if (doc.getStatus() != ApprovalStatus.DRAFT && doc.getStatus() != ApprovalStatus.IN_PROGRESS) {
             throw new CustomException(ErrorCode.APPROVAL_NOT_CANCELLABLE);
         }
-        // IN_PROGRESS 중 ACTIVE 결재자가 없을 때(상신 직후)만 회수 허용
+        // 승인 또는 대결 진행 중이면 회수 불가
         if (doc.getStatus() == ApprovalStatus.IN_PROGRESS) {
-            boolean anyApproved = doc.getApprovalLines().stream()
-                    .anyMatch(al -> al.getStatus() == ApprovalLineStatus.APPROVED);
-            if (anyApproved) {
+            boolean hasProgress = doc.getApprovalLines().stream()
+                    .anyMatch(al -> al.getStatus() == ApprovalLineStatus.APPROVED
+                               || al.getStatus() == ApprovalLineStatus.DELEGATED);
+            if (hasProgress) {
                 throw new CustomException(ErrorCode.APPROVAL_NOT_CANCELLABLE);
             }
         }
@@ -144,7 +145,7 @@ public class ApprovalDocService {
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_DOC_NOT_FOUND));
 
         ApprovalLine currentLine = lineRepository
-                .findActiveLineByDocAndUser(docId, requester.getUserId())
+                .findActiveLineByDocAndUser(docId, requester.getUserId(), ApprovalLineStatus.ACTIVE)
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_NOT_YOUR_TURN));
 
         // 서명 스냅샷 + 승인 처리
@@ -154,7 +155,8 @@ public class ApprovalDocService {
         currentLine.setProcessedAt(LocalDateTime.now());
 
         // 다음 WAITING 결재선 활성화
-        List<ApprovalLine> nextWaiting = lineRepository.findNextWaitingLines(doc);
+        List<ApprovalLine> nextWaiting = lineRepository.findNextWaitingLines(
+                doc, ApprovalLineStatus.WAITING, List.of(ApprovalLineType.APPROVAL, ApprovalLineType.AGREEMENT));
         if (!nextWaiting.isEmpty()) {
             ApprovalLine nextLine = nextWaiting.get(0);
             nextLine.setStatus(ApprovalLineStatus.ACTIVE);
@@ -181,7 +183,7 @@ public class ApprovalDocService {
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_DOC_NOT_FOUND));
 
         ApprovalLine currentLine = lineRepository
-                .findActiveLineByDocAndUser(docId, requester.getUserId())
+                .findActiveLineByDocAndUser(docId, requester.getUserId(), ApprovalLineStatus.ACTIVE)
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_NOT_YOUR_TURN));
 
         currentLine.setStatus(ApprovalLineStatus.REJECTED);
@@ -203,7 +205,7 @@ public class ApprovalDocService {
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_DOC_NOT_FOUND));
 
         ApprovalLine currentLine = lineRepository
-                .findActiveLineByDocAndUser(docId, requester.getUserId())
+                .findActiveLineByDocAndUser(docId, requester.getUserId(), ApprovalLineStatus.ACTIVE)
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_NOT_YOUR_TURN));
 
         User delegatee = userRepository.findById(req.getDelegateeId())
