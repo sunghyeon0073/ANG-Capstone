@@ -211,6 +211,7 @@ const parseExcelSchedules = (arrayBuffer) => {
       endDate,
       startTime,
       endTime,
+      type: 'PERSONAL',
       description,
     })
   })
@@ -291,7 +292,7 @@ const buildCalendarScheduleBars = (schedules, gridDates) => {
         let laneIndex = laneEnds.findIndex((endCol) => endCol < segment.startCol)
         if (laneIndex === -1) laneIndex = laneEnds.length
         laneEnds[laneIndex] = segment.endCol
-        bars.push({ ...segment, lane: laneIndex })
+        bars.push({ ...scheduleId: segment.schedule.id, ...segment, lane: laneIndex })
       })
   })
 
@@ -449,6 +450,7 @@ export default function Calendar({ showSidebar = true }) {
       startTime: '09:00',
       endTime: '10:00',
       description: '',
+      type: 'PERSONAL',
     })
   }
 

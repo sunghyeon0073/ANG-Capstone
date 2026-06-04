@@ -43,12 +43,12 @@ public class Schedule {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
-    @Column(name = "description", columnDefinition = "TEXT")
-    private String description;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "schedule_type", nullable = false)
     private ScheduleType type;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

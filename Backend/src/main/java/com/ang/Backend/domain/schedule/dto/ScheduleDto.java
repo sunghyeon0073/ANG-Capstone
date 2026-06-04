@@ -34,6 +34,8 @@ public class ScheduleDto {
         @NotNull
         private LocalTime endTime;
 
+        private ScheduleType type = ScheduleType.PERSONAL;
+
         private String description;
 
         @NotNull
@@ -49,6 +51,7 @@ public class ScheduleDto {
         private String title;
         private LocalTime startTime;
         private LocalTime endTime;
+        private ScheduleType type;
         private String description;
         private ScheduleType type;
         private LocalDateTime createdAt;
@@ -62,6 +65,7 @@ public class ScheduleDto {
                     .title(schedule.getTitle())
                     .startTime(schedule.getStartTime())
                     .endTime(schedule.getEndTime())
+                    .type(schedule.getType())
                     .description(schedule.getDescription())
                     .type(schedule.getType())
                     .createdAt(schedule.getCreatedAt())
