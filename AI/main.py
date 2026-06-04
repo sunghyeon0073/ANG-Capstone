@@ -6,6 +6,7 @@ import time
 import uuid
 from pathlib import Path
 
+import ollama
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -42,12 +43,48 @@ class CreateHwpRequest(BaseModel):
     content: str
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
 @app.get("/health")
 def health():
     return {
         "status": "ok" if pythoncom and win32com else "missing-pywin32",
         "message": "HWP bridge is running",
     }
+
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    message = (req.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    model = os.getenv("OLLAMA_MODEL", "ang-ai:latest")
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    try:
+        client = ollama.Client(host=base_url)
+        response = client.chat(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": message,
+                }
+            ],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama request failed: {exc}") from exc
+
+    reply = ""
+    if isinstance(response, dict):
+        reply = str(response.get("message", {}).get("content", "") or "")
+    else:
+        reply = str(getattr(getattr(response, "message", None), "content", "") or "")
+
+    return {"reply": reply}
 
 
 @app.post("/hwp/replace")
