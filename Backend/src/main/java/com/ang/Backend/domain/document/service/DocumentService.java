@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
@@ -84,6 +85,8 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DocumentService {
+    private static final double DOCX_MIN_INFLATE_RATIO = 0.001;
+
     private final DocumentRepository documentRepository;
     private final FileItemRepository fileItemRepository;
     private final FileService fileService;
@@ -1247,7 +1250,7 @@ public class DocumentService {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         int applied = 0;
 
-        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(originalBytes))) {
+        try (XWPFDocument document = openDocxDocument(originalBytes)) {
             applied += applyDocxParagraphReplacements(document.getParagraphs(), replacements);
             applied += applyDocxTableReplacements(document.getTables(), replacements);
 
@@ -1894,7 +1897,7 @@ public class DocumentService {
     }
 
     private String parseDocxContent(byte[] bytes) {
-        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+        try (XWPFDocument document = openDocxDocument(bytes)) {
             StringBuilder parsed = new StringBuilder();
 
             for (XWPFParagraph paragraph : document.getParagraphs()) {
@@ -1940,6 +1943,16 @@ public class DocumentService {
         } catch (Exception e) {
             log.warn("PDFBox parsing failed: {}", e.getMessage());
             return "";
+        }
+    }
+
+    private XWPFDocument openDocxDocument(byte[] bytes) throws IOException {
+        double originalRatio = ZipSecureFile.getMinInflateRatio();
+        ZipSecureFile.setMinInflateRatio(DOCX_MIN_INFLATE_RATIO);
+        try {
+            return new XWPFDocument(new ByteArrayInputStream(bytes));
+        } finally {
+            ZipSecureFile.setMinInflateRatio(originalRatio);
         }
     }
 
