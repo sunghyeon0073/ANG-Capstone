@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
@@ -84,6 +85,8 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DocumentService {
+    private static final double DOCX_MIN_INFLATE_RATIO = 0.001;
+
     private final DocumentRepository documentRepository;
     private final FileItemRepository fileItemRepository;
     private final FileService fileService;
@@ -259,8 +262,18 @@ public class DocumentService {
     }
 
     private DocumentDto.Response editDocxWithAi(String prompt, User user, DocxEditSource source) {
-        String finalPrompt = buildDocxEditPrompt(prompt, source);
-        log.info("AI DOCX edit plan started: sourceDocId={}, promptChars={}", source.docId(), finalPrompt.length());
+        byte[] originalBytes;
+        List<DocxTextBlock> blocks;
+        try {
+            Resource resource = fileService.loadFileAsResource(source.fileId());
+            originalBytes = resource.getInputStream().readAllBytes();
+            blocks = extractDocxTextBlocks(originalBytes);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read original DOCX file.", e);
+        }
+
+        String finalPrompt = buildDocxEditPrompt(prompt, source, blocks);
+        log.info("AI DOCX edit plan started: sourceDocId={}, blocks={}, promptChars={}", source.docId(), blocks.size(), finalPrompt.length());
 
         Map<String, String> aiRequest = Map.of("message", finalPrompt);
         @SuppressWarnings("unchecked")
@@ -275,10 +288,9 @@ public class DocumentService {
                 : "";
         AiTextEditPlan plan = parseAiTextEditPlan(answer);
         log.info("AI DOCX edit plan finished: sourceDocId={}, replacements={}", source.docId(), plan.replacements().size());
+        log.info("AI DOCX replacements: {}", plan.replacements());
 
         try {
-            Resource resource = fileService.loadFileAsResource(source.fileId());
-            byte[] originalBytes = resource.getInputStream().readAllBytes();
             byte[] editedBytes = applyDocxReplacements(originalBytes, plan.replacements());
             String title = plan.title().isBlank()
                     ? safeDocumentTitle(source.title() + "-AI edited")
@@ -412,10 +424,13 @@ public class DocumentService {
                 """.formatted(source.title(), content, prompt);
     }
 
-    private String buildDocxEditPrompt(String prompt, DocxEditSource source) {
-        String content = source.originalContent();
-        if (content.length() > 18000) {
-            content = content.substring(0, 18000);
+    private String buildDocxEditPrompt(String prompt, DocxEditSource source, List<DocxTextBlock> blocks) {
+        String content = formatDocxBlocksForPrompt(blocks);
+        if (content.isBlank()) {
+            content = source.originalContent();
+            if (content.length() > 18000) {
+                content = content.substring(0, 18000);
+            }
         }
 
         return """
@@ -425,29 +440,83 @@ public class DocumentService {
 
                 Your job:
                 - Keep the original DOCX layout, tables, images, and styles.
-                - Produce only minimal find/replace operations.
-                - The "find" value must be exact text that exists in the parsed original text.
-                - The "replace" value should contain the edited text.
-                - For insertion, choose a nearby existing sentence as "find" and replace it with that same sentence plus the inserted text.
+                - Produce only minimal block-scoped find/replace operations.
+                - The "blockId" value must be one of the listed block IDs.
+                - The "find" value must be exact text that exists inside that block only.
+                - Prefer short, unique "find" values instead of whole paragraphs.
+                - The "replace" value should contain only the replacement text for that exact "find" value.
+                - For insertion, choose a short nearby existing phrase as "find" and replace it with that phrase plus the inserted text.
                 - Do not add Markdown headings, bullets, or tables unless the user explicitly asks for those literal characters.
 
                 JSON schema:
                 {
                   "title": "short edited document title",
                   "replacements": [
-                    {"find": "exact original text", "replace": "new text"}
+                    {"blockId": "B001", "find": "exact text inside that block", "replace": "new text"}
                   ]
                 }
 
                 [Original DOCX Title]
                 %s
 
-                [Parsed Original DOCX Text]
+                [Original DOCX Blocks]
                 %s
 
                 [User Edit Request]
                 %s
                 """.formatted(source.title(), content, prompt);
+    }
+
+    private List<DocxTextBlock> extractDocxTextBlocks(byte[] bytes) throws IOException {
+        List<DocxTextBlock> blocks = new ArrayList<>();
+        int[] blockCounter = {0};
+        try (XWPFDocument document = openDocxDocument(bytes)) {
+            collectDocxParagraphBlocks(document.getParagraphs(), blocks, blockCounter);
+            collectDocxTableBlocks(document.getTables(), blocks, blockCounter);
+
+            for (var header : document.getHeaderList()) {
+                collectDocxParagraphBlocks(header.getParagraphs(), blocks, blockCounter);
+                collectDocxTableBlocks(header.getTables(), blocks, blockCounter);
+            }
+            for (var footer : document.getFooterList()) {
+                collectDocxParagraphBlocks(footer.getParagraphs(), blocks, blockCounter);
+                collectDocxTableBlocks(footer.getTables(), blocks, blockCounter);
+            }
+        }
+        return blocks;
+    }
+
+    private void collectDocxTableBlocks(List<XWPFTable> tables, List<DocxTextBlock> blocks, int[] blockCounter) {
+        for (XWPFTable table : tables) {
+            for (XWPFTableRow row : table.getRows()) {
+                for (XWPFTableCell cell : row.getTableCells()) {
+                    collectDocxParagraphBlocks(cell.getParagraphs(), blocks, blockCounter);
+                    collectDocxTableBlocks(cell.getTables(), blocks, blockCounter);
+                }
+            }
+        }
+    }
+
+    private void collectDocxParagraphBlocks(List<XWPFParagraph> paragraphs, List<DocxTextBlock> blocks, int[] blockCounter) {
+        for (XWPFParagraph paragraph : paragraphs) {
+            String blockId = nextDocxBlockId(blockCounter);
+            String text = normalizeDocxBlockText(paragraph.getText());
+            if (!text.isBlank()) {
+                blocks.add(new DocxTextBlock(blockId, text));
+            }
+        }
+    }
+
+    private String formatDocxBlocksForPrompt(List<DocxTextBlock> blocks) {
+        StringBuilder formatted = new StringBuilder();
+        for (DocxTextBlock block : blocks) {
+            String line = "[%s] %s%n".formatted(block.blockId(), block.text());
+            if (formatted.length() + line.length() > 18000) {
+                break;
+            }
+            formatted.append(line);
+        }
+        return formatted.toString().strip();
     }
 
     @SuppressWarnings("unchecked")
@@ -472,10 +541,18 @@ public class DocumentService {
                 }
                 Object findValue = rawMap.get("find");
                 Object replaceValue = rawMap.get("replace");
+                Object blockIdValue = rawMap.get("blockId");
                 String find = findValue != null ? findValue.toString().strip() : "";
                 String replace = replaceValue != null ? replaceValue.toString() : "";
                 if (!find.isBlank() && !find.equals(replace)) {
-                    replacements.add(Map.of("find", find, "replace", replace));
+                    String blockId = blockIdValue != null ? blockIdValue.toString().strip() : "";
+                    Map<String, String> replacement = new HashMap<>();
+                    replacement.put("find", find);
+                    replacement.put("replace", replace);
+                    if (!blockId.isBlank()) {
+                        replacement.put("blockId", blockId);
+                    }
+                    replacements.add(replacement);
                 }
             }
 
@@ -1246,18 +1323,19 @@ public class DocumentService {
     private byte[] applyDocxReplacements(byte[] originalBytes, List<Map<String, String>> replacements) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         int applied = 0;
+        int[] blockCounter = {0};
 
-        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(originalBytes))) {
-            applied += applyDocxParagraphReplacements(document.getParagraphs(), replacements);
-            applied += applyDocxTableReplacements(document.getTables(), replacements);
+        try (XWPFDocument document = openDocxDocument(originalBytes)) {
+            applied += applyDocxParagraphReplacements(document.getParagraphs(), replacements, blockCounter);
+            applied += applyDocxTableReplacements(document.getTables(), replacements, blockCounter);
 
             for (var header : document.getHeaderList()) {
-                applied += applyDocxParagraphReplacements(header.getParagraphs(), replacements);
-                applied += applyDocxTableReplacements(header.getTables(), replacements);
+                applied += applyDocxParagraphReplacements(header.getParagraphs(), replacements, blockCounter);
+                applied += applyDocxTableReplacements(header.getTables(), replacements, blockCounter);
             }
             for (var footer : document.getFooterList()) {
-                applied += applyDocxParagraphReplacements(footer.getParagraphs(), replacements);
-                applied += applyDocxTableReplacements(footer.getTables(), replacements);
+                applied += applyDocxParagraphReplacements(footer.getParagraphs(), replacements, blockCounter);
+                applied += applyDocxTableReplacements(footer.getTables(), replacements, blockCounter);
             }
 
             document.write(out);
@@ -1269,26 +1347,49 @@ public class DocumentService {
         return out.toByteArray();
     }
 
-    private int applyDocxTableReplacements(List<XWPFTable> tables, List<Map<String, String>> replacements) {
+    private int applyDocxTableReplacements(List<XWPFTable> tables, List<Map<String, String>> replacements, int[] blockCounter) {
         int applied = 0;
         for (XWPFTable table : tables) {
             for (XWPFTableRow row : table.getRows()) {
                 for (XWPFTableCell cell : row.getTableCells()) {
-                    applied += applyDocxParagraphReplacements(cell.getParagraphs(), replacements);
-                    applied += applyDocxTableReplacements(cell.getTables(), replacements);
+                    applied += applyDocxParagraphReplacements(cell.getParagraphs(), replacements, blockCounter);
+                    applied += applyDocxTableReplacements(cell.getTables(), replacements, blockCounter);
                 }
             }
         }
         return applied;
     }
 
-    private int applyDocxParagraphReplacements(List<XWPFParagraph> paragraphs, List<Map<String, String>> replacements) {
+    private int applyDocxParagraphReplacements(List<XWPFParagraph> paragraphs, List<Map<String, String>> replacements, int[] blockCounter) {
         int applied = 0;
         for (XWPFParagraph paragraph : paragraphs) {
-            applied += replaceDocxRunsInPlace(paragraph, replacements);
-            applied += replaceDocxParagraphFallback(paragraph, replacements);
+            String blockId = nextDocxBlockId(blockCounter);
+            List<Map<String, String>> blockReplacements = replacementsForBlock(replacements, blockId);
+            if (blockReplacements.isEmpty()) {
+                continue;
+            }
+            applied += replaceDocxRunsInPlace(paragraph, blockReplacements);
+            applied += replaceDocxParagraphFallback(paragraph, blockReplacements);
         }
         return applied;
+    }
+
+    private List<Map<String, String>> replacementsForBlock(List<Map<String, String>> replacements, String blockId) {
+        return replacements.stream()
+                .filter(replacement -> {
+                    String replacementBlockId = replacement.getOrDefault("blockId", "").strip();
+                    return replacementBlockId.isBlank() || replacementBlockId.equals(blockId);
+                })
+                .toList();
+    }
+
+    private String nextDocxBlockId(int[] blockCounter) {
+        blockCounter[0]++;
+        return "B%03d".formatted(blockCounter[0]);
+    }
+
+    private String normalizeDocxBlockText(String text) {
+        return text == null ? "" : text.replaceAll("\\s+", " ").strip();
     }
 
     private int replaceDocxRunsInPlace(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
@@ -1894,7 +1995,7 @@ public class DocumentService {
     }
 
     private String parseDocxContent(byte[] bytes) {
-        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+        try (XWPFDocument document = openDocxDocument(bytes)) {
             StringBuilder parsed = new StringBuilder();
 
             for (XWPFParagraph paragraph : document.getParagraphs()) {
@@ -1940,6 +2041,16 @@ public class DocumentService {
         } catch (Exception e) {
             log.warn("PDFBox parsing failed: {}", e.getMessage());
             return "";
+        }
+    }
+
+    private XWPFDocument openDocxDocument(byte[] bytes) throws IOException {
+        double originalRatio = ZipSecureFile.getMinInflateRatio();
+        ZipSecureFile.setMinInflateRatio(DOCX_MIN_INFLATE_RATIO);
+        try {
+            return new XWPFDocument(new ByteArrayInputStream(bytes));
+        } finally {
+            ZipSecureFile.setMinInflateRatio(originalRatio);
         }
     }
 
@@ -2682,6 +2793,8 @@ public class DocumentService {
             String originalContent,
             Long fileId,
             String originalName) {}
+
+    private record DocxTextBlock(String blockId, String text) {}
 
     private record AiTextEditPlan(String title, List<Map<String, String>> replacements) {}
 

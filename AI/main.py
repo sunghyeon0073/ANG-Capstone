@@ -4,8 +4,10 @@ import shutil
 import tempfile
 import time
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 
+import ollama
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -42,12 +44,66 @@ class CreateHwpRequest(BaseModel):
     content: str
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
 @app.get("/health")
 def health():
     return {
         "status": "ok" if pythoncom and win32com else "missing-pywin32",
         "message": "HWP bridge is running",
     }
+
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    message = (req.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    model = os.getenv("OLLAMA_MODEL", "ang-ai:latest")
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    try:
+        client = ollama.Client(host=base_url)
+        response = client.chat(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": message,
+                }
+            ],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama request failed: {exc}") from exc
+
+    reply = _extract_ollama_reply(response)
+    if not reply.strip():
+        raise HTTPException(status_code=502, detail="Ollama returned an empty reply")
+
+    return {"reply": reply}
+
+
+def _extract_ollama_reply(response) -> str:
+    if hasattr(response, "model_dump"):
+        response = response.model_dump()
+
+    if isinstance(response, Mapping):
+        message = response.get("message") or {}
+        if hasattr(message, "model_dump"):
+            message = message.model_dump()
+        if isinstance(message, Mapping):
+            return str(message.get("content") or "")
+        return str(getattr(message, "content", "") or "")
+
+    message = getattr(response, "message", None)
+    if hasattr(message, "model_dump"):
+        message = message.model_dump()
+    if isinstance(message, Mapping):
+        return str(message.get("content") or "")
+    return str(getattr(message, "content", "") or "")
 
 
 @app.post("/hwp/replace")
