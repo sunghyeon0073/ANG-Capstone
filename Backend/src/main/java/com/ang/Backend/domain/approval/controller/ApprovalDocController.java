@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/approvals/documents")
@@ -69,6 +70,16 @@ public class ApprovalDocController {
     }
 
     // ─── 결재 액션 ────────────────────────────────────────────────────────────
+
+    @PostMapping(value = "/{id}/attachment", consumes = "multipart/form-data")
+    public ApiResponse<Void> uploadAttachment(
+            @PathVariable Long id,
+            @RequestPart("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        docService.uploadAttachment(id, file, user);
+        return ApiResponse.ok("첨부파일이 업로드되었습니다.");
+    }
 
     @PostMapping("/{id}/approve")
     public ApiResponse<Void> approve(

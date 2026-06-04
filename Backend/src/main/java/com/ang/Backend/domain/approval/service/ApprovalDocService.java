@@ -21,12 +21,18 @@ import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -42,6 +48,13 @@ public class ApprovalDocService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ApplicationEventPublisher eventPublisher;
+    private final S3Client s3Client;
+
+    @Value("${spring.cloud.aws.s3.bucket}")
+    private String bucket;
+
+    @Value("${spring.cloud.aws.region.static}")
+    private String region;
 
     @Transactional
     public ApprovalDocDto.Response create(ApprovalDocDto.CreateRequest req, User drafter) {
@@ -283,7 +296,42 @@ public class ApprovalDocService {
         }
     }
 
-    ApprovalDoc findDocAndCheckAccess(Long docId, User user) {
+    @Transactional
+    public String uploadAttachment(Long docId, MultipartFile file, User user) {
+        ApprovalDoc doc = docRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_DOC_NOT_FOUND));
+        if (!doc.getDrafter().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+        if (doc.getStatus() != ApprovalStatus.DRAFT) {
+            throw new CustomException(ErrorCode.APPROVAL_NOT_MODIFIABLE);
+        }
+
+        String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "attachment";
+        String ext = originalFilename.contains(".")
+                ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                : "";
+        String key = "e-approval/attachments/" + docId + "/" + java.util.UUID.randomUUID() + ext;
+
+        try {
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .contentType(file.getContentType() != null ? file.getContentType() : "application/octet-stream")
+                            .build(),
+                    RequestBody.fromBytes(file.getBytes())
+            );
+        } catch (IOException e) {
+            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
+        }
+
+        String url = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key;
+        doc.setAttachmentUrl(url);
+        return url;
+    }
+
+    public ApprovalDoc findDocAndCheckAccess(Long docId, User user) {
         ApprovalDoc doc = docRepository.findById(docId)
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_DOC_NOT_FOUND));
 

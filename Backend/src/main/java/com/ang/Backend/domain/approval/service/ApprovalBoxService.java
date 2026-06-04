@@ -60,4 +60,12 @@ public class ApprovalBoxService {
                         .map(ApprovalDocDto.BoxResponse::from)
         );
     }
+
+    public PageResult<ApprovalDocDto.BoxResponse> getReceivedInbox(User user, int page, int size) {
+        return PageResult.of(
+                docRepository.findReceivedInbox(user.getUserId(),
+                        PageRequest.of(page, size, Sort.by("createdAt").descending()))
+                        .map(ApprovalDocDto.BoxResponse::from)
+        );
+    }
 }

@@ -53,7 +53,7 @@ public class ApprovalSignService {
             deleteFromS3(user.getSignatureImageUrl());
         }
 
-        String key = "approvals/signs/" + user.getUserId() + "/" + UUID.randomUUID() + ".png";
+        String key = "e-approval/signs/" + user.getUserId() + "/" + UUID.randomUUID() + ".png";
         try {
             s3Client.putObject(
                     PutObjectRequest.builder()

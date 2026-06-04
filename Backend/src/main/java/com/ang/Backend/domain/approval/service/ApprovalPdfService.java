@@ -66,7 +66,7 @@ public class ApprovalPdfService {
             byte[] pdfBytes = renderPdf(html);
 
             // S3 업로드
-            String key = "approvals/pdf/" + docId + "/" + UUID.randomUUID() + ".pdf";
+            String key = "e-approval/pdf/" + docId + "/" + UUID.randomUUID() + ".pdf";
             s3Client.putObject(
                     PutObjectRequest.builder()
                             .bucket(bucket)

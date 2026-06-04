@@ -37,6 +37,12 @@ public interface ApprovalDocRepository extends JpaRepository<ApprovalDoc, Long> 
            "AND al.status IN ('APPROVED', 'REJECTED')")
     Page<ApprovalDoc> findCompletedInbox(@Param("userId") Integer userId, Pageable pageable);
 
+    // 수신함: RECEIVER 타입으로 등록된 사용자가 보는 최종 승인 문서
+    @Query("SELECT DISTINCT ad FROM ApprovalDoc ad JOIN ad.approvalLines al " +
+           "WHERE al.approver.userId = :userId AND al.lineType = 'RECEIVER' " +
+           "AND ad.status = 'APPROVED'")
+    Page<ApprovalDoc> findReceivedInbox(@Param("userId") Integer userId, Pageable pageable);
+
     // 통합 검색
     @Query("SELECT ad FROM ApprovalDoc ad WHERE " +
            "(ad.drafter.userId = :userId OR EXISTS (" +

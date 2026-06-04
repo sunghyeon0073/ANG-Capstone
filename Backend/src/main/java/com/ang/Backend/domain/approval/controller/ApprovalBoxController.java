@@ -70,6 +70,15 @@ public class ApprovalBoxController {
         return ApiResponse.ok(boxService.getOutboxRejected(user, page, size));
     }
 
+    @GetMapping("/inbox/received")
+    public ApiResponse<PageResult<ApprovalDocDto.BoxResponse>> receivedInbox(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        return ApiResponse.ok(boxService.getReceivedInbox(user, page, size));
+    }
+
     @GetMapping("/search")
     public ApiResponse<PageResult<ApprovalDocDto.BoxResponse>> search(
             @RequestParam(required = false) String keyword,
