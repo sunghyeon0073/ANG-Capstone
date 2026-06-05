@@ -3,10 +3,17 @@
    ============================================================================ */
 .mail-page {
   height: 100%;
-  padding: 34px 36px 56px;
+  padding: 24px 36px 36px;
   background: #f3f2ed;
   color: #172326;
   overflow: hidden;
+}
+
+.mail-compose-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-y: auto;
 }
 
 .mail-header {
@@ -479,6 +486,8 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  width: min(100%, 1600px);
+  margin: 0 auto;
   min-height: 650px;
   padding: 32px;
   border: 1px solid #d8ddd6;
@@ -1186,7 +1195,7 @@
 .mail-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: visible;
 }
 
 .mail-detail-panel {
@@ -1199,7 +1208,7 @@
   }
 
   .mail-list {
-    max-height: 420px;
+    max-height: none;
   }
 }
 
@@ -1210,7 +1219,8 @@
 }
 
 .mail-shell.mail-list-view {
-  min-height: 0;
+  height: auto;
+  min-height: 780px;
 }
 
 .mail-shell.mail-detail-view {
@@ -1220,13 +1230,13 @@
 }
 
 .mail-list-view .mail-list-panel {
-  height: 100%;
+  min-height: 780px;
   border-right: 0;
 }
 
 .mail-list-view .mail-list {
-  height: calc(100% - 56px);
-  overflow-y: auto;
+  height: auto;
+  overflow-y: visible;
 }
 
 .mail-list-view .mail-list-title {
@@ -1252,13 +1262,14 @@
 
 .mail-list-controls {
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   margin-left: auto;
 }
 
 .mail-list-controls .mail-search {
-  flex: 0 1 320px;
+  flex: 0 1 300px;
+  height: 38px;
 }
 
 .mail-list-view .mail-list-title h2 {
@@ -1275,10 +1286,45 @@
 }
 
 .mail-list-total {
-  color: #67767b;
+  color: var(--color-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   white-space: nowrap;
+}
+
+.mail-pagination {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mail-pagination button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #d7dee3;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #607382;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.mail-pagination button:not(:disabled):hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.mail-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
 }
 
 .mail-list-view .mail-list-item {
@@ -1291,6 +1337,49 @@
 
 .mail-list-view .mail-list-item.selected {
   background: #fff5f3;
+}
+
+.mail-list-skeleton {
+  pointer-events: none;
+}
+
+.mail-list-skeleton span {
+  display: block;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef2f3 0%, #f8faf9 50%, #eef2f3 100%);
+  background-size: 180% 100%;
+  animation: mail-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.mail-list-skeleton span:nth-child(1),
+.mail-list-skeleton span:nth-child(2),
+.mail-list-skeleton span:nth-child(3) {
+  width: 16px;
+  height: 16px;
+}
+
+.mail-list-skeleton span:nth-child(4) {
+  width: 78%;
+}
+
+.mail-list-skeleton span:nth-child(5) {
+  width: 92%;
+}
+
+.mail-list-skeleton span:nth-child(6) {
+  width: 110px;
+  justify-self: end;
+}
+
+@keyframes mail-skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
 }
 
 .mail-list-check {

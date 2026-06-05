@@ -28,10 +28,14 @@ public class StompAuthInterceptor implements ChannelInterceptor {
             String authHeader = accessor.getFirstNativeHeader("Authorization");
             if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
-                if (jwtTokenProvider.validateToken(token)) {
-                    Authentication auth = jwtTokenProvider.getAuthentication(token);
-                    accessor.setUser(auth);
-                    return message;
+                try {
+                    if (jwtTokenProvider.validateToken(token)) {
+                        Authentication auth = jwtTokenProvider.getAuthentication(token);
+                        accessor.setUser(auth);
+                        return message;
+                    }
+                } catch (Exception e) {
+                    // 만료 또는 유효하지 않은 토큰 → 아래에서 Unauthorized 처리
                 }
             }
             throw new MessageDeliveryException("Unauthorized: valid token required");
