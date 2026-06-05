@@ -47,7 +47,6 @@ const buildSchedulePayload = (formData) => {
   const endDate = String(formData.endDate || '').trim()
   const startTime = String(formData.startTime || '').trim()
   const endTime = String(formData.endTime || '').trim()
-  const type = String(formData.type || 'PERSONAL').trim()
   const title = String(formData.title || '').trim()
   const description = String(formData.description || '').trim() || null
 
@@ -81,8 +80,8 @@ const buildSchedulePayload = (formData) => {
     endDate,
     startTime: toApiTime(startTime),
     endTime: toApiTime(endTime),
-    type,
     description,
+    type: formData.type || 'PERSONAL',
   }
 }
 
@@ -293,7 +292,7 @@ const buildCalendarScheduleBars = (schedules, gridDates) => {
         let laneIndex = laneEnds.findIndex((endCol) => endCol < segment.startCol)
         if (laneIndex === -1) laneIndex = laneEnds.length
         laneEnds[laneIndex] = segment.endCol
-        bars.push({ ...segment, lane: laneIndex })
+        bars.push({ ...scheduleId: segment.schedule.id, ...segment, lane: laneIndex })
       })
   })
 
@@ -338,6 +337,7 @@ export default function Calendar({ showSidebar = true }) {
     startTime: '09:00',
     endTime: '10:00',
     description: '',
+    type: 'PERSONAL',
   })
   const [selectedDate, setSelectedDate] = useState(null)
   const [isExcelConfirmOpen, setIsExcelConfirmOpen] = useState(false)
@@ -407,7 +407,12 @@ export default function Calendar({ showSidebar = true }) {
 
   const getScheduleGroup = (schedule) => {
     if (schedule.isAiRecommendation) return 'ai'
-    return schedule.type === 'DEPARTMENT' ? 'department' : 'my'
+    if (schedule.type === 'DEPARTMENT') return 'department'
+    if (schedule.type === 'PERSONAL') return 'my'
+
+    const content = `${schedule.title || ''} ${schedule.description || ''}`.toLowerCase()
+    if (/부서|팀|회의|보고|공유|운영|정기/.test(content)) return 'department'
+    return 'my'
   }
 
   const toggleFilter = (filter) => {
@@ -447,8 +452,8 @@ export default function Calendar({ showSidebar = true }) {
       endDate: baseDateString,
       startTime: '09:00',
       endTime: '10:00',
-      type: 'PERSONAL',
       description: '',
+      type: 'PERSONAL',
     })
   }
 
@@ -568,7 +573,7 @@ export default function Calendar({ showSidebar = true }) {
 
     try {
       await deleteSchedule(schedule.id)
-      setSchedules((prev) => prev.filter((item) => item.id !== schedule.id))
+      fetchCalendarData()
     } catch (error) {
       alert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
     }
@@ -819,15 +824,29 @@ export default function Calendar({ showSidebar = true }) {
           </div>
 
           <div className="form-group">
-            <label>일정 분류</label>
-            <select
-              value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-              className="calendar-input"
-            >
-              <option value="PERSONAL">내 일정</option>
-              <option value="DEPARTMENT">부서 일정</option>
-            </select>
+            <label>일정 구분</label>
+            <div className="calendar-type-selector">
+              <label className={`calendar-type-option ${formData.type === 'PERSONAL' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="scheduleType"
+                  value="PERSONAL"
+                  checked={formData.type === 'PERSONAL'}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                />
+                개인 일정
+              </label>
+              <label className={`calendar-type-option ${formData.type === 'DEPARTMENT' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="scheduleType"
+                  value="DEPARTMENT"
+                  checked={formData.type === 'DEPARTMENT'}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                />
+                부서 일정
+              </label>
+            </div>
           </div>
 
           <div className="form-group">

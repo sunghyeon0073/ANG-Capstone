@@ -43,10 +43,9 @@ public class Schedule {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
-    @Column(name = "schedule_type", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
-    @Builder.Default
-    private ScheduleType type = ScheduleType.PERSONAL;
+    @Column(name = "schedule_type", nullable = false)
+    private ScheduleType type;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
@@ -59,13 +58,13 @@ public class Schedule {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public void update(LocalDate startDate, LocalDate endDate, String title, LocalTime startTime, LocalTime endTime, ScheduleType type, String description) {
+    public void update(LocalDate startDate, LocalDate endDate, String title, LocalTime startTime, LocalTime endTime, String description, ScheduleType type) {
         this.startDate = startDate;
         this.endDate = endDate;
         this.title = title;
         this.startTime = startTime;
         this.endTime = endTime;
-        this.type = type;
         this.description = description;
+        this.type = type;
     }
 }

@@ -182,7 +182,12 @@
   min-height: 160px;
   max-height: 160px;
   background: #ffffff;
+<<<<<<< HEAD
+  border-radius: 10px;
+  padding: 8px;
+=======
   padding: 8px 4px; /* Give some horizontal padding back for aesthetic */
+>>>>>>> 751bc66860ac891373a663e30bde04a9df1c664d
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -193,7 +198,11 @@
   border-right-color: rgba(15, 35, 52, 0.08);
   border-bottom-color: rgba(15, 35, 52, 0.08);
   border-radius: 0;
+<<<<<<< HEAD
+  overflow: hidden;
+=======
   overflow: hidden; 
+>>>>>>> 751bc66860ac891373a663e30bde04a9df1c664d
   color: inherit;
   font: inherit;
   text-align: left;
@@ -204,8 +213,11 @@
 .calendar-cell:hover {
   background: #f8fafc;
   transform: translateY(-2px);
+<<<<<<< HEAD
+=======
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   z-index: 2;
+>>>>>>> 751bc66860ac891373a663e30bde04a9df1c664d
 }
 
 .calendar-cell--other {
@@ -241,18 +253,30 @@
   font-size: 14px;
   font-weight: 600;
   align-self: center;
+<<<<<<< HEAD
+=======
   padding: 0 4px; 
+>>>>>>> 751bc66860ac891373a663e30bde04a9df1c664d
 }
 
 .calendar-cell-content {
   display: flex;
   flex-direction: column;
+<<<<<<< HEAD
+  gap: 4px;
+  align-items: stretch;
+  justify-content: flex-start;
+  margin-top: 0;
+  max-height: 96px;
+  overflow: hidden;
+=======
   gap: 4px; 
   align-items: stretch;
   justify-content: flex-start;
   margin-top: 0;
   max-height: 108px;
   overflow: hidden; 
+>>>>>>> 751bc66860ac891373a663e30bde04a9df1c664d
 }
 
 .calendar-schedule-bars {
@@ -329,10 +353,18 @@
   align-items: center;
   width: 100%;
   max-width: 100%;
+<<<<<<< HEAD
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255,140,116,0.10);
+  color: var(--color-text);
+  font-size: 13px;
+=======
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
+>>>>>>> 751bc66860ac891373a663e30bde04a9df1c664d
   line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
@@ -341,6 +373,8 @@
   min-height: 24px;
   flex: 0 0 24px;
   box-sizing: border-box;
+<<<<<<< HEAD
+=======
   box-shadow: 0 1px 2px rgba(0,0,0,0.02);
   transition: filter 0.15s ease, transform 0.15s ease;
   margin-bottom: 2px;
@@ -348,37 +382,40 @@
 
 .calendar-schedule-item:hover {
   filter: brightness(0.95);
+>>>>>>> 751bc66860ac891373a663e30bde04a9df1c664d
 }
 
 /* multi-day schedule positioning styles */
 .calendar-schedule-start {
-  border-top-left-radius: 4px;
-  border-bottom-left-radius: 4px;
-  margin-left: 4px;
-  width: calc(100% - 4px);
-  box-shadow: inset 3px 0 0 0 rgba(0,0,0,0.15); /* Accent line for start */
+  border-radius: 6px 0 0 6px;
+  padding-right: 6px;
 }
 
 .calendar-schedule-middle {
-  margin: 0;
-  width: 100%;
+  border-radius: 0;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .calendar-schedule-end {
-  border-top-right-radius: 4px;
-  border-bottom-right-radius: 4px;
-  margin-right: 4px;
-  width: calc(100% - 4px);
+  border-radius: 0 6px 6px 0;
+  padding-left: 6px;
 }
 
 .calendar-schedule-single {
-  border-radius: 4px;
-  margin: 0 4px;
-  width: calc(100% - 8px);
-  box-shadow: inset 3px 0 0 0 rgba(0,0,0,0.15); /* Accent line for single events */
+  border-radius: 6px;
 }
 
-/* Removed hardcoded --my and --department backgrounds since they are dynamically set now */
+/* type-specific styles */
+.calendar-schedule-item--my {
+  background:rgba(0, 196, 113, 0.6);
+  color: #000000;
+}
+
+.calendar-schedule-item--department { 
+  background: #00A3C4; /* teal */
+  color: white;
+}
 
 .calendar-schedule-item--ai {
   background: #FFD54A; /* yellow */
@@ -700,6 +737,43 @@
   gap: 8px;
   justify-content: flex-end;
   margin-top: 12px;
+}
+
+.calendar-type-selector {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.calendar-type-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e6eef2;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.calendar-type-option input {
+  display: none;
+}
+
+.calendar-type-option:hover {
+  background: #f8fbff;
+  border-color: #d0e1ff;
+}
+
+.calendar-type-option.active {
+  background: #eef5ff;
+  border-color: #0066ff;
+  color: #0066ff;
+  font-weight: 600;
 }
 
 /* end calendar */

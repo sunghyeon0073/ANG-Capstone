@@ -37,6 +37,9 @@ public class ScheduleDto {
         private ScheduleType type = ScheduleType.PERSONAL;
 
         private String description;
+
+        @NotNull
+        private ScheduleType type;
     }
 
     @Getter
@@ -50,6 +53,7 @@ public class ScheduleDto {
         private LocalTime endTime;
         private ScheduleType type;
         private String description;
+        private ScheduleType type;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -63,6 +67,7 @@ public class ScheduleDto {
                     .endTime(schedule.getEndTime())
                     .type(schedule.getType())
                     .description(schedule.getDescription())
+                    .type(schedule.getType())
                     .createdAt(schedule.getCreatedAt())
                     .updatedAt(schedule.getUpdatedAt())
                     .build();
