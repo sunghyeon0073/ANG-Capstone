@@ -27,6 +27,8 @@ import java.util.List;
 public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
+    private final com.ang.Backend.domain.memo.repository.MemoRepository memoRepository;
+    private final com.ang.Backend.domain.file.repository.FileItemRepository fileItemRepository;
     private final JdbcTemplate jdbcTemplate;
 
     @PostConstruct
@@ -65,8 +67,11 @@ public class ScheduleService {
         LocalDate rangeEnd = endDate != null ? endDate : LocalDate.now().plusDays(30);
 
         List<ScheduleDto.AiRecommendationResponse> recommendations = new ArrayList<>();
-        recommendations.addAll(buildUpcomingReminders(owner, rangeStart, rangeEnd));
         recommendations.addAll(buildLastYearRecommendations(owner, rangeStart, rangeEnd));
+        recommendations.addAll(buildPatternRecommendations(owner, rangeStart, rangeEnd));
+
+        // 각 추천 항목에 대해 연관 문서/메모 탐색
+        recommendations.forEach(rec -> rec.getAssociatedItems().addAll(findAssociatedItems(owner, rec.getSourceTitle())));
 
         return recommendations.stream()
                 .sorted(Comparator
@@ -76,35 +81,86 @@ public class ScheduleService {
                 .toList();
     }
 
-    private List<ScheduleDto.AiRecommendationResponse> buildUpcomingReminders(User owner, LocalDate rangeStart, LocalDate rangeEnd) {
-        LocalDate sourceStart = rangeStart.plusDays(2);
-        LocalDate sourceEnd = rangeEnd.plusDays(2);
+    private List<ScheduleDto.AiRecommendationResponse> buildPatternRecommendations(User owner, LocalDate rangeStart, LocalDate rangeEnd) {
+        // 최근 6개월간의 일정을 분석 (패턴 파악용)
+        LocalDate analysisStart = LocalDate.now().minusMonths(6);
+        List<Schedule> pastSchedules = scheduleRepository.findByOwnerAndStartDateBetweenOrderByStartDateAscStartTimeAsc(owner, analysisStart, LocalDate.now());
 
-        return scheduleRepository.findByOwnerAndStartDateBetweenOrderByStartDateAscStartTimeAsc(owner, sourceStart, sourceEnd)
-                .stream()
-                .map(schedule -> {
-                    LocalDate reminderDate = schedule.getStartDate().minusDays(2);
-                    long daysLeft = ChronoUnit.DAYS.between(reminderDate, schedule.getStartDate());
-                    String message = "곧 " + schedule.getTitle() + " 일정이 다가와요!";
-                    if (daysLeft == 2) {
-                        message = "이틀 뒤 " + schedule.getTitle() + " 일정이 다가와요!";
+        if (pastSchedules.isEmpty()) return List.of();
+
+        // 제목별로 일정 그룹화
+        java.util.Map<String, List<Schedule>> groups = pastSchedules.stream()
+                .collect(java.util.stream.Collectors.groupingBy(s -> s.getTitle().trim()));
+
+        List<ScheduleDto.AiRecommendationResponse> results = new ArrayList<>();
+
+        groups.forEach((title, schedules) -> {
+            if (schedules.size() >= 3) {
+                // 패턴 분석 (주기성)
+                long avgInterval = calculateAverageInterval(schedules);
+                if (avgInterval >= 6 && avgInterval <= 35) { // 주간 또는 월간 패턴인 경우
+                    Schedule last = schedules.get(schedules.size() - 1);
+                    LocalDate nextDate = last.getStartDate().plusDays(avgInterval);
+                    
+                    // 예측된 날짜가 요청 범위 내에 있는지 확인
+                    if (!nextDate.isBefore(rangeStart) && !nextDate.isAfter(rangeEnd)) {
+                        results.add(ScheduleDto.AiRecommendationResponse.builder()
+                                .id("pattern-" + title.hashCode() + "-" + nextDate)
+                                .type("pattern")
+                                .title("AI 패턴 추천")
+                                .message("자주 하시는 [" + title + "] 일정이 돌아왔어요. 등록할까요?")
+                                .recommendationDate(nextDate)
+                                .sourceStartDate(nextDate)
+                                .sourceEndDate(nextDate)
+                                .sourceStartTime(last.getStartTime())
+                                .sourceEndTime(last.getEndTime())
+                                .sourceTitle(title)
+                                .build());
                     }
+                }
+            }
+        });
 
-                    return ScheduleDto.AiRecommendationResponse.builder()
-                            .id("reminder-" + schedule.getScheduleId())
-                            .type("upcoming")
-                            .title("AI 알림")
-                            .message(message)
-                            .recommendationDate(reminderDate)
-                            .sourceStartDate(schedule.getStartDate())
-                            .sourceEndDate(schedule.getEndDate())
-                            .sourceStartTime(schedule.getStartTime())
-                            .sourceEndTime(schedule.getEndTime())
-                            .sourceScheduleId(schedule.getScheduleId())
-                            .sourceTitle(schedule.getTitle())
-                            .build();
-                })
-                .toList();
+        return results;
+    }
+
+    private long calculateAverageInterval(List<Schedule> schedules) {
+        if (schedules.size() < 2) return 0;
+        long totalDays = 0;
+        for (int i = 1; i < schedules.size(); i++) {
+            totalDays += ChronoUnit.DAYS.between(schedules.get(i-1).getStartDate(), schedules.get(i).getStartDate());
+        }
+        return totalDays / (schedules.size() - 1);
+    }
+
+    private List<ScheduleDto.AssociatedItem> findAssociatedItems(User owner, String keyword) {
+        if (keyword == null || keyword.isBlank() || keyword.length() < 2) return new ArrayList<>();
+        
+        // 검색용 핵심 키워드 추출 (단순히 첫 2단어 혹은 공백 제거 등)
+        String searchKey = keyword.split(" ")[0]; 
+        
+        List<ScheduleDto.AssociatedItem> items = new ArrayList<>();
+        
+        // 메모 검색
+        memoRepository.findByUserAndKeyword(owner, searchKey).stream()
+                .limit(2)
+                .forEach(memo -> items.add(ScheduleDto.AssociatedItem.builder()
+                        .type("MEMO")
+                        .id(memo.getMemoId())
+                        .title(memo.getTitle())
+                        .content(memo.getContent())
+                        .build()));
+        
+        // 파일 검색
+        fileItemRepository.findByUserAndKeyword(owner.getUserId().intValue(), searchKey).stream()
+                .limit(2)
+                .forEach(file -> items.add(ScheduleDto.AssociatedItem.builder()
+                        .type("FILE")
+                        .id(file.getFileId())
+                        .title(file.getOriginalFileName())
+                        .build()));
+        
+        return items;
     }
 
     private List<ScheduleDto.AiRecommendationResponse> buildLastYearRecommendations(User owner, LocalDate rangeStart, LocalDate rangeEnd) {

@@ -310,10 +310,13 @@ const toAiSchedule = (recommendation) => ({
   description:
     recommendation.type === 'last-year'
       ? `기준 일정: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`
-      : `예정일: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`,
+      : recommendation.type === 'pattern'
+        ? `분석된 주기 기반 추천: ${recommendation.sourceTitle}`
+        : `예정일: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`,
   isAiRecommendation: true,
   aiType: recommendation.type,
   sourceTitle: recommendation.sourceTitle,
+  associatedItems: recommendation.associatedItems || [],
 })
 
 export default function Calendar({ showSidebar = true }) {
@@ -730,10 +733,22 @@ export default function Calendar({ showSidebar = true }) {
                 {todayAiSchedules.map((schedule) => (
                   <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
                     <div className="calendar-ai-label">
-                      {schedule.aiType === 'last-year' ? '작년 기록 기반' : '다가오는 일정'}
+                      {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : '다가오는 일정'}
                     </div>
                     <div className="calendar-ai-message">{schedule.title}</div>
                     <div className="calendar-ai-meta">{schedule.description}</div>
+                    
+                    {schedule.associatedItems && schedule.associatedItems.length > 0 && (
+                      <div className="calendar-ai-assets">
+                        <div className="calendar-ai-assets-label">연관 문서/메모:</div>
+                        {schedule.associatedItems.map((item, idx) => (
+                          <div key={`${item.type}-${item.id}-${idx}`} className="calendar-ai-asset-item">
+                            <span className={`asset-tag asset-tag--${item.type.toLowerCase()}`}>{item.type === 'MEMO' ? '메모' : '파일'}</span>
+                            <span className="asset-name" title={item.title}>{item.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

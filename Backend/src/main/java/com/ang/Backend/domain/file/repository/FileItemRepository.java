@@ -13,4 +13,7 @@ public interface FileItemRepository extends JpaRepository<FileItem, Long> {
     boolean existsByFilePath(String filePath);
     java.util.Optional<FileItem> findByFilePath(String filePath);
     List<FileItem> findByOwnerType(OwnerType ownerType);
+
+    @org.springframework.data.jpa.repository.Query("SELECT f FROM FileItem f WHERE f.ownerType = 'USER' AND f.ownerId = :userId AND f.originalFileName LIKE %:keyword% AND f.deletedAt IS NULL ORDER BY f.uploadedAt DESC")
+    List<FileItem> findByUserAndKeyword(@org.springframework.data.repository.query.Param("userId") Integer userId, @org.springframework.data.repository.query.Param("keyword") String keyword);
 }

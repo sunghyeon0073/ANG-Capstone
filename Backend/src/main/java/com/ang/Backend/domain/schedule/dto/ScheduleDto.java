@@ -83,5 +83,16 @@ public class ScheduleDto {
         private LocalTime sourceEndTime;
         private Long sourceScheduleId;
         private String sourceTitle;
+        @Builder.Default
+        private java.util.List<AssociatedItem> associatedItems = new java.util.ArrayList<>();
+    }
+
+    @Getter
+    @Builder
+    public static class AssociatedItem {
+        private String type; // MEMO, FILE
+        private Long id;
+        private String title;
+        private String content; // Optional, can be null
     }
 }
