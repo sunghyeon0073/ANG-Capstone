@@ -38,7 +38,7 @@ public class ScheduleService {
             jdbcTemplate.execute("ALTER TABLE schedules MODIFY COLUMN schedule_date DATE NULL");
             log.info("Successfully modified legacy schedule_date column to be nullable.");
         } catch (Exception e) {
-            log.warn("Legacy schedule_date column might not exist or already modified. (ignore if safe) - {}", e.getMessage());
+            log.warn("Legacy schedule_date column might not exist or already modified. - {}", e.getMessage());
         }
 
         try {
@@ -46,6 +46,24 @@ public class ScheduleService {
             log.info("Successfully added schedule_type column.");
         } catch (Exception e) {
             log.warn("schedule_type column might already exist. - {}", e.getMessage());
+        }
+
+        // 할 일(Todo) 및 반복 일정 관련 컬럼 추가
+        String[] columnsToAdd = {
+            "ALTER TABLE schedules ADD COLUMN is_todo BOOLEAN DEFAULT FALSE NOT NULL",
+            "ALTER TABLE schedules ADD COLUMN is_completed BOOLEAN DEFAULT FALSE NOT NULL",
+            "ALTER TABLE schedules ADD COLUMN parent_schedule_id BIGINT NULL",
+            "ALTER TABLE schedules ADD COLUMN repeat_type VARCHAR(20) NULL",
+            "ALTER TABLE schedules ADD COLUMN repeat_end_date DATE NULL"
+        };
+
+        for (String sql : columnsToAdd) {
+            try {
+                jdbcTemplate.execute(sql);
+                log.info("Successfully executed: {}", sql);
+            } catch (Exception e) {
+                log.warn("Column might already exist or failed to add: {} - {}", sql, e.getMessage());
+            }
         }
     }
 
@@ -209,6 +227,9 @@ public class ScheduleService {
                 .repeatType(request.getRepeatType())
                 .repeatEndDate(request.getRepeatEndDate())
                 .build();
+        
+        // Ensure isTodo is set correctly (sometimes builder needs extra help with boolean naming)
+        rootSchedule.setIsTodo(request.isTodo());
 
         createdSchedules.add(scheduleRepository.save(rootSchedule));
 
@@ -239,6 +260,8 @@ public class ScheduleService {
                     .repeatType(request.getRepeatType())
                     .repeatEndDate(request.getRepeatEndDate())
                     .build();
+                
+                repeatedSchedule.setIsTodo(request.isTodo());
 
                 createdSchedules.add(scheduleRepository.save(repeatedSchedule));
             }
@@ -269,7 +292,10 @@ public class ScheduleService {
                 request.getStartTime(),
                 request.getEndTime(),
                 normalizeDescription(request.getDescription()),
-                request.getType() != null ? request.getType() : schedule.getType()
+                request.getType() != null ? request.getType() : schedule.getType(),
+                request.isTodo(),
+                request.getRepeatType(),
+                request.getRepeatEndDate()
         );
         return ScheduleDto.Response.from(schedule);
     }

@@ -18,6 +18,7 @@ import {
   getAiScheduleRecommendations,
   getSchedules,
   toggleCompleteSchedule,
+  updateSchedule,
 } from '../../api/scheduleApi'
 
 const SimpleModal = ({ open, onClose, title, children }) => {
@@ -355,6 +356,35 @@ const toAiSchedule = (recommendation) => ({
   associatedItems: recommendation.associatedItems || [],
 })
 
+const MonthYearPicker = ({ activeStartDate, onSelect, onClose }) => {
+  const [viewYear, setViewYear] = useState(activeStartDate.getFullYear())
+  const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
+  
+  return (
+    <>
+      <div className="month-year-picker-backdrop" onClick={onClose} />
+      <div className="month-year-picker-content">
+        <div className="picker-header">
+          <button onClick={() => setViewYear(viewYear - 1)}><FiChevronLeft /></button>
+          <span>{viewYear}년</span>
+          <button onClick={() => setViewYear(viewYear + 1)}><FiChevronRight /></button>
+        </div>
+        <div className="picker-grid">
+          {months.map((month, idx) => (
+            <button 
+              key={month} 
+              className={`picker-month-btn ${viewYear === activeStartDate.getFullYear() && idx === activeStartDate.getMonth() ? 'active' : ''}`}
+              onClick={() => onSelect(viewYear, idx)}
+            >
+              {month}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function Calendar({ showSidebar = true }) {
   const excelInputRef = useRef(null)
   const [date, setDate] = useState(new Date())
@@ -362,11 +392,14 @@ export default function Calendar({ showSidebar = true }) {
     const today = new Date()
     return new Date(today.getFullYear(), today.getMonth(), 1)
   })
-  const [selectedFilters, setSelectedFilters] = useState(['personal', 'work', 'todo', 'ai'])
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false)
+  const [selectedFilters, setSelectedFilters] = useState(['personal', 'dept', 'todo', 'ai'])
   const [schedules, setSchedules] = useState([])
   const [aiRecommendations, setAiRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [selectedSchedule, setSelectedSchedule] = useState(null)
   const [formData, setFormData] = useState({
     title: '',
     startDate: '',
@@ -432,11 +465,24 @@ export default function Calendar({ showSidebar = true }) {
     const map = new Map()
     const baseSchedules = Array.isArray(schedules) ? schedules : []
     const baseAiSchedules = Array.isArray(aiSchedules) ? aiSchedules : []
-    // 우선 기존 서버에서 온 schedules를 넣고, AI 추천은 id 중복이 없을 때만 추가
+    
+    // 1. 기존 서버 일정 먼저 등록
     baseSchedules.forEach((s) => map.set(s.id, s))
+    
+    // 2. AI 추천 일정 추가 (ID 중복이 없고, 동일 날짜에 동일 제목의 일정이 없는 경우만)
     baseAiSchedules.forEach((s) => {
-      if (!map.has(s.id)) map.set(s.id, s)
+      if (map.has(s.id)) return
+
+      const isDuplicate = baseSchedules.some(existing => 
+        existing.startDate === s.startDate && 
+        (existing.title === s.title || (existing.description && existing.description.includes(s.title)))
+      )
+
+      if (!isDuplicate) {
+        map.set(s.id, s)
+      }
     })
+    
     return Array.from(map.values())
   }, [schedules, aiSchedules])
 
@@ -464,10 +510,11 @@ export default function Calendar({ showSidebar = true }) {
 
   const getScheduleGroup = (schedule) => {
     if (schedule.isAiRecommendation) return 'ai'
-    if (schedule.isTodo) return 'todo'
-    if (schedule.type === 'DEPARTMENT') return 'work'
+    if (schedule.isTodo === true || schedule.isTodo === 'true' || schedule.todo) return 'todo'
+    if (schedule.type === 'DEPARTMENT') return 'dept'
     return 'personal'
   }
+
 
   const toggleFilter = (filter) => {
     setSelectedFilters((prev) => (
@@ -486,6 +533,8 @@ export default function Calendar({ showSidebar = true }) {
     () => buildCalendarScheduleBars(filteredSchedules, monthGrid),
     [filteredSchedules, monthGrid],
   )
+
+  const selectedDateStr = useMemo(() => selectedDate ? formatDate(selectedDate) : null, [selectedDate])
 
   const getSchedulesForDate = (d) => {
     const dateStr = formatDate(d)
@@ -518,6 +567,34 @@ export default function Calendar({ showSidebar = true }) {
     setSelectedDate(nextSelectedDate)
     resetForm(nextSelectedDate)
     setIsModalOpen(true)
+  }
+
+  const handleEditSchedule = (schedule) => {
+    setSelectedSchedule(schedule)
+    setFormData({
+      title: schedule.title,
+      startDate: schedule.startDate,
+      endDate: schedule.endDate,
+      startTime: normalizeTime(schedule.startTime),
+      endTime: normalizeTime(schedule.endTime),
+      description: schedule.description || '',
+      type: schedule.type || 'PERSONAL',
+      entryMode: schedule.isTodo ? 'TODO' : 'EVENT',
+      repeatType: schedule.repeatType || 'NONE',
+      repeatEndDate: schedule.repeatEndDate || ''
+    })
+    setIsDetailModalOpen(true)
+  }
+
+  const handleUpdateSchedule = async () => {
+    if (!selectedSchedule) return
+    try {
+      await updateSchedule(selectedSchedule.id, buildSchedulePayload(formData))
+      setIsDetailModalOpen(false)
+      fetchCalendarData()
+    } catch (error) {
+      alert(`일정 수정 실패: ${error.message}`)
+    }
   }
 
   const openExcelPicker = () => {
@@ -623,25 +700,35 @@ export default function Calendar({ showSidebar = true }) {
     }
   }
 
-  const handleDeleteSchedule = async (schedule) => {
+  const handleDeleteSchedule = async (e, schedule) => {
+    if (e) e.stopPropagation()
     if (schedule.isAiRecommendation) return
     if (!window.confirm('이 일정을 삭제하시겠습니까?')) return
 
     try {
       await deleteSchedule(schedule.id)
+      setIsDetailModalOpen(false)
+      setSelectedSchedule(null)
       fetchCalendarData()
     } catch (error) {
       alert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
     }
   }
 
-  const handleToggleTodo = async (schedule) => {
+  const handleToggleTodo = async (e, schedule) => {
+    if (e) e.stopPropagation()
     try {
       await toggleCompleteSchedule(schedule.id)
       fetchCalendarData()
     } catch (error) {
       alert(`할 일 상태 변경 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
     }
+  }
+
+  const handleGoToToday = () => {
+    const today = new Date()
+    setDate(today)
+    setActiveStartDate(new Date(today.getFullYear(), today.getMonth(), 1))
   }
 
   const todaySchedules = sortByTime(getSchedulesForDate(date))
@@ -693,10 +780,23 @@ export default function Calendar({ showSidebar = true }) {
   const completedTodos = filteredSchedules.filter(s => s.isTodo && s.isCompleted).length
   const totalEvents = filteredSchedules.filter(s => !s.isTodo && !s.isAiRecommendation).length
 
+  const getDayOfWeek = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('ko-KR', { weekday: 'long' });
+    } catch (e) {
+      return '';
+    }
+  };
+
   const displayList = sidebarTab === 'DAILY' ? todayDetailSchedules : upcomingSchedules
+
+  const rowCount = monthGrid.length / 7
 
   return (
     <div className="calendar-page">
+      {/* ... existing header and sidebar ... */}
       <header className="calendar-main-header">
         <div className="header-left">
           <button 
@@ -707,9 +807,22 @@ export default function Calendar({ showSidebar = true }) {
           >
             <FiMenu aria-hidden="true" />
           </button>
-          <button type="button" className="btn btn-primary calendar-add-btn" onClick={handleAddSchedule}>
-            <FiPlus aria-hidden="true" />
-            일정 추가
+          <button 
+            type="button" 
+            className="btn btn-primary calendar-add-btn" 
+            onClick={handleAddSchedule} 
+            title="일정 추가" 
+            style={{ 
+              width: '48px', 
+              height: '48px', 
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0
+            }}
+          >
+            <FiPlus aria-hidden="true" style={{ fontSize: '28px' }} />
           </button>
         </div>
 
@@ -723,9 +836,23 @@ export default function Calendar({ showSidebar = true }) {
             >
               <FiChevronLeft aria-hidden="true" />
             </button>
-            <div className="calendar-current-month">
+            <div 
+              className="calendar-current-month" 
+              onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
+              style={{ cursor: 'pointer' }}
+            >
               {activeStartDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
             </div>
+            {isMonthPickerOpen && (
+              <MonthYearPicker 
+                activeStartDate={activeStartDate} 
+                onSelect={(year, month) => {
+                  setActiveStartDate(new Date(year, month, 1))
+                  setIsMonthPickerOpen(false)
+                }}
+                onClose={() => setIsMonthPickerOpen(false)}
+              />
+            )}
             <button
               type="button"
               className="btn calendar-icon-btn"
@@ -733,6 +860,14 @@ export default function Calendar({ showSidebar = true }) {
               aria-label="다음 달"
             >
               <FiChevronRight aria-hidden="true" />
+            </button>
+            <button 
+              type="button" 
+              className="calendar-today-btn" 
+              onClick={handleGoToToday}
+              style={{ marginLeft: '8px' }}
+            >
+              오늘
             </button>
           </div>
         </div>
@@ -759,8 +894,8 @@ export default function Calendar({ showSidebar = true }) {
       </header>
 
       <div className="calendar-container">
-        {showSidebar && isSidebarOpen && (
-          <aside className="calendar-sidebar">
+        {showSidebar && (
+          <aside className={`calendar-sidebar ${!isSidebarOpen ? 'collapsed' : ''}`}>
             <div className="sidebar-schedule-section">
               <h3 onClick={() => setIsSchedulesExpanded(!isSchedulesExpanded)}>
                 일정
@@ -768,21 +903,6 @@ export default function Calendar({ showSidebar = true }) {
               </h3>
               {isSchedulesExpanded && (
                 <>
-                  <div className="sidebar-header">
-                    <h2>{date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' })}</h2>
-                    <div className="calendar-sidebar-count">총 {displayList.length}개</div>
-                  </div>
-
-                  <form onSubmit={handleQuickAddTodo} className="quick-add-form">
-                    <input 
-                      type="text" 
-                      placeholder="빠른 할 일 추가... (Enter)"
-                      value={quickTodoTitle}
-                      onChange={(e) => setQuickTodoTitle(e.target.value)}
-                      className="quick-add-input"
-                    />
-                  </form>
-
                   {todayAiSchedules.length > 0 && (
                     <div className="calendar-ai-panel" aria-label="AI 일정 추천">
                       {todayAiSchedules.map((schedule) => (
@@ -806,20 +926,25 @@ export default function Calendar({ showSidebar = true }) {
                           key={schedule.id}
                           className={`schedule-item schedule-item--${getScheduleGroup(schedule)} ${schedule.isAiRecommendation ? `schedule-item--ai-${schedule.aiType}` : ''}`}
                           style={schedule.isTodo && schedule.isCompleted ? { opacity: 0.6 } : {}}
+                          onClick={() => handleEditSchedule(schedule)}
                         >
                           <div className="schedule-time">
-                            {!schedule.isTodo ? (
-                              `${normalizeTime(schedule.startTime)} ~ ${normalizeTime(schedule.endTime)}`
+                            {isMultiDaySchedule(schedule) ? (
+                              `${schedule.startDate.slice(5)} ${normalizeTime(schedule.startTime)} ~ ${schedule.endDate.slice(5)} ${normalizeTime(schedule.endTime)}`
                             ) : (
-                              `${normalizeTime(schedule.startTime)}`
+                              !schedule.isTodo ? (
+                                `${normalizeTime(schedule.startTime)} ~ ${normalizeTime(schedule.endTime)}`
+                              ) : (
+                                `${normalizeTime(schedule.startTime)}`
+                              )
                             )}
                           </div>
                           
                           <div className="schedule-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {schedule.isTodo && (
                               <span 
-                                onClick={() => handleToggleTodo(schedule)} 
-                                style={{ cursor: 'pointer', fontSize: '18px', color: schedule.isCompleted ? '#10b981' : '#cbd5e1' }}
+                                onClick={(e) => handleToggleTodo(e, schedule)} 
+                                style={{ cursor: 'pointer', fontSize: '18px', color: '#34d399' }}
                               >
                                 {schedule.isCompleted ? '☑' : '☐'}
                               </span>
@@ -833,7 +958,7 @@ export default function Calendar({ showSidebar = true }) {
                             <button
                               type="button"
                               className="schedule-delete-btn"
-                              onClick={() => handleDeleteSchedule(schedule)}
+                              onClick={(e) => handleDeleteSchedule(e, schedule)}
                               aria-label={`${schedule.title} 삭제`}
                             >
                               <FiTrash2 aria-hidden="true" />
@@ -856,42 +981,38 @@ export default function Calendar({ showSidebar = true }) {
               </h3>
               {isFiltersExpanded && (
                 <div className="calendar-filter-group" role="group" aria-label="일정 필터">
-                  <button
-                    type="button"
-                    className={`calendar-filter-pill calendar-filter-pill--personal ${selectedFilters.includes('personal') ? 'active' : ''}`}
-                    onClick={() => toggleFilter('personal')}
-                    aria-pressed={selectedFilters.includes('personal')}
-                  >
-                    <span className="calendar-filter-check" aria-hidden="true" />
-                    개인
-                  </button>
-                  <button
-                    type="button"
-                    className={`calendar-filter-pill calendar-filter-pill--work ${selectedFilters.includes('work') ? 'active' : ''}`}
-                    onClick={() => toggleFilter('work')}
-                    aria-pressed={selectedFilters.includes('work')}
-                  >
-                    <span className="calendar-filter-check" aria-hidden="true" />
-                    업무
-                  </button>
-                  <button
-                    type="button"
-                    className={`calendar-filter-pill calendar-filter-pill--todo ${selectedFilters.includes('todo') ? 'active' : ''}`}
-                    onClick={() => toggleFilter('todo')}
-                    aria-pressed={selectedFilters.includes('todo')}
-                  >
-                    <span className="calendar-filter-check" aria-hidden="true" />
-                    할 일
-                  </button>
-                  <button
-                    type="button"
-                    className={`calendar-filter-pill calendar-filter-pill--ai ${selectedFilters.includes('ai') ? 'active' : ''}`}
-                    onClick={() => toggleFilter('ai')}
-                    aria-pressed={selectedFilters.includes('ai')}
-                  >
-                    <span className="calendar-filter-check" aria-hidden="true" />
-                    AI 추천
-                  </button>
+                  <label className="calendar-filter-item calendar-filter-item--personal">
+                    <input
+                      type="checkbox"
+                      checked={selectedFilters.includes('personal')}
+                      onChange={() => toggleFilter('personal')}
+                    />
+                    <span>개인</span>
+                  </label>
+                  <label className="calendar-filter-item calendar-filter-item--dept">
+                    <input
+                      type="checkbox"
+                      checked={selectedFilters.includes('dept')}
+                      onChange={() => toggleFilter('dept')}
+                    />
+                    <span>부서</span>
+                  </label>
+                  <label className="calendar-filter-item calendar-filter-item--todo">
+                    <input
+                      type="checkbox"
+                      checked={selectedFilters.includes('todo')}
+                      onChange={() => toggleFilter('todo')}
+                    />
+                    <span>할 일</span>
+                  </label>
+                  <label className="calendar-filter-item calendar-filter-item--ai">
+                    <input
+                      type="checkbox"
+                      checked={selectedFilters.includes('ai')}
+                      onChange={() => toggleFilter('ai')}
+                    />
+                    <span>AI 추천</span>
+                  </label>
                 </div>
               )}
             </div>
@@ -909,14 +1030,16 @@ export default function Calendar({ showSidebar = true }) {
             <div className="calendar-cells">
               {monthGrid.map((cellDate, index) => {
                 const classes = ['calendar-cell']
-                const daySchedules = getSchedulesForDate(cellDate)
                 const cellDateStr = formatDate(cellDate)
+                const todayStr = formatDate(new Date())
+                const daySchedules = getSchedulesForDate(cellDate)
 
                 const row = Math.floor(index / 7) + 1
                 const col = (index % 7) + 1
                 const barsInCell = calendarScheduleBars.filter(bar => bar.row === row && bar.startCol <= col && bar.endCol >= col)
 
                 if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
+                if (cellDateStr === todayStr) classes.push('calendar-cell--today')
                 if (cellDateStr === formatDate(date)) classes.push('calendar-cell--selected')
                 if (daySchedules.length > 0) classes.push('calendar-date-with-schedule')
                 if (daySchedules.some((item) => item.isAiRecommendation)) classes.push('calendar-cell--has-ai')
@@ -951,11 +1074,22 @@ export default function Calendar({ showSidebar = true }) {
                         : 'middle'
 
                   const schedule = bar.schedule
+                  
+                  // Sync zoom state
+                  const isBarSelected = selectedDateStr && (
+                    (schedule.startDate === selectedDateStr) ||
+                    (schedule.endDate === selectedDateStr) ||
+                    (selectedDateStr >= schedule.startDate && selectedDateStr <= schedule.endDate)
+                  );
+
                   let itemClasses = `calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} calendar-schedule-bar--${segmentType}`
+                  if (isBarSelected) itemClasses += ' is-selected';
                   
                   if (schedule.isAiRecommendation) {
                     itemClasses += ` calendar-schedule-bar--ai-${schedule.aiType}`
                   }
+
+                  const topPos = `calc(${((bar.row - 1) / rowCount) * 100}% + ${32 + (bar.lane * 28)}px)`
 
                   if (schedule.isTodo) {
                     itemClasses += ' calendar-schedule-item--todo'
@@ -966,7 +1100,7 @@ export default function Calendar({ showSidebar = true }) {
                         style={{
                           left: `calc(${((bar.startCol - 1) / 7) * 100}% + 4px)`,
                           width: `calc(${(duration / 7) * 100}% - 8px)`,
-                          top: `${((bar.row - 1) * 160) + 36 + (bar.lane * 28)}px`,
+                          top: topPos,
                           pointerEvents: 'auto',
                           cursor: 'pointer',
                           textDecoration: schedule.isCompleted ? 'line-through' : 'none'
@@ -974,13 +1108,17 @@ export default function Calendar({ showSidebar = true }) {
                         title={schedule.title}
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleToggleTodo(schedule);
+                          handleEditSchedule(schedule);
                         }}
                       >
                         <span style={{ 
                           marginRight: '5px', 
                           fontSize: '14px',
-                          color: schedule.isCompleted ? 'inherit' : (schedule.type === 'DEPARTMENT' ? '#00A3C4' : '#00C471')
+                          color: schedule.isCompleted ? 'inherit' : '#10b981'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleTodo(schedule);
                         }}>
                           {schedule.isCompleted ? '☑' : '☐'}
                         </span>
@@ -996,14 +1134,14 @@ export default function Calendar({ showSidebar = true }) {
                       style={{
                         left: `calc(${((bar.startCol - 1) / 7) * 100}% + 4px)`,
                         width: `calc(${(duration / 7) * 100}% - 8px)`,
-                        top: `${((bar.row - 1) * 160) + 36 + (bar.lane * 28)}px`,
+                        top: topPos,
                         pointerEvents: 'auto',
                         cursor: 'pointer'
                       }}
                       title={schedule.title}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDateChange(new Date(schedule.startDate));
+                        handleEditSchedule(schedule);
                       }}
                     >
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{schedule.title}</span>
@@ -1054,10 +1192,10 @@ export default function Calendar({ showSidebar = true }) {
               />
 
               <div className="calendar-excel-upload">
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="calendar-excel-upload-title">엑셀로 일정 등록</div>
                   <div className="calendar-excel-upload-desc">
-                    날짜, 제목, 시작시간, 종료시간, 설명 컬럼을 인식해 일정을 자동으로 읽어옵니다.
+                    양식에 맞는 엑셀 파일을 넣어주세요.
                   </div>
                 </div>
                 <button
@@ -1065,6 +1203,7 @@ export default function Calendar({ showSidebar = true }) {
                   className="btn btn-secondary calendar-excel-upload-btn"
                   onClick={openExcelPicker}
                   disabled={isImportingExcel}
+                  style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
                   {isImportingExcel ? '읽는 중...' : '엑셀 파일 업로드'}
                 </button>
@@ -1072,31 +1211,33 @@ export default function Calendar({ showSidebar = true }) {
             </>
           )}
 
-          <div className="form-group">
-            <label>구분</label>
-            <div className="calendar-type-selector">
-              <label className={`calendar-type-option ${formData.type === 'PERSONAL' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="scheduleType"
-                  value="PERSONAL"
-                  checked={formData.type === 'PERSONAL'}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                />
-                개인
-              </label>
-              <label className={`calendar-type-option ${formData.type === 'DEPARTMENT' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="scheduleType"
-                  value="DEPARTMENT"
-                  checked={formData.type === 'DEPARTMENT'}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                />
-                업무
-              </label>
+          {formData.entryMode === 'EVENT' && (
+            <div className="form-group">
+              <label>구분</label>
+              <div className="calendar-type-selector">
+                <label className={`calendar-type-option ${formData.type === 'PERSONAL' ? 'active' : ''}`}>
+                  <input
+                    type="radio"
+                    name="scheduleType"
+                    value="PERSONAL"
+                    checked={formData.type === 'PERSONAL'}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  />
+                  개인
+                </label>
+                <label className={`calendar-type-option ${formData.type === 'DEPARTMENT' ? 'active' : ''}`}>
+                  <input
+                    type="radio"
+                    name="scheduleType"
+                    value="DEPARTMENT"
+                    checked={formData.type === 'DEPARTMENT'}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  />
+                  부서
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="form-group">
             <label>{formData.entryMode === 'TODO' ? '할 일 제목' : '일정 제목'}</label>
@@ -1140,26 +1281,38 @@ export default function Calendar({ showSidebar = true }) {
             )}
           </div>
 
-          <div className="form-row">
+          {formData.entryMode === 'TODO' ? (
             <div className="form-group">
-              <label>시작 시간</label>
-              <input
-                type="time"
-                value={formData.startTime}
-                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                className="calendar-input"
-              />
-            </div>
-            <div className="form-group">
-              <label>{formData.entryMode === 'TODO' ? '마감 시간' : '종료 시간'}</label>
+              <label>마감 시간</label>
               <input
                 type="time"
                 value={formData.endTime}
-                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value, startTime: e.target.value })}
                 className="calendar-input"
               />
             </div>
-          </div>
+          ) : (
+            <div className="form-row">
+              <div className="form-group">
+                <label>시작 시간</label>
+                <input
+                  type="time"
+                  value={formData.startTime}
+                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                  className="calendar-input"
+                />
+              </div>
+              <div className="form-group">
+                <label>종료 시간</label>
+                <input
+                  type="time"
+                  value={formData.endTime}
+                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                  className="calendar-input"
+                />
+              </div>
+            </div>
+          )}
           
           {formData.entryMode === 'EVENT' && (
              <div className="form-row">
@@ -1198,7 +1351,7 @@ export default function Calendar({ showSidebar = true }) {
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="calendar-textarea"
-              rows="4"
+              rows={formData.entryMode === 'TODO' ? "2" : "3"}
             />
           </div>
 
@@ -1243,6 +1396,61 @@ export default function Calendar({ showSidebar = true }) {
             >
               {isImportingExcel ? '등록 중...' : '예, 등록합니다'}
             </button>
+          </div>
+        </div>
+      </SimpleModal>
+
+      <SimpleModal open={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="일정 상세 및 수정">
+        <div className="calendar-form">
+          <div className="form-actions" style={{ justifyContent: 'space-between', marginBottom: '20px', borderBottom: '1px solid var(--color-border)', paddingBottom: '15px' }}>
+            <button 
+              type="button" 
+              className="btn btn-danger" 
+              onClick={(e) => handleDeleteSchedule(e, selectedSchedule)}
+            >
+              삭제
+            </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>닫기</button>
+              <button type="button" className="btn btn-primary" onClick={handleUpdateSchedule}>수정 저장</button>
+            </div>
+          </div>
+
+          <div style={{ 
+            marginBottom: '20px', 
+            padding: '12px', 
+            background: 'var(--color-surface-muted)', 
+            borderRadius: '10px',
+            fontSize: '14px', 
+            fontWeight: '600',
+            color: 'var(--color-text)' 
+          }}>
+            <FiCalendar style={{ marginRight: '8px', verticalAlign: 'middle' }} />
+            {formData.startDate} ({getDayOfWeek(formData.startDate)})
+            {formData.startDate !== formData.endDate && ` ~ ${formData.endDate} (${getDayOfWeek(formData.endDate)})`}
+            {formData.startTime && ` | ${formData.startTime} ~ ${formData.endTime}`}
+          </div>
+
+          <div className="form-group">
+            <label>제목</label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="calendar-input"
+              placeholder="일정 제목"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>설명</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="calendar-textarea"
+              rows="6"
+              placeholder="상세 설명"
+            />
           </div>
         </div>
       </SimpleModal>
