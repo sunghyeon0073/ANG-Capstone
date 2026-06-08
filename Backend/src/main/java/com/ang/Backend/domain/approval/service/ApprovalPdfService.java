@@ -60,6 +60,7 @@ public class ApprovalPdfService {
             Context ctx = new Context();
             ctx.setVariable("doc", doc);
             ctx.setVariable("approvalLines", approvedLines);
+            ctx.setVariable("attachmentFilename", extractFilename(doc.getAttachmentUrl()));
             String html = templateEngine.process("approval/approval-document", ctx);
 
             // HTML → PDF
@@ -84,6 +85,22 @@ public class ApprovalPdfService {
         } catch (Exception e) {
             log.error("PDF 생성 실패: docId={}", docId, e);
         }
+    }
+
+    private String extractFilename(String url) {
+        if (url == null || url.isBlank()) return null;
+        String lastSegment = url.substring(url.lastIndexOf('/') + 1);
+        // e-approval/attachments/{docId}/{UUID}.확장자 구조에서 UUID 부분 제거
+        int dotIdx = lastSegment.lastIndexOf('.');
+        if (dotIdx > 0) {
+            String ext = lastSegment.substring(dotIdx);        // .hwp, .docx 등
+            String uuidPart = lastSegment.substring(0, dotIdx);
+            // UUID 패턴(8-4-4-4-12) 이면 의미없는 이름이므로 확장자만 반환
+            if (uuidPart.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+                return "첨부파일" + ext;
+            }
+        }
+        return lastSegment;
     }
 
     private byte[] renderPdf(String html) throws Exception {
