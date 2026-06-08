@@ -36,6 +36,7 @@ export default function DocumentWriter() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
+  const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
   const [sortOrder, setSortOrder] = useState('newest')
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -357,6 +358,16 @@ export default function DocumentWriter() {
     }
   }
 
+  const handleAddToPrompt = () => {
+    if (selectedDoc && !attachedDocs.some((doc) => doc.docId === selectedDoc.docId)) {
+      setAttachedDocs([...attachedDocs, selectedDoc])
+    }
+  }
+
+  const handleRemoveAttachedDoc = (docId) => {
+    setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
+  }
+
   const handleAiGenerate = async (mode = 'create') => {
     if (!prompt.trim()) {
       alert('프롬프트를 입력하세요.')
@@ -386,13 +397,16 @@ export default function DocumentWriter() {
       mode,
       outputFormat: mode === 'edit' ? editOutputFormat : 'docx',
       sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
-      attachedDocIds: mode === 'create' && selectedDoc ? [selectedDoc.docId] : [],
+      attachedDocIds: attachedDocs
+        .filter((doc) => mode !== 'edit' || doc.docId !== selectedDoc.docId)
+        .map((doc) => doc.docId),
     }
 
     try {
       await startGeneration(payload)
       if (mountedRef.current) {
         setPrompt('')
+        setAttachedDocs([])
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
@@ -417,6 +431,7 @@ export default function DocumentWriter() {
               aria-label="파일 업로드"
             >
               <FiPlus />
+              <span>업로드</span>
             </button>
           </div>
           <div className="category-tabs">
@@ -609,9 +624,35 @@ export default function DocumentWriter() {
             >
               <FiChevronRight />
             </button>
-            {selectedDoc && (
-              <div className="prompt-tab prompt-tab-added">
-                <span className="tab-name">참고 문서: {selectedDoc.title}</span>
+            {attachedDocs.map((doc) => (
+              <div key={doc.docId} className="prompt-tab prompt-tab-added">
+                <button
+                  type="button"
+                  className="tab-remove-btn"
+                  onClick={() => handleRemoveAttachedDoc(doc.docId)}
+                  title="제거"
+                >
+                  ×
+                </button>
+                <span className="tab-name">{doc.title}</span>
+              </div>
+            ))}
+
+            {selectedDoc && !attachedDocs.some((doc) => doc.docId === selectedDoc.docId) && (
+              <div
+                className="prompt-tab prompt-tab-pending"
+                onClick={handleAddToPrompt}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    handleAddToPrompt()
+                  }
+                }}
+              >
+                <span className="tab-add-btn">+</span>
+                <span className="tab-name">{selectedDoc.title}</span>
               </div>
             )}
           </div>
@@ -634,7 +675,7 @@ export default function DocumentWriter() {
                   className="btn-generate btn-generate--create"
                   disabled={aiLoading}
                 >
-                  {aiLoading ? '생성 중...' : selectedDoc ? '이 문서로 새 문서 작성' : '새 문서 작성'}
+                  {aiLoading ? '생성 중...' : '새 문서 작성'}
                 </button>
               </div>
 
