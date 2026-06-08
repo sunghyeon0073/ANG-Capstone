@@ -28,6 +28,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
@@ -705,17 +706,27 @@ public class DocumentService {
     }
 
     private String buildAiInstruction(String prompt, AiOutputFormat format) {
-        String formatInstruction = format == AiOutputFormat.XLSX
-                ? """
+        String formatInstruction = switch (format) {
+            case XLSX -> """
                 For XLSX output, write the useful content as one or more Markdown pipe tables.
                 Use clear header rows and data rows. Do not describe the table in prose unless necessary.
                 Include enough rows and columns to preserve the source document's useful detail.
-                """
-                : """
+                """;
+            case DOCX -> """
+                For DOCX output, write a clean business document using only:
+                - Markdown headings (#, ##) for document and section titles.
+                - Plain paragraphs for body text.
+                - Markdown bullet lines only when a list is genuinely useful.
+                - Markdown pipe tables for schedules, budgets, comparisons, risks, roles, or action items.
+                Do not use decorative characters such as /, *, ===, ---, or code fences.
+                Do not output raw Markdown emphasis markers around words.
+                """;
+            default -> """
                 If the source document contains tables, preserve them as Markdown pipe tables.
                 Use clear header rows and data rows instead of describing table data in prose.
                 After each important table, add concise interpretation, decisions, and next steps.
                 """;
+        };
 
         return """
                 Create a polished Korean business document.
@@ -1302,25 +1313,164 @@ public class DocumentService {
     }
 
     private byte[] createDocxBytes(String content) throws IOException {
+        List<String> lines = normalizeGeneratedDocxContent(content).lines().toList();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
-            addZipEntry(zip, "[Content_Types].xml", """
-                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-                      <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-                      <Default Extension="xml" ContentType="application/xml"/>
-                      <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-                    </Types>
-                    """);
-            addZipEntry(zip, "_rels/.rels", """
-                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-                      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-                    </Relationships>
-                    """);
-            addZipEntry(zip, "word/document.xml", buildDocxDocumentXml(content));
+
+        try (XWPFDocument document = new XWPFDocument()) {
+            List<List<String>> tableRows = new ArrayList<>();
+            boolean wroteAnyContent = false;
+
+            for (String rawLine : lines) {
+                String line = rawLine.strip();
+                if (isMarkdownTableRow(line)) {
+                    if (!isMarkdownTableSeparator(line)) {
+                        tableRows.add(splitMarkdownTableRow(line).stream()
+                                .map(this::cleanDocxInlineText)
+                                .toList());
+                    }
+                    continue;
+                }
+
+                if (!tableRows.isEmpty()) {
+                    addDocxTable(document, tableRows);
+                    tableRows.clear();
+                    wroteAnyContent = true;
+                }
+
+                if (line.isBlank()) {
+                    continue;
+                }
+
+                if (line.startsWith("# ")) {
+                    addDocxParagraph(document, cleanDocxInlineText(line.replaceFirst("^#+\\s*", "")), 22, true, ParagraphAlignment.CENTER, 220, 160);
+                } else if (line.matches("^#{2,6}\\s+.+")) {
+                    addDocxParagraph(document, cleanDocxInlineText(line.replaceFirst("^#+\\s*", "")), 15, true, ParagraphAlignment.LEFT, 260, 80);
+                } else if (isMarkdownBulletLine(line)) {
+                    addDocxBulletParagraph(document, cleanDocxInlineText(line.replaceFirst("^[-*•]\\s+", "")));
+                } else if (isMarkdownNumberedLine(line)) {
+                    addDocxBulletParagraph(document, cleanDocxInlineText(line.replaceFirst("^\\d+[.)]\\s+", "")));
+                } else {
+                    addDocxParagraph(document, cleanDocxInlineText(line), 11, false, ParagraphAlignment.LEFT, 70, 70);
+                }
+                wroteAnyContent = true;
+            }
+
+            if (!tableRows.isEmpty()) {
+                addDocxTable(document, tableRows);
+                wroteAnyContent = true;
+            }
+
+            if (!wroteAnyContent) {
+                addDocxParagraph(document, "생성된 문서 내용이 없습니다.", 11, false, ParagraphAlignment.LEFT, 70, 70);
+            }
+
+            document.write(out);
         }
         return out.toByteArray();
+    }
+
+    private String normalizeGeneratedDocxContent(String content) {
+        String cleaned = cleanParsedContent(content == null ? "" : content);
+        cleaned = cleaned.replaceAll("(?s)<think>.*?</think>", "");
+        cleaned = cleaned.replaceAll("(?m)^```[a-zA-Z0-9_-]*\\s*$", "");
+        cleaned = cleaned.replaceAll("(?m)^```\\s*$", "");
+        cleaned = cleaned.replace("\r\n", "\n").replace('\r', '\n');
+        cleaned = cleaned.replaceAll("(?m)^\\s*/\\s*([^/\\n]{2,80})\\s*/\\s*$", "$1");
+        return cleaned.strip();
+    }
+
+    private boolean isMarkdownBulletLine(String line) {
+        return line.matches("^[-*•]\\s+.+");
+    }
+
+    private boolean isMarkdownNumberedLine(String line) {
+        return line.matches("^\\d+[.)]\\s+.+");
+    }
+
+    private String cleanDocxInlineText(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text
+                .replaceAll("\\*\\*(.*?)\\*\\*", "$1")
+                .replaceAll("__(.*?)__", "$1")
+                .replaceAll("`([^`]*)`", "$1")
+                .replaceAll("^#+\\s*", "")
+                .replaceAll("^[-*•]\\s+", "")
+                .replaceAll("^\\d+[.)]\\s+", "")
+                .replaceAll("\\s+", " ")
+                .strip();
+    }
+
+    private void addDocxParagraph(
+            XWPFDocument document,
+            String text,
+            int fontSize,
+            boolean bold,
+            ParagraphAlignment alignment,
+            int spacingBefore,
+            int spacingAfter) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setAlignment(alignment);
+        paragraph.setSpacingBefore(spacingBefore);
+        paragraph.setSpacingAfter(spacingAfter);
+        XWPFRun run = paragraph.createRun();
+        run.setFontFamily("Malgun Gothic");
+        run.setFontSize(fontSize);
+        run.setBold(bold);
+        run.setText(text);
+    }
+
+    private void addDocxBulletParagraph(XWPFDocument document, String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setIndentationLeft(420);
+        paragraph.setIndentationHanging(220);
+        paragraph.setSpacingAfter(80);
+        XWPFRun bullet = paragraph.createRun();
+        bullet.setFontFamily("Malgun Gothic");
+        bullet.setFontSize(11);
+        bullet.setText("• ");
+        XWPFRun run = paragraph.createRun();
+        run.setFontFamily("Malgun Gothic");
+        run.setFontSize(11);
+        run.setText(text);
+    }
+
+    private void addDocxTable(XWPFDocument document, List<List<String>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        int columnCount = rows.stream().mapToInt(List::size).max().orElse(1);
+        XWPFTable table = document.createTable(rows.size(), columnCount);
+        table.setWidth("100%");
+
+        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+            XWPFTableRow tableRow = table.getRow(rowIndex);
+            List<String> row = rows.get(rowIndex);
+            for (int cellIndex = 0; cellIndex < columnCount; cellIndex++) {
+                XWPFTableCell cell = tableRow.getCell(cellIndex);
+                if (rowIndex == 0) {
+                    cell.setColor("EAF2F8");
+                }
+                cell.removeParagraph(0);
+                XWPFParagraph paragraph = cell.addParagraph();
+                paragraph.setSpacingAfter(40);
+                XWPFRun run = paragraph.createRun();
+                run.setFontFamily("Malgun Gothic");
+                run.setFontSize(10);
+                run.setBold(rowIndex == 0);
+                run.setText(cellIndex < row.size() ? row.get(cellIndex) : "");
+            }
+        }
+
+        XWPFParagraph spacer = document.createParagraph();
+        spacer.setSpacingAfter(120);
     }
 
     private byte[] applyDocxReplacements(byte[] originalBytes, List<Map<String, String>> replacements) throws IOException {
