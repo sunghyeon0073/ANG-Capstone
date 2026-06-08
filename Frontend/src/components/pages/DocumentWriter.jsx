@@ -451,7 +451,7 @@ export default function DocumentWriter() {
     const finalPrompt = hasDocxEditInstructions
       ? [
         prompt.trim(),
-        '아래 DOCX 블록별 수정 요청을 우선 적용해 주세요. 각 요청은 해당 blockId 안에서 selectedText를 기준으로 처리해 주세요.',
+        '아래 DOCX 블록별 수정 요청은 사용자가 미리보기에서 직접 지정한 위치입니다. 반드시 각 요청의 blockId를 유지하고, selectedText를 find 값으로 우선 사용해 주세요. instruction에 해당하는 내용만 replace에 반영하고, 요청하지 않은 문단은 수정하지 마세요. selectedText가 비어 있으면 해당 blockId 근처 문맥에서 instruction만 반영할 최소 find/replace를 만드세요.',
         scopedEditPrompt,
       ].filter(Boolean).join('\n\n')
       : prompt
@@ -623,15 +623,6 @@ export default function DocumentWriter() {
                   <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
                     {getFileTypeLabel(selectedDoc)}
                   </span>
-                  {getDocumentPreviewKind(selectedDoc) === 'word' && (
-                    <button
-                      type="button"
-                      className={`doc-edit-mode-toggle ${docxEditMode ? 'active' : ''}`}
-                      onClick={() => setDocxEditMode((enabled) => !enabled)}
-                    >
-                      {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
-                    </button>
-                  )}
                   {selectedDoc.scopeName && (
                     <span className={`doc-scope-badge ${selectedDoc.scopeName === 'N/A' ? 'doc-scope-badge--personal' : ''}`}>
                       {selectedDoc.scopeName === 'N/A' ? '개인 문서' : selectedDoc.scopeName}
@@ -722,7 +713,7 @@ export default function DocumentWriter() {
                   onClick={() => handleRemoveDocxEditInstruction(instruction.id)}
                   title="삭제"
                 >
-                  횞
+                  ×
                 </button>
                 <span className="tab-name">{instruction.blockId} 수정 요청</span>
               </div>
@@ -794,6 +785,16 @@ export default function DocumentWriter() {
                   <FiEdit3 />
                   <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
+                {selectedDoc && getDocumentPreviewKind(selectedDoc) === 'word' && (
+                  <button
+                    type="button"
+                    className={`btn-generate btn-generate--docx-edit ${docxEditMode ? 'active' : ''}`}
+                    onClick={() => setDocxEditMode((enabled) => !enabled)}
+                    disabled={aiLoading}
+                  >
+                    {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
