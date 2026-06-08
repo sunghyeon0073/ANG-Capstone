@@ -36,7 +36,6 @@ export default function DocumentWriter() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
-  const [aiOutputFormat, setAiOutputFormat] = useState('pdf')
   const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
   const [sortOrder, setSortOrder] = useState('newest')
@@ -395,18 +394,12 @@ export default function DocumentWriter() {
 
     const payload = {
       prompt,
-      outputFormat: mode === 'edit' ? editOutputFormat : aiOutputFormat,
+      mode,
+      outputFormat: mode === 'edit' ? editOutputFormat : 'docx',
       sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
       attachedDocIds: attachedDocs
         .filter((doc) => mode !== 'edit' || doc.docId !== selectedDoc.docId)
         .map((doc) => doc.docId),
-      attachedDocs: attachedDocs.length > 0
-        ? attachedDocs.map((doc) => ({
-            docId: doc.docId,
-            title: doc.title,
-            content: doc.originalContent || doc.title,
-          }))
-        : null,
     }
 
     try {
@@ -438,6 +431,7 @@ export default function DocumentWriter() {
               aria-label="파일 업로드"
             >
               <FiPlus />
+              <span>업로드</span>
             </button>
           </div>
           <div className="category-tabs">
@@ -675,27 +669,13 @@ export default function DocumentWriter() {
 
             <div className="prompt-actions">
               <div className="prompt-actions-left">
-                <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
-                  {['pdf', 'docx', 'xlsx', 'txt', 'hwp'].map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      className={`ai-format-btn ${aiOutputFormat === format ? 'active' : ''}`}
-                      onClick={() => setAiOutputFormat(format)}
-                      disabled={aiLoading}
-                    >
-                      {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-
                 <button
                   type="button"
                   onClick={() => handleAiGenerate('create')}
                   className="btn-generate btn-generate--create"
                   disabled={aiLoading}
                 >
-                  {aiLoading ? '생성 중...' : '새 문서 생성'}
+                  {aiLoading ? '생성 중...' : '새 문서 작성'}
                 </button>
               </div>
 
@@ -705,7 +685,12 @@ export default function DocumentWriter() {
                   onClick={() => handleAiGenerate('edit')}
                   className="btn-generate btn-generate--edit"
                   disabled={aiLoading || !selectedDoc}
+                  onClick={() => handleAiGenerate('edit')}
+                  className="btn-generate btn-generate--edit"
+                  disabled={aiLoading || !selectedDoc}
                 >
+                  <FiEdit3 />
+                  <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                   <FiEdit3 />
                   <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
