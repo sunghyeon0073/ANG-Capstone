@@ -73,6 +73,8 @@ public class ApprovalDocService {
                 .formData(req.getFormData())
                 .attachmentUrl(req.getAttachmentUrl())
                 .status(initStatus)
+                .securityLevel(req.getSecurityLevel() != null ? req.getSecurityLevel() : "일반문서")
+                .retentionPeriod(req.getRetentionPeriod() != null ? req.getRetentionPeriod() : "영구")
                 .build();
         docRepository.save(doc);
 
@@ -102,6 +104,8 @@ public class ApprovalDocService {
         doc.setTitle(req.getTitle());
         doc.setFormData(req.getFormData());
         doc.setAttachmentUrl(req.getAttachmentUrl());
+        if (req.getSecurityLevel() != null) doc.setSecurityLevel(req.getSecurityLevel());
+        if (req.getRetentionPeriod() != null) doc.setRetentionPeriod(req.getRetentionPeriod());
 
         if (req.getApprovalLines() != null) {
             doc.getApprovalLines().clear();

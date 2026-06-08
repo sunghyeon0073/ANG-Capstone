@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -56,10 +57,16 @@ public class ApprovalPdfService {
 
             List<ApprovalLine> approvedLines = lineRepository.findByDocAndStatus(doc, ApprovalLineStatus.APPROVED);
 
+            List<ApprovalLine> commentLines = doc.getApprovalLines().stream()
+                    .filter(l -> l.getComment() != null && !l.getComment().isBlank())
+                    .sorted(Comparator.comparing(ApprovalLine::getProcessedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                    .collect(Collectors.toList());
+
             // Thymeleaf 렌더링
             Context ctx = new Context();
             ctx.setVariable("doc", doc);
             ctx.setVariable("approvalLines", approvedLines);
+            ctx.setVariable("commentLines", commentLines);
             ctx.setVariable("attachmentFilename", extractFilename(doc.getAttachmentUrl()));
             String html = templateEngine.process("approval/approval-document", ctx);
 

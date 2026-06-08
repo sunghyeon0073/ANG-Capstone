@@ -18,7 +18,9 @@ public class ApprovalDocDto {
         private String title;
         private String formData;
         private String attachmentUrl;
-        private boolean submitNow;       // false=임시저장, true=상신
+        private boolean submitNow;
+        private String securityLevel;
+        private String retentionPeriod;
         private List<ApprovalLineDto.Request> approvalLines;
     }
 
@@ -29,6 +31,8 @@ public class ApprovalDocDto {
         private String formData;
         private String attachmentUrl;
         private boolean submitNow;
+        private String securityLevel;
+        private String retentionPeriod;
         private List<ApprovalLineDto.Request> approvalLines;
     }
 
@@ -46,6 +50,8 @@ public class ApprovalDocDto {
         private ApprovalStatus status;
         private String attachmentUrl;
         private String finalPdfUrl;
+        private String securityLevel;
+        private String retentionPeriod;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
         private LocalDateTime completedAt;
@@ -64,6 +70,8 @@ public class ApprovalDocDto {
                     .status(doc.getStatus())
                     .attachmentUrl(doc.getAttachmentUrl())
                     .finalPdfUrl(doc.getFinalPdfUrl())
+                    .securityLevel(doc.getSecurityLevel())
+                    .retentionPeriod(doc.getRetentionPeriod())
                     .createdAt(doc.getCreatedAt())
                     .updatedAt(doc.getUpdatedAt())
                     .completedAt(doc.getCompletedAt())

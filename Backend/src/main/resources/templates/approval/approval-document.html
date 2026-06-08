@@ -79,6 +79,42 @@
             white-space: pre-wrap;
             line-height: 1.8;
         }
+        /* 결재 의견 이력 */
+        .opinion-history {
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 2px solid #333;
+        }
+        .opinion-history .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .opinion-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .opinion-table td {
+            border: 1px solid #ccc;
+            padding: 5px 8px;
+            vertical-align: top;
+        }
+        .opinion-role {
+            white-space: nowrap;
+            font-weight: bold;
+            width: 100px;
+            color: #333;
+        }
+        .opinion-text {
+            width: auto;
+        }
+        .opinion-date {
+            white-space: nowrap;
+            width: 120px;
+            color: #555;
+            text-align: right;
+        }
         /* 푸터 */
         .footer {
             margin-top: 30px;
@@ -106,7 +142,7 @@
         <table class="approval-table">
             <thead>
                 <tr>
-                    <th th:each="line : ${approvalLines}" th:text="${line.lineType.name()}">결재</th>
+                    <th th:each="line : ${approvalLines}" th:text="${line.lineType.label}">결재</th>
                 </tr>
                 <tr>
                     <td th:each="line : ${approvalLines}" th:text="${line.approver.position}">직위</td>
@@ -153,6 +189,14 @@
                 <td>양식</td>
                 <td th:text="${doc.template.title}">양식명</td>
             </tr>
+            <tr>
+                <td>보안등급</td>
+                <td>
+                    <span th:text="${doc.securityLevel}">일반문서</span>
+                    <span style="padding-left:24px; font-weight:bold; color:#555;">보존연한</span>
+                    <span th:text="${doc.retentionPeriod}">영구</span>
+                </td>
+            </tr>
             <tr th:if="${attachmentFilename != null}">
                 <td>첨부파일</td>
                 <td th:text="${attachmentFilename}">파일명.hwp</td>
@@ -163,6 +207,20 @@
     <!-- 본문 내용 -->
     <div class="form-content" th:text="${doc.formData}">
         본문 내용이 여기에 표시됩니다.
+    </div>
+
+    <!-- 결재 의견 이력 -->
+    <div class="opinion-history" th:if="${commentLines != null and !#lists.isEmpty(commentLines)}">
+        <div class="section-title">결재 의견 이력</div>
+        <table class="opinion-table">
+            <tr th:each="line : ${commentLines}">
+                <td class="opinion-role"
+                    th:text="${line.lineType.label + '/' + line.approver.name}">팀장/홍길동</td>
+                <td class="opinion-text" th:text="${line.comment}">의견 내용</td>
+                <td class="opinion-date"
+                    th:text="${line.processedAt != null ? #temporals.format(line.processedAt, 'yyyy-MM-dd HH:mm') : '-'}">날짜</td>
+            </tr>
+        </table>
     </div>
 
     <!-- 증적 푸터 -->

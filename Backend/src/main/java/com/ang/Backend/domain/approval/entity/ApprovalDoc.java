@@ -46,6 +46,14 @@ public class ApprovalDoc {
     @Column(name = "attachment_url")
     private String attachmentUrl;
 
+    @Column(name = "security_level", nullable = false, length = 50)
+    @Builder.Default
+    private String securityLevel = "일반문서";
+
+    @Column(name = "retention_period", nullable = false, length = 50)
+    @Builder.Default
+    private String retentionPeriod = "영구";
+
     @Column(name = "final_pdf_url")
     private String finalPdfUrl;
 
