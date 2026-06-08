@@ -23,6 +23,11 @@ const formatFileSize = (size) => {
   return `${(size / (1024 * 1024)).toFixed(1)}MB`;
 };
 
+const truncateText = (text, max = 15) => {
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+};
+
 export default function Board({ me, currentSubPage = 'board' }) {
   const [posts, setPosts] = useState(() => {
     const saved = localStorage.getItem('ang_posts');
@@ -265,8 +270,8 @@ export default function Board({ me, currentSubPage = 'board' }) {
             pagedList.map((post) => (
               <div key={post.id} onClick={() => handleOpenPost(post)} className="board-item">
                 <div className="board-item-pin">{post.pinned ? '📌' : '·'}</div>
-                <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }}>
-                  {post.title}
+                <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }} title={post.title}>
+                  {truncateText(post.title, 15)}
                   {post.attachments?.length > 0 && <span className="board-attachment-count">첨부 {post.attachments.length}</span>}
                 </div>
                 <div className="board-item-author">{post.author}</div>

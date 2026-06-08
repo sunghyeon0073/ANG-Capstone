@@ -1,7 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom'
-import Login from '../components/Login'
-import SignUp from '../components/SignUp'
-import Dashboard from '../components/Dashboard'
+import Login from '../components/auth/Login'
+import SignUp from '../components/auth/SignUp'
+import Dashboard from '../components/common/Dashboard'
 
 const router = createBrowserRouter([
   {

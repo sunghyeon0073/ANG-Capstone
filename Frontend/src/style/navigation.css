@@ -291,14 +291,18 @@
 
 /* Sidebar */
 .sidebar {
-    width: 200px;
+    --sidebar-width: 200px;
+    --sidebar-handle-width: 44px; /* visible handle when collapsed */
+    width: var(--sidebar-width);
     background: linear-gradient(180deg, var(--color-primary-hover) 0%, var(--color-primary) 100%);
   color: white;
-  overflow-y: auto;
+  overflow: hidden; /* prevent body scroll by default */
     border-right: none;
     margin-right: 0;
     border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
     box-shadow: var(--shadow-soft-md);
+    position: relative;
+    transition: transform 260ms cubic-bezier(.2,.9,.2,1);
 }
 
 .sidebar-header {
@@ -307,6 +311,7 @@
 }
 
 .sidebar-header h2 {
+  overflow: visible; /* allow handle to protrude outside the sidebar */
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -317,7 +322,9 @@
   flex-direction: column;
   list-style: none;
   margin: 0;
-    padding: var(--space-xs) var(--space-sm);
+  right: calc(-1 * var(--sidebar-handle-width) + 8px);
+    overflow-y: auto;
+    max-height: calc(100vh - 88px); /* keep internal scroll, avoid body scroll */
 }
 
 .sidebar-menu-item {
@@ -329,7 +336,7 @@
   background: none;
   border: none;
     border-radius: var(--radius-pill);
-    color: rgba(255, 255, 255, 0.75);
+  z-index: 9999; /* ensure handle stays on top of content */
   cursor: pointer;
   font-size: 14px;
     transition: var(--transition-soft);
@@ -360,3 +367,64 @@
 .sidebar-label {
   white-space: nowrap;
 }
+
+/* Collapsed state: slide left leaving only handle visible */
+.sidebar.collapsed {
+  transform: translateX(calc(-1 * (var(--sidebar-width) - var(--sidebar-handle-width))));
+}
+
+/* Hide labels when collapsed to avoid stray overflow */
+.sidebar.collapsed .sidebar-label,
+.sidebar.collapsed .sidebar-header h2 {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Toggle handle styles */
+.sidebar-toggle {
+  position: absolute;
+  right: calc(-1 * var(--sidebar-handle-width) + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--sidebar-handle-width);
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.95);
+  border-radius: 8px;
+  border: none;
+  box-shadow: 0 6px 18px rgba(15,35,52,0.12);
+  cursor: pointer;
+  transition: transform 200ms ease, background 160ms ease;
+  z-index: 60;
+}
+
+.sidebar-toggle:hover {
+  transform: translateY(-50%) scale(1.02);
+}
+
+.sidebar-toggle-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #444 0%, #222 100%);
+  position: relative;
+}
+
+/* simple chevron effect by rotating the icon when collapsed/open */
+.sidebar-toggle-icon::before,
+.sidebar-toggle-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 2px;
+  background: #fff;
+  transform-origin: center;
+}
+.sidebar-toggle-icon::before { transform: translate(-50%, -50%) rotate(45deg); }
+.sidebar-toggle-icon::after { transform: translate(-50%, -50%) rotate(-45deg); }
+.sidebar-toggle-icon.collapsed::before { transform: translate(-50%, -50%) rotate(-45deg); }
+.sidebar-toggle-icon.collapsed::after { transform: translate(-50%, -50%) rotate(45deg); }
