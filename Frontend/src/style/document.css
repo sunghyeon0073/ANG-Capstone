@@ -37,6 +37,45 @@
   color: #333;
 }
 
+.document-sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.document-upload-icon-btn {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft-xs);
+  transition: var(--transition-soft);
+  flex-shrink: 0;
+}
+
+.document-upload-icon-btn:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: var(--shadow-soft-sm);
+}
+
+.document-upload-icon-btn:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.document-upload-icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
   .category-tabs {
     display: flex;
     gap: var(--space-xs);

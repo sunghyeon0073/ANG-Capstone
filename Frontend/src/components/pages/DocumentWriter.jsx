@@ -15,7 +15,7 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiChevronRight, FiUpload } from 'react-icons/fi'
+import { FiChevronRight, FiEdit3, FiPlus } from 'react-icons/fi'
 import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
@@ -369,16 +369,37 @@ export default function DocumentWriter() {
     setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
   }
 
-  const handleAiGenerate = async () => {
+  const handleAiGenerate = async (mode = 'create') => {
     if (!prompt.trim()) {
       alert('프롬프트를 입력하세요.')
       return
     }
 
+    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
+    const editOutputFormat =
+      selectedKind === 'hwp' || selectedKind === 'hwpx'
+        ? 'hwp'
+        : selectedKind === 'word'
+          ? 'docx'
+          : null
+
+    if (mode === 'edit' && !selectedDoc) {
+      alert('수정할 문서를 선택하세요.')
+      return
+    }
+
+    if (mode === 'edit' && !editOutputFormat) {
+      alert('현재 AI 수정은 HWP와 DOCX 문서만 지원합니다.')
+      return
+    }
+
     const payload = {
       prompt,
-      outputFormat: aiOutputFormat,
-      attachedDocIds: attachedDocs.map((doc) => doc.docId),
+      outputFormat: mode === 'edit' ? editOutputFormat : aiOutputFormat,
+      sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
+      attachedDocIds: attachedDocs
+        .filter((doc) => mode !== 'edit' || doc.docId !== selectedDoc.docId)
+        .map((doc) => doc.docId),
       attachedDocs: attachedDocs.length > 0
         ? attachedDocs.map((doc) => ({
             docId: doc.docId,
@@ -406,7 +427,19 @@ export default function DocumentWriter() {
     <div className="document-writer-container">
       <div className="document-sidebar">
         <div className="sidebar-header">
-          <h3>문서 목록</h3>
+          <div className="document-sidebar-title-row">
+            <h3>문서 목록</h3>
+            <button
+              type="button"
+              className="document-upload-icon-btn"
+              onClick={() => setShowUploadModal(true)}
+              disabled={isUploading}
+              title="파일 업로드"
+              aria-label="파일 업로드"
+            >
+              <FiPlus />
+            </button>
+          </div>
           <div className="category-tabs">
             <button
               type="button"
@@ -642,17 +675,6 @@ export default function DocumentWriter() {
 
             <div className="prompt-actions">
               <div className="prompt-actions-left">
-                <button
-                  type="button"
-                  className="btn-prompt-upload"
-                  onClick={() => setShowUploadModal(true)}
-                  disabled={isUploading}
-                  title="파일 업로드"
-                >
-                  <FiUpload />
-                  <span>업로드</span>
-                </button>
-
                 <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
                   {['pdf', 'docx', 'xlsx', 'txt', 'hwp'].map((format) => (
                     <button
@@ -666,16 +688,26 @@ export default function DocumentWriter() {
                     </button>
                   ))}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleAiGenerate('create')}
+                  className="btn-generate btn-generate--create"
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? '생성 중...' : '새 문서 생성'}
+                </button>
               </div>
 
               <div className="prompt-actions-right">
                 <button
                   type="button"
-                  onClick={handleAiGenerate}
-                  className="btn-generate"
-                  disabled={aiLoading}
+                  onClick={() => handleAiGenerate('edit')}
+                  className="btn-generate btn-generate--edit"
+                  disabled={aiLoading || !selectedDoc}
                 >
-                  {aiLoading ? '생성 중...' : 'AI 생성'}
+                  <FiEdit3 />
+                  <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
               </div>
             </div>
