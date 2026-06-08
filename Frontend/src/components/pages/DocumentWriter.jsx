@@ -623,6 +623,15 @@ export default function DocumentWriter() {
                   <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
                     {getFileTypeLabel(selectedDoc)}
                   </span>
+                  {getDocumentPreviewKind(selectedDoc) === 'word' && (
+                    <button
+                      type="button"
+                      className={`doc-edit-mode-toggle ${docxEditMode ? 'active' : ''}`}
+                      onClick={() => setDocxEditMode((enabled) => !enabled)}
+                    >
+                      {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
+                    </button>
+                  )}
                   {selectedDoc.scopeName && (
                     <span className={`doc-scope-badge ${selectedDoc.scopeName === 'N/A' ? 'doc-scope-badge--personal' : ''}`}>
                       {selectedDoc.scopeName === 'N/A' ? '개인 문서' : selectedDoc.scopeName}

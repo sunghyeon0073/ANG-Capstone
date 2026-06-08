@@ -933,6 +933,28 @@
     color: #b7791f;
   }
 
+  .doc-edit-mode-toggle {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 999px;
+    background: #e6fffb;
+    color: #0f766e;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: var(--shadow-soft-xs);
+    transition: var(--transition-soft);
+  }
+
+  .doc-edit-mode-toggle:hover,
+  .doc-edit-mode-toggle.active {
+    background: #0f766e;
+    color: #fff;
+    box-shadow: 0 5px 12px rgba(15, 118, 110, 0.18);
+  }
+
   .file-input-hidden {
     display: none;
   }
