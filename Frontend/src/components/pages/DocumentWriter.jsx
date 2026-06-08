@@ -28,6 +28,21 @@ const parseCsvToTable = (text) => {
   return { headers, rows }
 }
 
+const AI_PROGRESS_STEPS = {
+  create: [
+    { label: '요청 내용 분석 중', description: '작성 의도와 참조 문서를 확인하고 있습니다.', percent: 25 },
+    { label: '문서 초안 구성 중', description: '기획서 흐름과 핵심 문장을 정리하고 있습니다.', percent: 55 },
+    { label: '문서 파일 생성 중', description: '작성 결과를 문서 파일로 저장하고 있습니다.', percent: 82 },
+    { label: '문서 목록에 반영 중', description: '완성된 문서를 불러오는 중입니다.', percent: 94 },
+  ],
+  edit: [
+    { label: '원본 문서 분석 중', description: '선택한 문서와 수정 요청을 확인하고 있습니다.', percent: 25 },
+    { label: '수정 내용 반영 중', description: '원본 구조를 기준으로 내용을 고치고 있습니다.', percent: 55 },
+    { label: '수정본 저장 중', description: '수정된 문서를 파일로 저장하고 있습니다.', percent: 82 },
+    { label: '문서 목록에 반영 중', description: '완성된 수정본을 불러오는 중입니다.', percent: 94 },
+  ],
+}
+
 export default function DocumentWriter() {
   const [documents, setDocuments] = useState([])
   const [filteredDocuments, setFilteredDocuments] = useState([])
@@ -53,6 +68,9 @@ export default function DocumentWriter() {
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadTargetScopeId, setUploadTargetScopeId] = useState('')
+  const [aiProgressMode, setAiProgressMode] = useState(null)
+  const [aiProgressStep, setAiProgressStep] = useState(0)
+  const [docxEditInstructions, setDocxEditInstructions] = useState([])
   const fileInputRef = useRef(null)
   const mountedRef = useRef(true)
   const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
@@ -80,6 +98,10 @@ export default function DocumentWriter() {
   useEffect(() => {
     fetchDocuments()
   }, [category, selectedScopeId])
+
+  useEffect(() => {
+    setDocxEditInstructions([])
+  }, [selectedDoc?.docId])
 
   useEffect(() => {
     const handleGeneratedDocument = (event) => {
@@ -118,6 +140,20 @@ export default function DocumentWriter() {
 
     setFilteredDocuments(sorted)
   }, [searchTerm, documents, sortOrder])
+
+  useEffect(() => {
+    if (!aiLoading || !aiProgressMode) return undefined
+
+    setAiProgressStep(0)
+    const timer = window.setInterval(() => {
+      setAiProgressStep((currentStep) => {
+        const lastStep = AI_PROGRESS_STEPS[aiProgressMode].length - 1
+        return currentStep >= lastStep ? currentStep : currentStep + 1
+      })
+    }, 1400)
+
+    return () => window.clearInterval(timer)
+  }, [aiLoading, aiProgressMode])
 
   useEffect(() => {
     let objectUrl = null
@@ -368,13 +404,23 @@ export default function DocumentWriter() {
     setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
   }
 
+  const handleAddDocxEditInstruction = (instruction) => {
+    setDocxEditInstructions((current) => [...current, instruction])
+  }
+
+  const handleRemoveDocxEditInstruction = (instructionId) => {
+    setDocxEditInstructions((current) => current.filter((instruction) => instruction.id !== instructionId))
+  }
+
   const handleAiGenerate = async (mode = 'create') => {
-    if (!prompt.trim()) {
+    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
+    const hasDocxEditInstructions = mode === 'edit' && selectedKind === 'word' && docxEditInstructions.length > 0
+
+    if (!prompt.trim() && !hasDocxEditInstructions) {
       alert('프롬프트를 입력하세요.')
       return
     }
 
-    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
     const editOutputFormat =
       selectedKind === 'hwp' || selectedKind === 'hwpx'
         ? 'hwp'
@@ -392,8 +438,24 @@ export default function DocumentWriter() {
       return
     }
 
+    const scopedEditPrompt = docxEditInstructions
+      .map((instruction, index) => [
+        `${index + 1}. blockId: ${instruction.blockId}`,
+        `selectedText: ${instruction.selectedText}`,
+        `instruction: ${instruction.instruction}`,
+      ].join('\n'))
+      .join('\n\n')
+
+    const finalPrompt = hasDocxEditInstructions
+      ? [
+        prompt.trim(),
+        '아래 DOCX 블록별 수정 요청을 우선 적용해 주세요. 각 요청은 해당 blockId 안에서 selectedText를 기준으로 처리해 주세요.',
+        scopedEditPrompt,
+      ].filter(Boolean).join('\n\n')
+      : prompt
+
     const payload = {
-      prompt,
+      prompt: finalPrompt,
       mode,
       outputFormat: mode === 'edit' ? editOutputFormat : 'docx',
       sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
@@ -403,18 +465,29 @@ export default function DocumentWriter() {
     }
 
     try {
+      setAiProgressMode(mode)
+      setAiProgressStep(0)
       await startGeneration(payload)
       if (mountedRef.current) {
         setPrompt('')
         setAttachedDocs([])
+        setDocxEditInstructions([])
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
       if (mountedRef.current) {
         alert(err.response?.data?.message || err.message || 'AI 문서 생성에 실패했습니다.')
       }
+    } finally {
+      if (mountedRef.current) {
+        setAiProgressMode(null)
+        setAiProgressStep(0)
+      }
     }
   }
+
+  const aiProgressSteps = aiProgressMode ? AI_PROGRESS_STEPS[aiProgressMode] : []
+  const currentAiProgress = aiProgressSteps[aiProgressStep] || aiProgressSteps[0]
 
   return (
     <div className="document-writer-container">
@@ -431,7 +504,6 @@ export default function DocumentWriter() {
               aria-label="파일 업로드"
             >
               <FiPlus />
-              <span>업로드</span>
             </button>
           </div>
           <div className="category-tabs">
@@ -503,7 +575,7 @@ export default function DocumentWriter() {
               >
                 <div className="document-item-row">
                   <div className="doc-title">{doc.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div className="document-item-actions">
                     <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(doc)}`}>
                       {getFileTypeLabel(doc)}
                     </span>
@@ -512,16 +584,6 @@ export default function DocumentWriter() {
                         className="btn-delete-doc"
                         onClick={(e) => handleDelete(e, doc.docId)}
                         title="삭제"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#ff4d4f',
-                          cursor: 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          fontSize: '14px'
-                        }}
                       >
                         ×
                       </button>
@@ -603,6 +665,8 @@ export default function DocumentWriter() {
                 previewData={previewData}
                 previewLoading={previewLoading}
                 previewError={previewError}
+                docxEditInstructions={docxEditInstructions}
+                onAddDocxEditInstruction={handleAddDocxEditInstruction}
               />
             </div>
           ) : (
@@ -638,6 +702,20 @@ export default function DocumentWriter() {
               </div>
             ))}
 
+            {docxEditInstructions.map((instruction) => (
+              <div key={instruction.id} className="prompt-tab prompt-tab-docx-edit">
+                <button
+                  type="button"
+                  className="tab-remove-btn"
+                  onClick={() => handleRemoveDocxEditInstruction(instruction.id)}
+                  title="삭제"
+                >
+                  횞
+                </button>
+                <span className="tab-name">{instruction.blockId} 수정 요청</span>
+              </div>
+            ))}
+
             {selectedDoc && !attachedDocs.some((doc) => doc.docId === selectedDoc.docId) && (
               <div
                 className="prompt-tab prompt-tab-pending"
@@ -667,6 +745,21 @@ export default function DocumentWriter() {
               disabled={aiLoading}
             />
 
+            {aiLoading && currentAiProgress && (
+              <div className="ai-progress-panel" role="status" aria-live="polite">
+                <div className="ai-progress-copy">
+                  <strong>{currentAiProgress.label}</strong>
+                  <span>{currentAiProgress.description}</span>
+                </div>
+                <div className="ai-progress-track" aria-hidden="true">
+                  <div
+                    className="ai-progress-fill"
+                    style={{ width: `${currentAiProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="prompt-actions">
               <div className="prompt-actions-left">
                 <button
@@ -685,12 +778,7 @@ export default function DocumentWriter() {
                   onClick={() => handleAiGenerate('edit')}
                   className="btn-generate btn-generate--edit"
                   disabled={aiLoading || !selectedDoc}
-                  onClick={() => handleAiGenerate('edit')}
-                  className="btn-generate btn-generate--edit"
-                  disabled={aiLoading || !selectedDoc}
                 >
-                  <FiEdit3 />
-                  <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                   <FiEdit3 />
                   <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
@@ -721,6 +809,7 @@ export default function DocumentWriter() {
               previewLoading={previewLoading}
               previewError={previewError}
               variant="fullscreen"
+              docxEditInstructions={docxEditInstructions}
             />
             <button
               type="button"
