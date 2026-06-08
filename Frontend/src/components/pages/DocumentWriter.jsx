@@ -16,7 +16,6 @@ import {
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
 import { FiChevronRight, FiEdit3, FiPlus } from 'react-icons/fi'
-import { FiChevronRight, FiEdit3, FiPlus } from 'react-icons/fi'
 import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
@@ -370,27 +369,8 @@ export default function DocumentWriter() {
   }
 
   const handleAiGenerate = async (mode = 'create') => {
-  const handleAiGenerate = async (mode = 'create') => {
     if (!prompt.trim()) {
       alert('프롬프트를 입력하세요.')
-      return
-    }
-
-    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
-    const editOutputFormat =
-      selectedKind === 'hwp' || selectedKind === 'hwpx'
-        ? 'hwp'
-        : selectedKind === 'word'
-          ? 'docx'
-          : null
-
-    if (mode === 'edit' && !selectedDoc) {
-      alert('수정할 문서를 선택하세요.')
-      return
-    }
-
-    if (mode === 'edit' && !editOutputFormat) {
-      alert('현재 AI 수정은 HWP와 DOCX 문서만 지원합니다.')
       return
     }
 
@@ -803,5 +783,4 @@ export default function DocumentWriter() {
       )}
     </div>
   )
-  }
 }
