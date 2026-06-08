@@ -204,25 +204,58 @@ public class DocumentService {
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);
         log.info("AI document generation started: format={}, promptChars={}", format.extension, finalPrompt.length());
 
-        Map<String, String> aiRequest = Map.of("message", finalPrompt);
+        String answer = callAiChat(finalPrompt);
+        log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
+        if (cleanParsedContent(answer).isBlank()) {
+            throw new IllegalStateException("AI returned an empty document.");
+        }
+
+        if (!looksLikeCompleteDocument(answer, format)) {
+            log.info("AI document generation result looked incomplete, retrying once: format={}", format.extension);
+            String retryAnswer = callAiChat(finalPrompt + "\n\n" + AI_DOCUMENT_RETRY_REMINDER);
+            if (!cleanParsedContent(retryAnswer).isBlank()) {
+                answer = retryAnswer;
+                log.info("AI document generation retry finished: format={}, answerChars={}", format.extension, answer.length());
+            }
+        }
+
+        String aiTitle = makeAiTitle(answer);
+
+        return saveAiDocument(aiTitle, answer, user, format);
+    }
+
+    private String callAiChat(String message) {
+        Map<String, String> aiRequest = Map.of("message", message);
         @SuppressWarnings("unchecked")
         Map<String, Object> aiResponse = restTemplate.postForObject(
                 aiBaseUrl + "/chat",
                 aiRequest,
                 Map.class
         );
-
-        String answer = aiResponse != null && aiResponse.get("reply") != null
+        return aiResponse != null && aiResponse.get("reply") != null
                 ? aiResponse.get("reply").toString()
                 : "";
-        log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
-        if (cleanParsedContent(answer).isBlank()) {
-            throw new IllegalStateException("AI returned an empty document.");
+    }
+
+    private static final String AI_DOCUMENT_RETRY_REMINDER = """
+            직전 응답이 형식 요구사항(Markdown H1 제목으로 시작, 5개 이상의 섹션 제목, 충분한 분량)을 충족하지 못했습니다.
+            같은 요청에 대해 처음부터 다시, 위에서 안내한 형식·구조·분량 기준을 정확히 지켜 완성된 문서를 작성하세요.
+            """;
+
+    private boolean looksLikeCompleteDocument(String answer, AiOutputFormat format) {
+        List<String> lines = answer.lines()
+                .map(String::strip)
+                .filter(line -> !line.isBlank())
+                .toList();
+        if (lines.isEmpty()) {
+            return false;
         }
 
-        String aiTitle = makeAiTitle(answer);
+        boolean hasTitle = lines.get(0).startsWith("# ");
+        long sectionHeadings = lines.stream().filter(line -> line.startsWith("## ")).count();
+        int minSections = (format == AiOutputFormat.PDF || format == AiOutputFormat.DOCX) ? 4 : 1;
 
-        return saveAiDocument(aiTitle, answer, user, format);
+        return hasTitle && sectionHeadings >= minSections && answer.strip().length() >= 200;
     }
 
     private DocumentDto.Response editHwpWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds) {
@@ -708,43 +741,39 @@ public class DocumentService {
     private String buildAiInstruction(String prompt, AiOutputFormat format) {
         String formatInstruction = switch (format) {
             case XLSX -> """
-                For XLSX output, write the useful content as one or more Markdown pipe tables.
-                Use clear header rows and data rows. Do not describe the table in prose unless necessary.
-                Include enough rows and columns to preserve the source document's useful detail.
+                XLSX로 변환되므로 핵심 내용을 하나 이상의 Markdown 표로 작성하세요.
+                표는 명확한 헤더 행과 데이터 행으로 구성하고, 표로 표현 가능한 내용을 굳이 문장으로 풀어 쓰지 마세요.
+                원본의 세부 정보를 보존할 수 있도록 충분한 행과 열을 포함하세요.
                 """;
             case DOCX -> """
-                For DOCX output, write a clean business document using only:
-                - Markdown headings (#, ##) for document and section titles.
-                - Plain paragraphs for body text.
-                - Markdown bullet lines only when a list is genuinely useful.
-                - Markdown pipe tables for schedules, budgets, comparisons, risks, roles, or action items.
-                Do not use decorative characters such as /, *, ===, ---, or code fences.
-                Do not output raw Markdown emphasis markers around words.
+                DOCX로 변환되므로 다음 요소만 사용해 깔끔한 업무 문서를 작성하세요.
+                - 문서 제목과 섹션 제목: Markdown 헤딩(#, ##)
+                - 본문: 일반 문단
+                - 꼭 필요한 경우에만 Markdown 글머리 기호 목록
+                - 일정, 예산, 비교, 위험 요소, 담당자, 실행 항목: Markdown 표
+                /, *, ===, --- 같은 장식 문자나 코드 블록, 단어를 강조하는 Markdown 기호(**, _ 등)는 사용하지 마세요.
                 """;
             default -> """
-                If the source document contains tables, preserve them as Markdown pipe tables.
-                Use clear header rows and data rows instead of describing table data in prose.
-                After each important table, add concise interpretation, decisions, and next steps.
+                원본 문서에 표가 있다면 Markdown 표 형식으로 그대로 보존하세요.
+                표 내용을 문장으로 풀어 설명하지 말고 명확한 헤더 행과 데이터 행으로 표현하세요.
+                중요한 표 다음에는 핵심 해석, 결정 사항, 후속 조치를 간단히 덧붙이세요.
                 """;
         };
 
         return """
-                Create a polished Korean business document.
-                The first line must be a concise document title as a Markdown H1 heading.
-                Do not use the user's prompt verbatim as the title.
-                Target file format: %s.
+                아래 사용자 요청을 바탕으로 완성도 높은 한국어 업무 문서를 작성하세요.
+                첫 줄은 반드시 간결한 Markdown H1 제목으로 시작하고, 사용자 요청 문장을 그대로 제목으로 옮기지 마세요.
+                대상 파일 형식: %s
                 %s
+                분량과 완성도 기준:
+                - 사용자가 명시적으로 요약을 요청하지 않는 한 요약하지 말고, 짧은 답변이 아닌 완성된 업무 문서를 작성하세요.
+                - 형식이 PDF 또는 DOCX이면 5개 이상의 충실한 섹션을 포함하세요.
+                - 각 주요 섹션에는 구체적인 문장이나 글머리 항목을 3~5개 포함하세요.
+                - 이름, 날짜, 금액, 수량, 결정 사항, 위험 요소, 실행 항목 등 핵심 정보를 보존하세요.
+                - 정보가 부족하면 항목을 생략하지 말고 [담당자], [일자], [금액], [부서] 같은 자리표시자를 사용하세요.
+                - 표 위주의 원본은 표를 유지하고 짧은 분석이나 후속 조치 섹션을 덧붙이세요.
 
-                Length and completeness requirements:
-                - Do not summarize unless the user explicitly asks for a summary.
-                - Produce a complete business document, not a short answer.
-                - Include at least 5 substantial sections when the format is PDF or DOCX.
-                - Each major section should contain 3 to 5 concrete sentences or bullet points.
-                - Preserve important names, dates, amounts, counts, decisions, risks, and action items from the source.
-                - If information is missing, keep useful placeholders such as [담당자], [일자], [금액], or [부서] instead of omitting the section.
-                - For table-heavy sources, keep the table and add a short analysis or follow-up section.
-
-                User request:
+                사용자 요청:
                 %s
                 """.formatted(format.extension.toUpperCase(), formatInstruction, prompt);
     }
