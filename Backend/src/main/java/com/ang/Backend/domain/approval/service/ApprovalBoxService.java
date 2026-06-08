@@ -30,6 +30,7 @@ public class ApprovalBoxService {
         );
     }
 
+
     public PageResult<ApprovalDocDto.BoxResponse> getCompletedInbox(User user, int page, int size) {
         return PageResult.of(
                 docRepository.findCompletedInbox(user.getUserId(),
