@@ -37,6 +37,50 @@
   color: #333;
 }
 
+.document-sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-upload-icon-btn {
+  min-width: 74px;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft-sm);
+  transition: var(--transition-soft);
+  flex-shrink: 0;
+}
+
+.document-upload-icon-btn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft-hover);
+}
+
+.document-upload-icon-btn:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.document-upload-icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
   .category-tabs {
     display: flex;
     gap: var(--space-xs);

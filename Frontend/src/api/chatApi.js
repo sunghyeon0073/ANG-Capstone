@@ -2,9 +2,19 @@ import api from './axios'
 
 const unwrap = response => response.data?.data ?? response.data
 
+const unwrapList = response => {
+  const data = unwrap(response)
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.content)) return data.content
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.list)) return data.list
+  if (Array.isArray(data?.data)) return data.data
+  return []
+}
+
 export const getChatRooms = async () => {
   const response = await api.get('/chat/rooms')
-  return unwrap(response) || []
+  return unwrapList(response)
 }
 
 export const createPrivateChatRoom = async recipientEmpNo => {
@@ -21,7 +31,7 @@ export const getChatMessages = async (roomId, page = 0, size = 30) => {
   const response = await api.get(`/chat/rooms/${roomId}/messages`, {
     params: { page, size },
   })
-  return unwrap(response) || []
+  return unwrapList(response)
 }
 
 export const markChatRoomAsRead = async roomId => {

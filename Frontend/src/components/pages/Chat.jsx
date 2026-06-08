@@ -9,7 +9,6 @@ import {
   FiSearch,
   FiSend,
   FiUserPlus,
-  FiUsers,
   FiX,
 } from 'react-icons/fi'
 import {
@@ -40,66 +39,43 @@ const createSockJsWebSocketPath = basePath => {
   return `${basePath}/${serverId}/${sessionId}/websocket`
 }
 
+const CHAT_SOCKET_ERROR_MESSAGE = '실시간 채팅 서버에 연결하지 못했습니다. 다른 기능은 정상적으로 사용할 수 있습니다.'
+
+const getBackendWsBase = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const host = window.location.hostname
+  const port = window.location.port
+
+  if (port && port !== '9090') return `${protocol}://${host}:9090/api/ws`
+  return `${protocol}://${window.location.host}/api/ws`
+}
+
 const getSockJsHttpBases = () => {
   if (import.meta.env.VITE_CHAT_HTTP_URL) return [import.meta.env.VITE_CHAT_HTTP_URL.replace(/\/$/, '')]
 
   const apiUrl = import.meta.env.VITE_API_URL
   if (apiUrl?.startsWith('http')) {
     const normalizedApiUrl = apiUrl.replace(/\/$/, '')
-    const withoutApiPath = normalizedApiUrl.replace(/\/api$/, '')
-    return [
-      `${normalizedApiUrl}/ws`,
-      `${withoutApiPath}/ws`,
-    ]
+    return [`${normalizedApiUrl}/ws`]
   }
 
-  const isLocalVite = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-    && window.location.port === '5500'
-
-  if (isLocalVite) {
-    return [
-      'http://localhost:9090/api/ws',
-      'http://localhost:9090/ws',
-      '/api/ws',
-      '/ws',
-    ]
-  }
-
-  return [
-    '/api/ws',
-    '/ws',
-  ]
+  return [getBackendWsBase().replace(/^ws/, 'http')]
 }
 
 const getSocketUrls = () => {
   if (import.meta.env.VITE_CHAT_WS_URL) return [import.meta.env.VITE_CHAT_WS_URL]
 
+  if (import.meta.env.VITE_CHAT_HTTP_URL) {
+    return [createSockJsWebSocketPath(import.meta.env.VITE_CHAT_HTTP_URL.replace(/^http/, 'ws').replace(/\/$/, ''))]
+  }
+
   const apiUrl = import.meta.env.VITE_API_URL
   if (apiUrl?.startsWith('http')) {
     const normalizedApiUrl = apiUrl.replace(/^http/, 'ws').replace(/\/$/, '')
-    const withoutApiPath = normalizedApiUrl.replace(/\/api$/, '')
-    return [
-      createSockJsWebSocketPath(`${normalizedApiUrl}/ws`),
-      createSockJsWebSocketPath(`${withoutApiPath}/ws`),
-    ]
+    return [createSockJsWebSocketPath(`${normalizedApiUrl}/ws`)]
   }
 
-  const isLocalVite = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-    && window.location.port === '5500'
-
-  if (isLocalVite) {
-    return [
-      createSockJsWebSocketPath(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/ws`),
-      createSockJsWebSocketPath('ws://localhost:9090/api/ws'),
-      createSockJsWebSocketPath('ws://localhost:9090/ws'),
-    ]
-  }
-
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return [
-    createSockJsWebSocketPath(`${protocol}://${window.location.host}/api/ws`),
-    createSockJsWebSocketPath(`${protocol}://${window.location.host}/ws`),
-  ]
+  return [createSockJsWebSocketPath(getBackendWsBase())]
 }
 
 const toWebSocketBase = httpBase => (
@@ -142,6 +118,67 @@ const normalizeMessage = message => ({
   ...message,
   messageId: message.messageId ?? `${message.roomId || 'temp'}-${message.sentAt || Date.now()}-${message.content || message.fileName || ''}`,
 })
+
+const normalizeRoomId = value => {
+  const roomId = typeof value === 'object'
+    ? value?.roomId ?? value?.id ?? value?.chatRoomId ?? value?.data
+    : value
+  const numericRoomId = Number(roomId)
+  return Number.isFinite(numericRoomId) ? numericRoomId : null
+}
+
+const CHAT_AUTH_ERROR_MESSAGE = '채팅 인증이 만료되었거나 권한이 없습니다. 다시 로그인 후 확인해주세요.'
+const CHAT_SERVER_ERROR_MESSAGE = '채팅 서버에서 오류가 발생했습니다. 백엔드 채팅 API 응답을 확인해주세요.'
+
+const CHAT_MESSAGE_CACHE_KEY = 'ang_chat_local_messages'
+
+const readLocalMessageCache = () => {
+  try {
+    return JSON.parse(localStorage.getItem(CHAT_MESSAGE_CACHE_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+const writeLocalMessageCache = cache => {
+  try {
+    localStorage.setItem(CHAT_MESSAGE_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+    // localStorage can fail in private mode; chat should still keep in-memory messages.
+  }
+}
+
+const getChatRequestErrorMessage = error => {
+  const status = error?.response?.status
+  if (status === 401 || status === 403) return CHAT_AUTH_ERROR_MESSAGE
+  if (status >= 500) return CHAT_SERVER_ERROR_MESSAGE
+  return '채팅 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
+}
+
+const getCachedRoomMessages = roomId => {
+  const normalizedRoomId = normalizeRoomId(roomId)
+  if (!normalizedRoomId) return []
+  return readLocalMessageCache()[normalizedRoomId] || []
+}
+
+const cacheRoomMessage = (roomId, message) => {
+  const normalizedRoomId = normalizeRoomId(roomId)
+  if (!normalizedRoomId) return
+
+  const cache = readLocalMessageCache()
+  const current = cache[normalizedRoomId] || []
+  cache[normalizedRoomId] = [...current, message].slice(-100)
+  writeLocalMessageCache(cache)
+}
+
+const mergeMessages = (serverMessages, localMessages) => {
+  const map = new Map()
+  ;[...serverMessages, ...localMessages].forEach(message => {
+    const normalized = normalizeMessage(message)
+    map.set(normalized.messageId, normalized)
+  })
+  return sortOldestFirst(Array.from(map.values()))
+}
 
 const sortOldestFirst = messages => [...messages]
   .sort((a, b) => new Date(a.sentAt || 0).getTime() - new Date(b.sentAt || 0).getTime())
@@ -232,6 +269,16 @@ function ChatRoomWindow({
     event.target.value = ''
   }
 
+  const handleLeaveClick = event => {
+    event.stopPropagation()
+    onLeave(room.roomId)
+  }
+
+  const handleCloseClick = event => {
+    event.stopPropagation()
+    onClose(room.roomId)
+  }
+
   const startPopupDrag = event => {
     if (event.button !== 0 || event.target.closest('button')) return
 
@@ -284,10 +331,10 @@ function ChatRoomWindow({
           <button type="button" onClick={() => onOpenInvite(room.roomId)} title="인원 추가">
             <FiUserPlus />
           </button>
-          <button type="button" onClick={() => onLeave(room.roomId)} title="채팅방 나가기">
+          <button type="button" onClick={handleLeaveClick} title="채팅방 나가기">
             나가기
           </button>
-          <button type="button" onClick={() => onClose(room.roomId)} title="창 닫기">
+          <button type="button" onClick={handleCloseClick} title="창 닫기">
             <FiX />
           </button>
         </div>
@@ -365,12 +412,8 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const currentEmpNo = currentUser?.empNo
 
   const [rooms, setRooms] = useState([])
-  const [messagesByRoom, setMessagesByRoom] = useState({})
+  const [messagesByRoom, setMessagesByRoom] = useState(() => readLocalMessageCache())
   const [openRoomIds, setOpenRoomIds] = useState([])
-  const [search, setSearch] = useState('')
-  const [privateEmpNo, setPrivateEmpNo] = useState('')
-  const [groupName, setGroupName] = useState('')
-  const [groupMembers, setGroupMembers] = useState('')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inviteRoomId, setInviteRoomId] = useState(null)
   const [memberInput, setMemberInput] = useState('')
@@ -383,6 +426,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const [socketStatus, setSocketStatus] = useState('disconnected')
   const [windowPosition, setWindowPosition] = useState(getInitialWindowPosition)
 
+  const stompClientRef = useRef(null)
   const socketRef = useRef(null)
   const socketUrlIndexRef = useRef(0)
   const socketReconnectTimerRef = useRef(null)
@@ -409,37 +453,81 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       setRooms(normalizeChatRooms(data, currentEmpNo))
     } catch (err) {
       console.error('채팅방 목록 조회 실패', err)
-      setError('채팅방 목록을 불러오지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     } finally {
       setLoading(false)
     }
   }, [currentEmpNo])
 
   const loadMessages = useCallback(async roomId => {
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId) return
+
     try {
-      const data = await getChatMessages(roomId)
+      const data = await getChatMessages(normalizedRoomId)
+      const cachedMessages = getCachedRoomMessages(normalizedRoomId)
       setMessagesByRoom(prev => ({
         ...prev,
-        [roomId]: sortOldestFirst(data),
+        [normalizedRoomId]: mergeMessages(data, cachedMessages),
       }))
-      await markChatRoomAsRead(roomId)
+      await markChatRoomAsRead(normalizedRoomId)
       loadRooms()
     } catch (err) {
       console.error('채팅 메시지 조회 실패', err)
-      setError('채팅 메시지를 불러오지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }, [loadRooms])
 
-  const subscribeRoom = useCallback(roomId => {
-    if (!roomId || subscribedRoomsRef.current.has(roomId)) return
+  const appendLocalMessage = useCallback((roomId, payload) => {
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId) return
 
-    const sent = sendStompFrame('SUBSCRIBE', {
-      id: `room-${roomId}`,
-      destination: `/topic/room.${roomId}`,
+    const localMessage = normalizeMessage({
+      roomId: normalizedRoomId,
+      messageId: `local-${normalizedRoomId}-${Date.now()}`,
+      senderName: currentUser?.name || currentUser?.userName || '나',
+      senderEmpNo: currentEmpNo,
+      content: payload.content,
+      messageType: payload.fileUrl ? 'FILE' : 'TEXT',
+      fileUrl: payload.fileUrl,
+      fileName: payload.fileName,
+      sentAt: new Date().toISOString(),
     })
 
-    if (sent) subscribedRoomsRef.current.add(roomId)
-  }, [sendStompFrame])
+    setMessagesByRoom(prev => {
+      const current = prev[normalizedRoomId] || []
+      return { ...prev, [normalizedRoomId]: [...current, localMessage] }
+    })
+    cacheRoomMessage(normalizedRoomId, localMessage)
+  }, [currentEmpNo, currentUser])
+
+  const subscribeRoom = useCallback(roomId => {
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId || subscribedRoomsRef.current.has(normalizedRoomId)) return
+
+    const client = stompClientRef.current
+    if (!client?.connected) return
+
+    client.subscribe(`/topic/room.${normalizedRoomId}`, messageFrame => {
+      try {
+        const payload = JSON.parse(messageFrame.body)
+        const message = normalizeMessage({ ...payload, roomId: normalizedRoomId })
+
+        setMessagesByRoom(prev => {
+          const current = prev[normalizedRoomId] || []
+          if (current.some(item => item.messageId === message.messageId)) return prev
+          return { ...prev, [normalizedRoomId]: [...current, message] }
+        })
+        markChatRoomAsRead(normalizedRoomId).catch(() => {})
+        loadRooms()
+      } catch (err) {
+        console.error('채팅 메시지 수신 실패', err)
+        loadRooms()
+      }
+    }, { id: `room-${normalizedRoomId}` })
+
+    subscribedRoomsRef.current.add(normalizedRoomId)
+  }, [loadRooms])
 
   const handleStompMessage = useCallback(frame => {
     const subscription = frame.headers.subscription || ''
@@ -469,17 +557,33 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return
 
     const token = localStorage.getItem('token')
+    if (!token) {
+      setSocketStatus('disconnected')
+      return
+    }
+
     const socketUrls = getSocketUrls()
     const socketUrl = socketUrls[urlIndex] || socketUrls[0]
     socketUrlIndexRef.current = urlIndex
     socketManualCloseRef.current = false
 
-    const socket = new WebSocket(socketUrl)
+    let socket
+    try {
+      socket = new WebSocket(socketUrl)
+    } catch (err) {
+      console.error(`채팅 웹소켓 생성 실패: ${socketUrl}`, err)
+      setSocketStatus('error')
+      setError(CHAT_SOCKET_ERROR_MESSAGE)
+      return
+    }
+
     socketRef.current = socket
     setSocketStatus('connecting')
 
     socket.onmessage = event => {
-      const data = event.data
+      try {
+        const data = event.data
+        if (typeof data !== 'string') return
 
       if (data === 'o') {
         const headers = {
@@ -523,17 +627,26 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
           setError('실시간 채팅 연결에서 오류가 발생했습니다.')
         }
       })
+      } catch (err) {
+        console.error('채팅 웹소켓 메시지 처리 실패', err)
+        setSocketStatus('error')
+        setError(CHAT_SOCKET_ERROR_MESSAGE)
+      }
     }
 
     socket.onerror = event => {
+      if (!socketManualCloseRef.current) {
+        setSocketStatus('error')
+        setError(CHAT_SOCKET_ERROR_MESSAGE)
+      }
       console.error(`채팅 웹소켓 연결 실패: ${socketUrl}`, event)
     }
 
     socket.onclose = () => {
+      if (socketRef.current === socket) socketRef.current = null
       subscribedRoomsRef.current.clear()
 
       if (!socketManualCloseRef.current && urlIndex < socketUrls.length - 1) {
-        socketRef.current = null
         socketUrlIndexRef.current = urlIndex + 1
         socketReconnectTimerRef.current = window.setTimeout(() => {
           connectSocket(urlIndex + 1)
@@ -541,13 +654,84 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         return
       }
 
-      setSocketStatus(socketManualCloseRef.current ? 'disconnected' : 'error')
+      if (socketManualCloseRef.current) {
+        setSocketStatus('disconnected')
+        return
+      }
+
+      setSocketStatus('error')
+      setError(CHAT_SOCKET_ERROR_MESSAGE)
     }
   }, [handleStompMessage, sendSockJsPayload, sendStompFrame, subscribeRoom])
 
+  const connectStompSocket = useCallback(async () => {
+    if (stompClientRef.current?.active) return
+
+    const token = localStorage.getItem('token')
+    if (!token) {
+      setSocketStatus('disconnected')
+      return
+    }
+
+    const socketUrl = getSockJsHttpBases()[0]
+
+    try {
+      if (typeof globalThis !== 'undefined' && !globalThis.global) {
+        globalThis.global = globalThis
+      }
+
+      const [{ Client }, sockJsModule] = await Promise.all([
+        import('@stomp/stompjs'),
+        import('sockjs-client'),
+      ])
+      const SockJS = sockJsModule.default || sockJsModule.SockJS || sockJsModule
+
+      const client = new Client({
+        connectHeaders: { Authorization: `Bearer ${token}` },
+        reconnectDelay: 3000,
+        heartbeatIncoming: 10000,
+        heartbeatOutgoing: 10000,
+        webSocketFactory: () => new SockJS(socketUrl),
+        onConnect: () => {
+          subscribedRoomsRef.current.clear()
+          setSocketStatus('connected')
+          setError('')
+
+          client.subscribe('/user/queue/invite', () => {
+            loadRooms()
+          }, { id: 'chat-invite' })
+
+          openRoomIdsRef.current.forEach(subscribeRoom)
+        },
+        onStompError: frame => {
+          console.error('채팅 STOMP 오류', frame.headers?.message, frame.body)
+          setSocketStatus('error')
+          setError(CHAT_SOCKET_ERROR_MESSAGE)
+        },
+        onWebSocketError: event => {
+          console.error(`채팅 웹소켓 연결 실패: ${socketUrl}`, event)
+          setSocketStatus('error')
+          setError(CHAT_SOCKET_ERROR_MESSAGE)
+        },
+        onWebSocketClose: () => {
+          subscribedRoomsRef.current.clear()
+          setSocketStatus(stompClientRef.current?.active ? 'connecting' : 'disconnected')
+        },
+      })
+
+      stompClientRef.current = client
+      setSocketStatus('connecting')
+      client.activate()
+    } catch (err) {
+      console.error(`채팅 웹소켓 초기화 실패: ${socketUrl}`, err)
+      setSocketStatus('error')
+      setError(CHAT_SOCKET_ERROR_MESSAGE)
+    }
+  }, [loadRooms, subscribeRoom])
+
   useEffect(() => {
     loadRooms()
-    connectSocket()
+    connectStompSocket()
 
     return () => {
       socketManualCloseRef.current = true
@@ -555,8 +739,11 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         window.clearTimeout(socketReconnectTimerRef.current)
       }
       socketRef.current?.close()
+      stompClientRef.current?.deactivate()
+      stompClientRef.current = null
+      subscribedRoomsRef.current.clear()
     }
-  }, [connectSocket, loadRooms])
+  }, [connectStompSocket, loadRooms])
 
   useEffect(() => {
     openRoomIdsRef.current = openRoomIds
@@ -567,66 +754,29 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     openRoomIds.forEach(subscribeRoom)
   }, [openRoomIds, socketStatus, subscribeRoom])
 
-  const filteredRooms = useMemo(() => {
-    const keyword = search.trim().toLowerCase()
-    if (!keyword) return rooms
-
-    return rooms.filter(room => (
-      room.name?.toLowerCase().includes(keyword)
-      || room.lastMessageContent?.toLowerCase().includes(keyword)
-      || room.members?.some(member => (
-        member.name?.toLowerCase().includes(keyword)
-        || member.empNo?.toLowerCase().includes(keyword)
-      ))
-    ))
-  }, [rooms, search])
+  const filteredRooms = rooms
 
   const openRoom = async room => {
-    setOpenRoomIds(prev => (prev.includes(room.roomId) ? prev : [...prev, room.roomId]))
-    subscribeRoom(room.roomId)
-    await loadMessages(room.roomId)
+    const roomId = normalizeRoomId(room.roomId ?? room)
+    if (!roomId) {
+      setError('채팅방 정보를 확인하지 못했습니다.')
+      return
+    }
+
+    setOpenRoomIds(prev => (prev.includes(roomId) ? prev : [...prev, roomId]))
+    subscribeRoom(roomId)
+
+    if (!messagesByRoom[roomId]?.length) {
+      await loadMessages(roomId)
+    } else {
+      loadMessages(roomId).catch(() => {})
+    }
   }
 
   const closeRoom = roomId => {
-    setOpenRoomIds(prev => prev.filter(id => id !== roomId))
-  }
-
-  const createPrivateRoom = async event => {
-    event.preventDefault()
-    const empNo = privateEmpNo.trim()
-    if (!empNo) return
-
-    try {
-      const roomId = await createPrivateChatRoom(empNo)
-      setPrivateEmpNo('')
-      await loadRooms()
-      await openRoom({ roomId, name: empNo, type: 'PRIVATE', members: [] })
-    } catch (err) {
-      console.error('1:1 채팅방 생성 실패', err)
-      setError('1:1 채팅방을 만들지 못했습니다. 사번을 확인해주세요.')
-    }
-  }
-
-  const createGroupRoom = async event => {
-    event.preventDefault()
-    const memberEmpNos = groupMembers
-      .split(/[,\s]+/)
-      .map(value => value.trim())
-      .filter(Boolean)
-
-    if (!groupName.trim() || memberEmpNos.length === 0) return
-
-    try {
-      const roomId = await createGroupChatRoom({ name: groupName.trim(), memberEmpNos })
-      const roomName = groupName.trim()
-      setGroupName('')
-      setGroupMembers('')
-      await loadRooms()
-      await openRoom({ roomId, name: roomName, type: 'GROUP', members: [] })
-    } catch (err) {
-      console.error('그룹 채팅방 생성 실패', err)
-      setError('그룹 채팅방을 만들지 못했습니다. 이름과 사번을 확인해주세요.')
-    }
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId) return
+    setOpenRoomIds(prev => prev.filter(id => id !== normalizedRoomId))
   }
 
   const normalizeCandidate = candidate => ({
@@ -645,7 +795,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       setMemberCandidates(candidates)
     } catch (err) {
       console.error('채팅 인원 목록 조회 실패', err)
-      setError('인원 목록을 불러오지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -724,15 +874,33 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       closeMemberModal()
     } catch (err) {
       console.error(inviteRoomId ? '채팅방 인원 추가 실패' : '채팅방 생성 실패', err)
-      setError(inviteRoomId ? '인원을 추가하지 못했습니다. 사번을 확인해주세요.' : '채팅방을 만들지 못했습니다. 사번을 확인해주세요.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
   const sendMessage = (roomId, payload) => {
-    const sent = sendStompFrame('SEND', {
-      destination: '/app/chat.send',
-      'content-type': 'application/json',
-    }, JSON.stringify({ roomId, ...payload }))
+    const client = stompClientRef.current
+    const sent = Boolean(client?.connected)
+    const normalizedRoomId = normalizeRoomId(roomId)
+
+    if (!normalizedRoomId) {
+      setError('채팅방 정보를 확인하지 못했습니다. 채팅방을 다시 열어주세요.')
+      return
+    }
+
+    if (sent) {
+      try {
+        client.publish({
+          destination: '/app/chat.send',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ roomId: normalizedRoomId, ...payload }),
+        })
+        appendLocalMessage(normalizedRoomId, payload)
+      } catch (err) {
+        console.error('채팅 메시지 발송 실패', err)
+        setError('메시지를 보내지 못했습니다. STOMP 전송 경로와 백엔드 메시지 수신 로그를 확인해주세요.')
+      }
+    }
 
     if (!sent) setError('실시간 연결이 아직 준비되지 않았습니다.')
   }
@@ -747,7 +915,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       })
     } catch (err) {
       console.error('채팅 파일 업로드 실패', err)
-      setError('파일 업로드에 실패했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -764,7 +932,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       window.URL.revokeObjectURL(blobUrl)
     } catch (err) {
       console.error('채팅 파일 다운로드 실패', err)
-      setError('파일을 다운로드하지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -777,7 +945,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       await loadRooms()
     } catch (err) {
       console.error('채팅방 나가기 실패', err)
-      setError('채팅방에서 나가지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -794,8 +962,19 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const selectedMemberCandidates = selectedMemberEmpNos
     .map(empNo => memberCandidates.find(candidate => candidate.empNo === empNo) || { empNo, name: empNo })
 
+  const getRoomLastMessage = room => {
+    const roomId = normalizeRoomId(room.roomId)
+    const messages = messagesByRoom[roomId] || []
+    return messages[messages.length - 1] || null
+  }
+
   const openRooms = openRoomIds
-    .map(roomId => rooms.find(room => room.roomId === roomId) || { roomId, name: '채팅방', members: [] })
+    .map(roomId => {
+      const normalizedRoomId = normalizeRoomId(roomId)
+      return rooms.find(room => normalizeRoomId(room.roomId) === normalizedRoomId)
+        || { roomId: normalizedRoomId, name: '채팅방', members: [] }
+    })
+    .filter(room => normalizeRoomId(room.roomId))
     .slice(-4)
 
   const startWindowDrag = useCallback(event => {
@@ -947,46 +1126,6 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       )}
 
       <div className="chat-shell">
-        <aside className="chat-sidebar-panel">
-          <div className="chat-search">
-            <FiSearch />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="채팅방 검색"
-            />
-          </div>
-
-          <form className="chat-create-card" onSubmit={createPrivateRoom}>
-            <strong><FiMessageCircle /> 1:1 채팅</strong>
-            <div className="chat-create-row">
-              <input
-                value={privateEmpNo}
-                onChange={event => setPrivateEmpNo(event.target.value)}
-                placeholder="상대 사번"
-              />
-              <button type="submit"><FiPlus /></button>
-            </div>
-          </form>
-
-          <form className="chat-create-card" onSubmit={createGroupRoom}>
-            <strong><FiUsers /> 그룹 채팅</strong>
-            <input
-              value={groupName}
-              onChange={event => setGroupName(event.target.value)}
-              placeholder="방 이름"
-            />
-            <div className="chat-create-row">
-              <input
-                value={groupMembers}
-                onChange={event => setGroupMembers(event.target.value)}
-                placeholder="사번 여러 개"
-              />
-              <button type="submit"><FiPlus /></button>
-            </div>
-          </form>
-        </aside>
-
         <main className="chat-room-panel">
           <div className="chat-room-panel-header">
             <strong>채팅방</strong>
@@ -1014,24 +1153,30 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
             </div>
           ) : (
             <div className="chat-room-list">
-              {filteredRooms.map(room => (
-                <button
-                  type="button"
-                  className={`chat-room-item ${openRoomIds.includes(room.roomId) ? 'active' : ''}`}
-                  key={room.roomId}
-                  onClick={() => openRoom(room)}
-                >
-                  <span className="chat-room-avatar">{room.name?.[0] || '채'}</span>
-                  <span className="chat-room-main">
-                    <strong>{room.name || '채팅방'}</strong>
-                    <small>{room.lastMessageContent || '새 대화를 시작해보세요.'}</small>
-                  </span>
-                  <span className="chat-room-meta">
-                    <time>{formatChatTime(room.lastMessageAt)}</time>
-                    {room.unreadCount > 0 && <em>{room.unreadCount}</em>}
-                  </span>
-                </button>
-              ))}
+              {filteredRooms.map(room => {
+                const lastMessage = getRoomLastMessage(room)
+                const preview = lastMessage?.content || room.lastMessageContent || '새 대화를 시작해보세요.'
+                const previewTime = lastMessage?.sentAt || room.lastMessageAt
+
+                return (
+                  <button
+                    type="button"
+                    className={`chat-room-item ${openRoomIds.includes(normalizeRoomId(room.roomId)) ? 'active' : ''}`}
+                    key={room.roomId}
+                    onClick={() => openRoom(room)}
+                  >
+                    <span className="chat-room-avatar">{room.name?.[0] || '채'}</span>
+                    <span className="chat-room-main">
+                      <strong>{room.name || '채팅방'}</strong>
+                      <small>{preview}</small>
+                    </span>
+                    <span className="chat-room-meta">
+                      <time>{formatChatTime(previewTime)}</time>
+                      {room.unreadCount > 0 && <em>{room.unreadCount}</em>}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )}
         </main>
@@ -1043,7 +1188,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
             key={room.roomId}
             room={room}
             index={index}
-            messages={messagesByRoom[room.roomId] || []}
+            messages={messagesByRoom[normalizeRoomId(room.roomId)] || []}
             currentEmpNo={currentEmpNo}
             isConnected={socketStatus === 'connected'}
             onClose={closeRoom}

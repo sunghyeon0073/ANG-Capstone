@@ -95,6 +95,16 @@
   background: transparent;
 }
 
+.home-board-panel .board-container {
+  height: auto;
+  min-height: 0;
+}
+
+.home-board-panel .board-list,
+.home-board-panel .board-list-body {
+  overflow: visible;
+}
+
 @media (max-width: 1280px) {
   .home-prompt-card {
     gap: 12px;
