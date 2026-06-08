@@ -710,7 +710,7 @@ public class DocumentService {
         }
 
         StringBuilder builder = new StringBuilder();
-        builder.append("Use the parsed document content below as reference when creating the document.\n\n");
+        builder.append("아래 참고 문서 내용을 문서 작성의 근거로 우선 활용하세요.\n\n");
 
         int index = 1;
         for (DocumentEntity source : sources) {
@@ -719,7 +719,7 @@ public class DocumentService {
                 continue;
             }
 
-            builder.append("[Reference Document ")
+            builder.append("[참고 문서 ")
                     .append(index++)
                     .append(": ")
                     .append(source.getTitle() != null ? source.getTitle() : source.getDocId())
@@ -732,7 +732,7 @@ public class DocumentService {
             return buildAiInstruction(prompt, format);
         }
 
-        builder.append("[User Prompt]\n")
+        builder.append("[사용자 요청]\n")
                 .append(buildAiInstruction(prompt, format));
 
         return builder.toString();
@@ -772,6 +772,12 @@ public class DocumentService {
                 - 이름, 날짜, 금액, 수량, 결정 사항, 위험 요소, 실행 항목 등 핵심 정보를 보존하세요.
                 - 정보가 부족하면 항목을 생략하지 말고 [담당자], [일자], [금액], [부서] 같은 자리표시자를 사용하세요.
                 - 표 위주의 원본은 표를 유지하고 짧은 분석이나 후속 조치 섹션을 덧붙이세요.
+
+                표 작성 시 반드시 지킬 것 (어기면 변환 과정에서 표가 깨집니다):
+                - 표의 모든 행은 "| 셀1 | 셀2 | 셀3 |" 형태로 파이프(|)로 구분된 한 줄로만 작성하세요.
+                - 헤더 행 바로 다음 줄에 "| --- | --- | --- |" 구분선을 넣으세요.
+                - 한 셀의 내용을 줄바꿈으로 나누어 여러 줄에 걸쳐 쓰지 마세요. 내용이 길면 짧게 요약해서 한 줄에 담으세요.
+                - 위험 요소-대응 방안, 문제점-해결 방안처럼 짝을 이루는 항목은 글머리 기호로 나열하지 말고 "위험 요소 | 영향 | 대응 방안" 같은 표로 정리하세요.
 
                 사용자 요청:
                 %s

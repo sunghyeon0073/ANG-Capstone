@@ -430,6 +430,16 @@ export default function DocumentWriter() {
           ? 'docx'
           : null
 
+    // 새 문서 작성 시에는 선택된 문서의 형식을 그대로 따라간다 (hwp 선택 → hwp 생성, xlsx 선택 → xlsx 생성 등).
+    const createOutputFormat =
+      selectedKind === 'hwp' || selectedKind === 'hwpx'
+        ? 'hwp'
+        : selectedKind === 'excel'
+          ? 'xlsx'
+          : selectedKind === 'pdf'
+            ? 'pdf'
+            : 'docx'
+
     if (mode === 'edit' && !selectedDoc) {
       alert('수정할 문서를 선택하세요.')
       return
@@ -459,7 +469,7 @@ export default function DocumentWriter() {
     const payload = {
       prompt: finalPrompt,
       mode,
-      outputFormat: mode === 'edit' ? editOutputFormat : 'docx',
+      outputFormat: mode === 'edit' ? editOutputFormat : createOutputFormat,
       sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
       attachedDocIds: attachedDocs
         .filter((doc) => mode !== 'edit' || doc.docId !== selectedDoc.docId)
