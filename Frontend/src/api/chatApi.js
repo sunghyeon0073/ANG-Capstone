@@ -34,6 +34,11 @@ export const getChatMessages = async (roomId, page = 0, size = 30) => {
   return unwrapList(response)
 }
 
+export const getChatRoomMembers = async roomId => {
+  const response = await api.get(`/chat/rooms/${roomId}/members`)
+  return unwrapList(response)
+}
+
 export const markChatRoomAsRead = async roomId => {
   const response = await api.post(`/chat/rooms/${roomId}/read`)
   return unwrap(response)
@@ -44,36 +49,24 @@ export const leaveChatRoom = async roomId => {
   return unwrap(response)
 }
 
-export const inviteChatMembers = async (roomId, empNos) => {
-  const response = await api.post(`/chat/rooms/${roomId}/invite`, { empNos })
+export const inviteChatMembers = async (roomId, empNos, name = '') => {
+  const response = await api.post(`/chat/rooms/${roomId}/invite`, {
+    empNos,
+    name: name.trim() || null,
+  })
+  return unwrap(response)
+}
+
+export const updateChatRoomName = async (roomId, name) => {
+  const response = await api.patch(`/chat/rooms/${roomId}/name`, {
+    name: name?.trim() || null,
+  })
   return unwrap(response)
 }
 
 export const getChatMemberCandidates = async () => {
-  const endpoints = [
-    '/mail/recipients',
-    '/mail/users',
-    '/organization/members',
-    '/users',
-    '/organization/users',
-    '/admin/users',
-  ]
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await api.get(endpoint)
-      const data = unwrap(response)
-      if (Array.isArray(data)) return data
-      if (Array.isArray(data?.content)) return data.content
-      if (Array.isArray(data?.users)) return data.users
-    } catch (error) {
-      if (error.response?.status !== 404) {
-        console.warn(`채팅 인원 목록 조회 실패: ${endpoint}`, error)
-      }
-    }
-  }
-
-  return []
+  const response = await api.get('/users')
+  return unwrapList(response)
 }
 
 export const uploadChatFile = async (roomId, file) => {
