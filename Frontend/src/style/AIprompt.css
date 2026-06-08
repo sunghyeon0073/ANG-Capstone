@@ -62,12 +62,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .prompt-actions-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-right: 24px;
 }
 
 /* ============================================================================
@@ -230,10 +232,26 @@
   transition: all 0.2s;
 }
 
+.btn-generate--create {
+  margin-left: 4px;
+}
+
+.btn-generate--edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #374151;
+}
+
 .btn-generate:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
   transform: translateY(-1px);
   box-shadow: 0 4px 6px -1px rgba(255, 140, 116, 0.2);
+}
+
+.btn-generate--edit:hover:not(:disabled) {
+  background-color: #1f2937;
+  box-shadow: 0 4px 6px -1px rgba(31, 41, 55, 0.18);
 }
 
 .btn-generate:disabled {
