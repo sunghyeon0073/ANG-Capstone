@@ -16,7 +16,6 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
     { id: 'organization', label: '조직도', icon: FiUsers }
   ]
 
-  // 관리자 권한(Level 50 이상)이 있는 경우 관리자 탭 추가
   if (user?.roleLevel >= 50) {
     menuItems.push({ id: 'admin', label: '관리자 페이지', icon: FiShield });
   }

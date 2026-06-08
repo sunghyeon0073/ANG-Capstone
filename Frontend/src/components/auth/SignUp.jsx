@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signUp } from '../api/authApi'
-import { getSignupScopesTree } from '../api/scopeApi'
+import { signUp } from '../../api/authApi'
+import { getSignupScopesTree } from '../../api/scopeApi'
 
 const normalizeScopeType = (scope) => scope?.scopeType ?? scope?.type ?? ''
 const scopeTypeOrder = { COMPANY: 0, DEPARTMENT: 1, TEAM: 2 }
@@ -288,4 +288,3 @@ export default function SignUp() {
     </div>
   )
 }
-

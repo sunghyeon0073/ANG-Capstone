@@ -2,7 +2,6 @@ import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShar
 
 const iconMap = {
   'home-dashboard': FiHome,
-  'home-memo': FiFileText,
   'esignature-waiting': FiCheckSquare,
   'esignature-completed': FiCheckSquare,
   'esignature-rejected': FiCheckSquare,
@@ -28,8 +27,7 @@ const iconMap = {
 
 export const SIDEBAR_MENUS = {
   home: [
-    { id: 'home-dashboard', label: '대시보드' },
-    { id: 'home-memo', label: '메모' }
+    { id: 'home-dashboard', label: '대시보드' }
   ],
   esignature: [
     { id: 'esignature-waiting', label: '결재대기' },
@@ -94,9 +92,7 @@ export default function Sidebar({ currentPage, onPageChange }) {
           return (
             <button
               key={item.id}
-              // 현재 선택된 메뉴와 ID가 일치하면 'active' 클래스 부여 (활성화 상태 UI 표시)
               className={`sidebar-menu-item ${currentPage === item.id ? 'active' : ''}`}
-              // 상위 컴포넌트로 정확한 하위 메뉴 ID 전달하여 화면 전환
               onClick={() => onPageChange(item.id)}
             >
               {IconComponent && <IconComponent className="sidebar-icon" />}
