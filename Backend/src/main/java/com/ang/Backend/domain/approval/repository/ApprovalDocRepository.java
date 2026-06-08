@@ -45,6 +45,9 @@ public interface ApprovalDocRepository extends JpaRepository<ApprovalDoc, Long> 
                                         @Param("docStatus") ApprovalStatus docStatus,
                                         Pageable pageable);
 
+    // 보존연한 만료 대상 조회
+    List<ApprovalDoc> findByStatusAndCompletedAtIsNotNull(ApprovalStatus status);
+
     // 통합 검색
     @Query("SELECT ad FROM ApprovalDoc ad WHERE " +
            "(ad.drafter.userId = :userId OR EXISTS (" +
