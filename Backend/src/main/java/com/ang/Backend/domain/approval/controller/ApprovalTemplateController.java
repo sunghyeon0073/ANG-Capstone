@@ -43,13 +43,42 @@ public class ApprovalTemplateController {
         User admin = userRepository.findByEmpNo(userDetails.getUsername())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        // 관리자 권한 검증 (roleLevel >= 50)
         List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(admin);
         int roleLevel = roles.isEmpty() ? 0 : roles.get(0).getRole().getRoleLevel();
-        if (roleLevel < 50) {
-            throw new CustomException(ErrorCode.PERMISSION_DENIED);
-        }
+        if (roleLevel < 50) throw new CustomException(ErrorCode.PERMISSION_DENIED);
 
         return ApiResponse.ok(templateService.createTemplate(req, admin));
+    }
+
+    @PutMapping("/admin/approvals/templates/{id}")
+    public ApiResponse<ApprovalTemplateDto.Response> updateTemplate(
+            @PathVariable Long id,
+            @RequestBody ApprovalTemplateDto.UpdateRequest req,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) throw new CustomException(ErrorCode.UNAUTHORIZED);
+        User admin = userRepository.findByEmpNo(userDetails.getUsername())
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(admin);
+        int roleLevel = roles.isEmpty() ? 0 : roles.get(0).getRole().getRoleLevel();
+        if (roleLevel < 50) throw new CustomException(ErrorCode.PERMISSION_DENIED);
+
+        return ApiResponse.ok(templateService.updateTemplate(id, req));
+    }
+
+    @DeleteMapping("/admin/approvals/templates/{id}")
+    public ApiResponse<Void> deactivateTemplate(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) throw new CustomException(ErrorCode.UNAUTHORIZED);
+        User admin = userRepository.findByEmpNo(userDetails.getUsername())
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        List<UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(admin);
+        int roleLevel = roles.isEmpty() ? 0 : roles.get(0).getRole().getRoleLevel();
+        if (roleLevel < 50) throw new CustomException(ErrorCode.PERMISSION_DENIED);
+
+        templateService.deactivateTemplate(id);
+        return ApiResponse.ok(null);
     }
 }

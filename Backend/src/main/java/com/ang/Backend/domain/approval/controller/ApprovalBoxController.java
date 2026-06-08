@@ -61,6 +61,15 @@ public class ApprovalBoxController {
         return ApiResponse.ok(boxService.getOutboxCompleted(user, page, size));
     }
 
+    @GetMapping("/outbox/draft")
+    public ApiResponse<PageResult<ApprovalDocDto.BoxResponse>> outboxDraft(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        return ApiResponse.ok(boxService.getOutboxDraft(user, page, size));
+    }
+
     @GetMapping("/outbox/rejected")
     public ApiResponse<PageResult<ApprovalDocDto.BoxResponse>> outboxRejected(
             @RequestParam(defaultValue = "0") int page,

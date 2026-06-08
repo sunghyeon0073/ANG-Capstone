@@ -66,6 +66,15 @@ public class ApprovalBoxService {
         );
     }
 
+    public PageResult<ApprovalDocDto.BoxResponse> getOutboxDraft(User user, int page, int size) {
+        return PageResult.of(
+                docRepository.findByDrafterAndStatusOrderByCreatedAtDesc(
+                        user, ApprovalStatus.DRAFT,
+                        PageRequest.of(page, size))
+                        .map(ApprovalDocDto.BoxResponse::from)
+        );
+    }
+
     public PageResult<ApprovalDocDto.BoxResponse> getReceivedInbox(User user, int page, int size) {
         return PageResult.of(
                 docRepository.findReceivedInbox(user.getUserId(),

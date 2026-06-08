@@ -43,4 +43,21 @@ public class ApprovalTemplateService {
                 .build();
         return ApprovalTemplateDto.Response.from(templateRepository.save(template));
     }
+
+    @Transactional
+    public ApprovalTemplateDto.Response updateTemplate(Long id, ApprovalTemplateDto.UpdateRequest req) {
+        ApprovalTemplate template = templateRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_TEMPLATE_NOT_FOUND));
+        if (req.getTitle()      != null) template.setTitle(req.getTitle());
+        if (req.getCategory()   != null) template.setCategory(req.getCategory());
+        if (req.getFormSchema() != null) template.setFormSchema(req.getFormSchema());
+        return ApprovalTemplateDto.Response.from(template);
+    }
+
+    @Transactional
+    public void deactivateTemplate(Long id) {
+        ApprovalTemplate template = templateRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_TEMPLATE_NOT_FOUND));
+        template.setIsActive(false);
+    }
 }

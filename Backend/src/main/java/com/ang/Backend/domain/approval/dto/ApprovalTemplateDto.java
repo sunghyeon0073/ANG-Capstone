@@ -18,6 +18,14 @@ public class ApprovalTemplateDto {
 
     @Getter
     @Builder
+    public static class UpdateRequest {
+        private String title;
+        private String category;
+        private String formSchema;
+    }
+
+    @Getter
+    @Builder
     public static class Response {
         private Long id;
         private String title;
