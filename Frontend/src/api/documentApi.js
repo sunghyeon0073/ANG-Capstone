@@ -22,3 +22,6 @@ export const restoreDocument = (docId) => api.put(`/documents/${docId}/restore`)
 
 export const downloadDocumentFile = (fileId) => 
   api.get(`/files/download/${fileId}`, { responseType: 'blob' });
+
+export const convertDocumentToPdf = (docId) =>
+  api.get(`/documents/${docId}/pdf`, { responseType: 'blob' });

@@ -118,6 +118,19 @@ public class DocumentController {
         return ApiResponse.ok("요청이 성공적으로 처리되었습니다.", documentService.getOriginalContent(id));
     }
 
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> convertToPdf(@PathVariable Long id) {
+        DocumentDto.FileDownload file = documentService.convertDocumentToPdf(id);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(file.getFileName(), java.nio.charset.StandardCharsets.UTF_8)
+                        .build()
+                        .toString())
+                .body(file.getBytes());
+    }
+
     @PutMapping("/{id}")
     public ApiResponse<Void> update(@PathVariable Long id, @RequestBody DocumentDto.UpdateRequest dto) {
         documentService.update(id, dto);

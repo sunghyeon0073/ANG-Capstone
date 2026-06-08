@@ -587,11 +587,12 @@ public class DocumentService {
             User user) {
         return transactionTemplate.execute(status -> {
             FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            FileItem previewFile = createGeneratedDocumentPreviewFile(generatedFile, user);
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(title)
                     .file(fileItem)
-                    .previewFile(fileItem)
+                    .previewFile(previewFile)
                     .owner(user)
                     .status(DocumentStatus.DRAFT)
                     .originalContent("""
@@ -619,12 +620,7 @@ public class DocumentService {
             User user) {
         return transactionTemplate.execute(status -> {
             FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
-            FileItem previewFile = createAiPreviewFile(title, """
-                    AI DOCX edit based on source document: %s
-
-                    User request:
-                    %s
-                    """.formatted(source.title(), prompt), user);
+            FileItem previewFile = createGeneratedDocumentPreviewFile(generatedFile, user);
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(title)
@@ -799,11 +795,63 @@ public class DocumentService {
         }
     }
 
+    private FileItem createGeneratedDocumentPreviewFile(AiGeneratedFile generatedFile, User user) {
+        String originalName = generatedFile.fileName() != null ? generatedFile.fileName() : "document";
+        String lowerName = originalName.toLowerCase();
+        String contentType = generatedFile.contentType() != null ? generatedFile.contentType().toLowerCase() : "";
+
+        if (contentType.contains("pdf") || lowerName.endsWith(".pdf")) {
+            return saveGeneratedFileItem(generatedFile, user, "previews");
+        }
+
+        if (isHwpFile(lowerName, contentType)) {
+            return createBridgePreviewFile(generatedFile.bytes(), user, originalName, "/hwp/preview-pdf", "HWP");
+        }
+
+        if (isWordFile(lowerName, contentType)) {
+            FileItem wordPreview = createBridgePreviewFile(generatedFile.bytes(), user, originalName, "/docx/preview-pdf", "DOCX");
+            if (wordPreview != null) {
+                return wordPreview;
+            }
+        }
+
+        return createLibreOfficePreviewFile(generatedFile.bytes(), originalName, user);
+    }
+
     @Transactional(readOnly = true)
     public String getOriginalContent(Long docId) {
         return documentRepository.findById(docId)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND))
                 .getOriginalContent();
+    }
+
+    @Transactional(readOnly = true)
+    public DocumentDto.FileDownload convertDocumentToPdf(Long docId) {
+        DocumentEntity doc = documentRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        if (doc.getFile() == null) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+
+        FileItem sourceFile = doc.getFile();
+        String originalName = sourceFile.getOriginalFileName() != null ? sourceFile.getOriginalFileName() : "document";
+        String contentType = sourceFile.getContentType() != null ? sourceFile.getContentType() : "";
+
+        try {
+            Resource resource = fileService.loadFileAsResource(sourceFile.getFileId());
+            byte[] originalBytes = resource.getInputStream().readAllBytes();
+            byte[] pdfBytes = convertOriginalBytesToPdf(originalBytes, originalName, contentType);
+            String pdfName = originalName.replaceFirst("\\.[^.]+$", "") + ".pdf";
+
+            return DocumentDto.FileDownload.builder()
+                    .fileName(pdfName)
+                    .contentType("application/pdf")
+                    .bytes(pdfBytes)
+                    .build();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read source document.", e);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -2414,13 +2462,22 @@ public class DocumentService {
     }
 
     private FileItem createBridgePreviewFile(MultipartFile file, User user, String originalName, String endpoint, String label) {
+        try {
+            return createBridgePreviewFile(file.getBytes(), user, originalName, endpoint, label);
+        } catch (Exception e) {
+            log.warn("{} preview bridge failed for {}: {}", label, originalName, e.getMessage());
+            return null;
+        }
+    }
+
+    private FileItem createBridgePreviewFile(byte[] originalBytes, User user, String originalName, String endpoint, String label) {
         if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
             log.warn("{} preview skipped because HWP_EDIT_BASE_URL is not configured.", label);
             return null;
         }
 
         try {
-            byte[] pdfBytes = callPreviewBridge(file.getBytes(), originalName, endpoint).getBody();
+            byte[] pdfBytes = callPreviewBridge(originalBytes, originalName, endpoint).getBody();
             if (pdfBytes == null || pdfBytes.length == 0) {
                 log.warn("{} preview bridge returned an empty PDF for {}", label, originalName);
                 return null;
@@ -2442,6 +2499,95 @@ public class DocumentService {
         } catch (Exception e) {
             log.warn("{} preview bridge failed for {}: {}", label, originalName, e.getMessage());
             return null;
+        }
+    }
+
+    private FileItem createLibreOfficePreviewFile(byte[] originalBytes, String originalName, User user) {
+        try {
+            byte[] pdfBytes = runLibreOfficeToPdfBytes(originalBytes, originalName);
+            String previewName = originalName.replaceFirst("\\.[^.]+$", "") + ".pdf";
+            String s3Key = s3FileService.uploadBytes(pdfBytes, previewName, "application/pdf", "previews");
+
+            return fileItemRepository.save(FileItem.builder()
+                    .originalFileName(previewName)
+                    .storedFileName(s3Key)
+                    .filePath(s3Key)
+                    .fileSize((long) pdfBytes.length)
+                    .contentType("application/pdf")
+                    .uploader(user)
+                    .ownerId(user != null ? user.getUserId() : null)
+                    .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
+                    .build());
+        } catch (Exception e) {
+            log.warn("Preview PDF generation failed for {}: {}", originalName, e.getMessage());
+            return null;
+        }
+    }
+
+    private byte[] convertOriginalBytesToPdf(byte[] originalBytes, String originalName, String contentType) {
+        String lowerName = originalName != null ? originalName.toLowerCase() : "";
+        String lowerContentType = contentType != null ? contentType.toLowerCase() : "";
+
+        if (lowerContentType.contains("pdf") || lowerName.endsWith(".pdf")) {
+            return originalBytes;
+        }
+
+        try {
+            if (isHwpFile(lowerName, lowerContentType)) {
+                if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
+                    throw new IllegalStateException("HWP_EDIT_BASE_URL is not configured.");
+                }
+                byte[] pdfBytes = callPreviewBridge(originalBytes, originalName, "/hwp/preview-pdf").getBody();
+                if (pdfBytes == null || pdfBytes.length == 0) {
+                    throw new IllegalStateException("HWP bridge returned an empty PDF.");
+                }
+                return pdfBytes;
+            }
+
+            if (isWordFile(lowerName, lowerContentType) && hwpEditBaseUrl != null && !hwpEditBaseUrl.isBlank()) {
+                try {
+                    byte[] pdfBytes = callPreviewBridge(originalBytes, originalName, "/docx/preview-pdf").getBody();
+                    if (pdfBytes != null && pdfBytes.length > 0) {
+                        return pdfBytes;
+                    }
+                } catch (Exception e) {
+                    log.warn("DOCX bridge PDF conversion failed for {}: {}", originalName, e.getMessage());
+                }
+            }
+
+            if (!isConvertibleToPdf(lowerName, lowerContentType)) {
+                throw new IllegalArgumentException("This file type cannot be converted to PDF.");
+            }
+
+            return runLibreOfficeToPdfBytes(originalBytes, originalName);
+        } catch (IOException | InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("PDF conversion failed.", e);
+        }
+    }
+
+    private byte[] runLibreOfficeToPdfBytes(byte[] originalBytes, String originalName) throws IOException, InterruptedException {
+        Path tempDir = null;
+        Path tempFile = null;
+        try {
+            tempDir = Files.createTempDirectory("doc-preview-");
+            tempFile = tempDir.resolve(sanitizeFileName(originalName));
+            Files.write(tempFile, originalBytes);
+
+            KordocResult result = runLibreOffice(tempFile, tempDir);
+            if (result.exitCode() != 0) {
+                throw new IllegalStateException("LibreOffice conversion failed with exit code " + result.exitCode() + ": " + result.output());
+            }
+
+            Path pdfFile = findConvertedPdf(tempDir, tempFile);
+            if (pdfFile == null || !Files.exists(pdfFile)) {
+                throw new IllegalStateException("LibreOffice conversion finished but no PDF was created.");
+            }
+
+            return Files.readAllBytes(pdfFile);
+        } finally {
+            deleteQuietly(tempFile);
+            deleteDirectoryQuietly(tempDir);
         }
     }
 

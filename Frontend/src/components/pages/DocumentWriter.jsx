@@ -5,7 +5,8 @@ import {
   getDepartmentDocuments,
   getDocument,
   deleteDocument,
-  downloadDocumentFile
+  downloadDocumentFile,
+  convertDocumentToPdf
 } from '../../api/documentApi'
 // removed mock data imports - use backend APIs only
 import {
@@ -406,15 +407,13 @@ export default function DocumentWriter() {
       return
     }
 
-    const selectedKind = getDocumentPreviewKind(selectedDoc)
-    const pdfFileId = selectedKind === 'pdf' ? selectedDoc.fileId : selectedDoc.previewFileId
-    if (!pdfFileId) {
-      alert('선택한 문서의 PDF 변환 파일이 없습니다.')
+    if (!selectedDoc.docId) {
+      alert('선택한 문서 정보를 다시 불러온 뒤 시도하세요.')
       return
     }
 
     try {
-      const response = await downloadDocumentFile(pdfFileId)
+      const response = await convertDocumentToPdf(selectedDoc.docId)
       const baseName = selectedDoc.title || selectedDoc.originalFileName || 'document'
       await downloadBlobResponse(response, `${baseName.replace(/\.[^.]+$/, '')}.pdf`)
     } catch (err) {
@@ -494,9 +493,8 @@ export default function DocumentWriter() {
       : selectedDocKind === 'word'
         ? 'docx'
         : null
-  const selectedDocPdfFileId = selectedDocKind === 'pdf' ? selectedDoc?.fileId : selectedDoc?.previewFileId
   const canEditSelectedFormat = Boolean(selectedDoc && selectedDocEditFormat && aiOutputFormat === selectedDocEditFormat)
-  const canConvertSelectedPdf = Boolean(selectedDoc && aiOutputFormat === 'pdf' && selectedDocPdfFileId)
+  const canConvertSelectedPdf = Boolean(selectedDoc?.docId && aiOutputFormat === 'pdf')
 
   return (
     <div className="document-writer-container">
