@@ -43,8 +43,33 @@ public class Schedule {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "schedule_type", nullable = false)
+    private ScheduleType type;
+
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
+
+    @Column(name = "is_todo", nullable = false)
+    @Builder.Default
+    private boolean isTodo = false;
+
+    public void setIsTodo(boolean isTodo) {
+        this.isTodo = isTodo;
+    }
+
+    @Column(name = "is_completed", nullable = false)
+    @Builder.Default
+    private boolean isCompleted = false;
+
+    @Column(name = "parent_schedule_id")
+    private Long parentScheduleId;
+
+    @Column(name = "repeat_type", length = 20)
+    private String repeatType;
+
+    @Column(name = "repeat_end_date")
+    private LocalDate repeatEndDate;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -54,12 +79,21 @@ public class Schedule {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public void update(LocalDate startDate, LocalDate endDate, String title, LocalTime startTime, LocalTime endTime, String description) {
+    public void update(LocalDate startDate, LocalDate endDate, String title, LocalTime startTime, LocalTime endTime, String description, ScheduleType type, boolean isTodo, String repeatType, LocalDate repeatEndDate) {
         this.startDate = startDate;
         this.endDate = endDate;
         this.title = title;
         this.startTime = startTime;
         this.endTime = endTime;
         this.description = description;
+        this.type = type;
+        this.isTodo = isTodo;
+        this.repeatType = repeatType;
+        this.repeatEndDate = repeatEndDate;
+    }
+
+    public void toggleComplete() {
+        if (!this.isTodo) return;
+        this.isCompleted = !this.isCompleted;
     }
 }
