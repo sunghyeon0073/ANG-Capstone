@@ -71,6 +71,7 @@ export default function DocumentWriter() {
   const [aiProgressMode, setAiProgressMode] = useState(null)
   const [aiProgressStep, setAiProgressStep] = useState(0)
   const [docxEditInstructions, setDocxEditInstructions] = useState([])
+  const [docxEditMode, setDocxEditMode] = useState(false)
   const fileInputRef = useRef(null)
   const mountedRef = useRef(true)
   const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
@@ -101,6 +102,7 @@ export default function DocumentWriter() {
 
   useEffect(() => {
     setDocxEditInstructions([])
+    setDocxEditMode(false)
   }, [selectedDoc?.docId])
 
   useEffect(() => {
@@ -621,6 +623,15 @@ export default function DocumentWriter() {
                   <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
                     {getFileTypeLabel(selectedDoc)}
                   </span>
+                  {getDocumentPreviewKind(selectedDoc) === 'word' && (
+                    <button
+                      type="button"
+                      className={`doc-edit-mode-toggle ${docxEditMode ? 'active' : ''}`}
+                      onClick={() => setDocxEditMode((enabled) => !enabled)}
+                    >
+                      {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
+                    </button>
+                  )}
                   {selectedDoc.scopeName && (
                     <span className={`doc-scope-badge ${selectedDoc.scopeName === 'N/A' ? 'doc-scope-badge--personal' : ''}`}>
                       {selectedDoc.scopeName === 'N/A' ? '개인 문서' : selectedDoc.scopeName}
@@ -667,6 +678,7 @@ export default function DocumentWriter() {
                 previewError={previewError}
                 docxEditInstructions={docxEditInstructions}
                 onAddDocxEditInstruction={handleAddDocxEditInstruction}
+                docxEditEnabled={docxEditMode}
               />
             </div>
           ) : (
