@@ -34,12 +34,16 @@ public class ScheduleDto {
         @NotNull
         private LocalTime endTime;
 
-        private ScheduleType type = ScheduleType.PERSONAL;
-
         private String description;
 
         @NotNull
         private ScheduleType type;
+
+        private boolean isTodo = false;
+        
+        private String repeatType = "NONE"; // NONE, DAILY, WEEKLY, MONTHLY, YEARLY
+        
+        private LocalDate repeatEndDate;
     }
 
     @Getter
@@ -51,9 +55,13 @@ public class ScheduleDto {
         private String title;
         private LocalTime startTime;
         private LocalTime endTime;
-        private ScheduleType type;
         private String description;
         private ScheduleType type;
+        private boolean isTodo;
+        private boolean isCompleted;
+        private Long parentScheduleId;
+        private String repeatType;
+        private LocalDate repeatEndDate;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -67,7 +75,11 @@ public class ScheduleDto {
                     .endTime(schedule.getEndTime())
                     .type(schedule.getType())
                     .description(schedule.getDescription())
-                    .type(schedule.getType())
+                    .isTodo(schedule.isTodo())
+                    .isCompleted(schedule.isCompleted())
+                    .parentScheduleId(schedule.getParentScheduleId())
+                    .repeatType(schedule.getRepeatType())
+                    .repeatEndDate(schedule.getRepeatEndDate())
                     .createdAt(schedule.getCreatedAt())
                     .updatedAt(schedule.getUpdatedAt())
                     .build();

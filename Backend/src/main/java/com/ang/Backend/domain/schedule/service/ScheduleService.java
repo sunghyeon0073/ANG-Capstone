@@ -1,5 +1,7 @@
 package com.ang.Backend.domain.schedule.service;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.annotation.PostConstruct;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.domain.schedule.dto.ScheduleDto;
@@ -8,6 +10,7 @@ import com.ang.Backend.domain.schedule.entity.ScheduleType;
 import com.ang.Backend.domain.schedule.repository.ScheduleRepository;
 import com.ang.Backend.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -185,12 +189,14 @@ public class ScheduleService {
     }
 
     @Transactional
-    public ScheduleDto.Response create(ScheduleDto.SaveRequest request, User owner) {
+    public List<ScheduleDto.Response> create(ScheduleDto.SaveRequest request, User owner) {
         if (request.getEndDate().isBefore(request.getStartDate())) {
             throw new CustomException(ErrorCode.INVALID_INPUT, "종료일은 시작일보다 앞설 수 없습니다.");
         }
 
-        Schedule schedule = Schedule.builder()
+        List<Schedule> createdSchedules = new ArrayList<>();
+
+        Schedule rootSchedule = Schedule.builder()
                 .owner(owner)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
@@ -199,9 +205,54 @@ public class ScheduleService {
                 .endTime(request.getEndTime())
                 .description(normalizeDescription(request.getDescription()))
                 .type(request.getType() != null ? request.getType() : ScheduleType.PERSONAL)
+                .isTodo(request.isTodo())
+                .repeatType(request.getRepeatType())
+                .repeatEndDate(request.getRepeatEndDate())
                 .build();
 
-        return ScheduleDto.Response.from(scheduleRepository.save(schedule));
+        createdSchedules.add(scheduleRepository.save(rootSchedule));
+
+        // Generate recurring schedules if needed
+        if (!"NONE".equalsIgnoreCase(request.getRepeatType()) && request.getRepeatEndDate() != null) {
+            LocalDate currentStart = request.getStartDate();
+            LocalDate currentEnd = request.getEndDate();
+            int durationDays = (int) ChronoUnit.DAYS.between(currentStart, currentEnd);
+
+            while (true) {
+                currentStart = getNextRepeatDate(currentStart, request.getRepeatType());
+                if (currentStart == null || currentStart.isAfter(request.getRepeatEndDate())) {
+                    break;
+                }
+                currentEnd = currentStart.plusDays(durationDays);
+
+                Schedule repeatedSchedule = Schedule.builder()
+                    .owner(owner)
+                    .startDate(currentStart)
+                    .endDate(currentEnd)
+                    .title(request.getTitle().trim())
+                    .startTime(request.getStartTime())
+                    .endTime(request.getEndTime())
+                    .description(normalizeDescription(request.getDescription()))
+                    .type(request.getType() != null ? request.getType() : ScheduleType.PERSONAL)
+                    .isTodo(request.isTodo())
+                    .parentScheduleId(rootSchedule.getScheduleId())
+                    .repeatType(request.getRepeatType())
+                    .repeatEndDate(request.getRepeatEndDate())
+                    .build();
+
+                createdSchedules.add(scheduleRepository.save(repeatedSchedule));
+            }
+        }
+
+        return createdSchedules.stream().map(ScheduleDto.Response::from).toList();
+    }
+
+    private LocalDate getNextRepeatDate(LocalDate currentDate, String repeatType) {
+        if ("DAILY".equalsIgnoreCase(repeatType)) return currentDate.plusDays(1);
+        if ("WEEKLY".equalsIgnoreCase(repeatType)) return currentDate.plusWeeks(1);
+        if ("MONTHLY".equalsIgnoreCase(repeatType)) return currentDate.plusMonths(1);
+        if ("YEARLY".equalsIgnoreCase(repeatType)) return currentDate.plusYears(1);
+        return null;
     }
 
     @Transactional
@@ -220,6 +271,13 @@ public class ScheduleService {
                 normalizeDescription(request.getDescription()),
                 request.getType() != null ? request.getType() : schedule.getType()
         );
+        return ScheduleDto.Response.from(schedule);
+    }
+
+    @Transactional
+    public ScheduleDto.Response toggleComplete(Long scheduleId, User owner) {
+        Schedule schedule = getOwnedSchedule(scheduleId, owner);
+        schedule.toggleComplete();
         return ScheduleDto.Response.from(schedule);
     }
 

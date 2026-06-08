@@ -50,6 +50,23 @@ public class Schedule {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "is_todo", nullable = false)
+    @Builder.Default
+    private boolean isTodo = false;
+
+    @Column(name = "is_completed", nullable = false)
+    @Builder.Default
+    private boolean isCompleted = false;
+
+    @Column(name = "parent_schedule_id")
+    private Long parentScheduleId;
+
+    @Column(name = "repeat_type", length = 20)
+    private String repeatType;
+
+    @Column(name = "repeat_end_date")
+    private LocalDate repeatEndDate;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -66,5 +83,10 @@ public class Schedule {
         this.endTime = endTime;
         this.description = description;
         this.type = type;
+    }
+
+    public void toggleComplete() {
+        if (!this.isTodo) return;
+        this.isCompleted = !this.isCompleted;
     }
 }

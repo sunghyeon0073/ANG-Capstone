@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FiChevronLeft, FiChevronRight, FiPlus, FiTrash2 } from 'react-icons/fi'
+import { 
+  FiChevronLeft, 
+  FiChevronRight, 
+  FiPlus, 
+  FiTrash2, 
+  FiMenu, 
+  FiChevronDown, 
+  FiChevronUp,
+  FiAlertCircle,
+  FiCheckCircle,
+  FiCalendar
+} from 'react-icons/fi'
 import * as XLSX from 'xlsx'
 import {
   createSchedule,
   deleteSchedule,
   getAiScheduleRecommendations,
   getSchedules,
+  toggleCompleteSchedule,
 } from '../../api/scheduleApi'
 
 const SimpleModal = ({ open, onClose, title, children }) => {
@@ -82,6 +94,9 @@ const buildSchedulePayload = (formData) => {
     endTime: toApiTime(endTime),
     description,
     type: formData.type || 'PERSONAL',
+    isTodo: formData.entryMode === 'TODO',
+    repeatType: formData.repeatType || 'NONE',
+    repeatEndDate: (formData.repeatType && formData.repeatType !== 'NONE' && formData.repeatEndDate) ? formData.repeatEndDate : null
   }
 }
 
@@ -182,13 +197,13 @@ const parseExcelSchedules = (arrayBuffer) => {
 
   rows.forEach((row, index) => {
     const title = String(
-      getCellValueByAliases(row, ['title', '일정명', '제목', '행사명', '내용']) || '',
+      getCellValueByAliases(row, ['세부업무', 'title', '일정명', '제목', '행사명', '내용']) || '',
     ).trim()
     const startDate = toDateStringFromValue(
-      getCellValueByAliases(row, ['startDate', '시작일', '시작날짜']),
+      getCellValueByAliases(row, ['시작일', 'startDate', '시작날짜']),
     ) || toDateStringFromValue(getCellValueByAliases(row, ['date', '날짜', '일자', '일정일']))
     const endDate = toDateStringFromValue(
-      getCellValueByAliases(row, ['endDate', '종료일', '종료날짜']),
+      getCellValueByAliases(row, ['종료일', 'endDate', '종료날짜']),
     ) || startDate
     const startTime = toTimeStringFromValue(
       getCellValueByAliases(row, ['startTime', '시작시간', '시작시각']),
@@ -196,9 +211,22 @@ const parseExcelSchedules = (arrayBuffer) => {
     const endTime = toTimeStringFromValue(
       getCellValueByAliases(row, ['endTime', '종료시간', '종료시각']),
     ) || '10:00'
-    const description = String(
-      getCellValueByAliases(row, ['description', '설명', '메모', '비고', '내용']) || '',
+    
+    let description = String(
+      getCellValueByAliases(row, ['비고', 'description', '설명', '메모', '내용']) || '',
     ).trim()
+
+    const gubun = String(getCellValueByAliases(row, ['구분']) || '').trim()
+    const workGubun = String(getCellValueByAliases(row, ['업무구분']) || '').trim()
+    
+    const extraInfos = []
+    if (gubun) extraInfos.push(`[${gubun}]`)
+    if (workGubun) extraInfos.push(`[${workGubun}]`)
+    
+    if (extraInfos.length > 0) {
+      const extraStr = extraInfos.join(' ')
+      description = description ? `${extraStr}\n${description}` : extraStr
+    }
 
     if (!title || !startDate) {
       skippedRows.push(index + 2)
@@ -238,14 +266,17 @@ const isMultiDaySchedule = (schedule) => Boolean(
 )
 
 const buildScheduleBarSegments = (schedule, gridDates) => {
-  if (!isMultiDaySchedule(schedule)) return []
-
   const segments = []
   let currentSegment = null
 
+  // 할 일(Todo)은 무조건 당일 하루만 표시하도록 강제 (요청사항 반영)
+  const isTodo = schedule.isTodo
+  const startDate = schedule.startDate
+  const endDate = isTodo ? startDate : (schedule.endDate || startDate)
+
   gridDates.forEach((cellDate, index) => {
     const cellDateStr = formatDate(cellDate)
-    if (cellDateStr < schedule.startDate || cellDateStr > schedule.endDate) return
+    if (cellDateStr < startDate || cellDateStr > endDate) return
 
     const row = Math.floor(index / 7) + 1
     const col = (index % 7) + 1
@@ -287,12 +318,18 @@ const buildCalendarScheduleBars = (schedules, gridDates) => {
   rowBuckets.forEach((rowSegments) => {
     const laneEnds = []
     rowSegments
-      .sort((a, b) => a.startCol - b.startCol || a.endCol - b.endCol)
+      .sort((a, b) => {
+        const durA = a.endCol - a.startCol;
+        const durB = b.endCol - b.startCol;
+        if (durB !== durA) return durB - durA; // Multi-day first
+        if (a.startCol !== b.startCol) return a.startCol - b.startCol; // Earlier first
+        return (a.schedule.startTime || '00:00').localeCompare(b.schedule.startTime || '00:00');
+      })
       .forEach((segment) => {
         let laneIndex = laneEnds.findIndex((endCol) => endCol < segment.startCol)
         if (laneIndex === -1) laneIndex = laneEnds.length
         laneEnds[laneIndex] = segment.endCol
-        bars.push({ ...scheduleId: segment.schedule.id, ...segment, lane: laneIndex })
+        bars.push({ scheduleId: segment.schedule.id, ...segment, lane: laneIndex })
       })
   })
 
@@ -325,7 +362,7 @@ export default function Calendar({ showSidebar = true }) {
     const today = new Date()
     return new Date(today.getFullYear(), today.getMonth(), 1)
   })
-  const [selectedFilters, setSelectedFilters] = useState(['my', 'department', 'ai'])
+  const [selectedFilters, setSelectedFilters] = useState(['personal', 'work', 'todo', 'ai'])
   const [schedules, setSchedules] = useState([])
   const [aiRecommendations, setAiRecommendations] = useState([])
   const [isLoading, setIsLoading] = useState(false)
@@ -338,6 +375,8 @@ export default function Calendar({ showSidebar = true }) {
     endTime: '10:00',
     description: '',
     type: 'PERSONAL',
+    entryMode: 'EVENT',
+    repeatType: 'NONE'
   })
   const [selectedDate, setSelectedDate] = useState(null)
   const [isExcelConfirmOpen, setIsExcelConfirmOpen] = useState(false)
@@ -345,6 +384,15 @@ export default function Calendar({ showSidebar = true }) {
   const [excelFileName, setExcelFileName] = useState('')
   const [excelWarnings, setExcelWarnings] = useState([])
   const [isImportingExcel, setIsImportingExcel] = useState(false)
+  
+  const [sidebarTab, setSidebarTab] = useState('DAILY') // Kept for logic, but tabs are removed
+  const [quickTodoTitle, setQuickTodoTitle] = useState('')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+
+  // Accordion states
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(true)
+  const [isSchedulesExpanded, setIsSchedulesExpanded] = useState(true)
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(true)
 
   const monthRange = useMemo(() => {
     const start = new Date(activeStartDate.getFullYear(), activeStartDate.getMonth(), 1)
@@ -355,11 +403,20 @@ export default function Calendar({ showSidebar = true }) {
   const monthGrid = useMemo(() => {
     const year = activeStartDate.getFullYear()
     const month = activeStartDate.getMonth()
+    
     const firstOfMonth = new Date(year, month, 1)
-    const gridStart = new Date(year, month, 1 - firstOfMonth.getDay())
+    const lastOfMonth = new Date(year, month + 1, 0)
+    
+    const firstDayOfWeek = firstOfMonth.getDay() // 0 (Sun) to 6 (Sat)
+    const daysInMonth = lastOfMonth.getDate() // 28 to 31
+    
+    // 달력에 표시할 총 셀 개수 계산 (7의 배수)
+    const totalCells = Math.ceil((firstDayOfWeek + daysInMonth) / 7) * 7
+
+    const gridStart = new Date(year, month, 1 - firstDayOfWeek)
     const cells = []
 
-    for (let i = 0; i < 42; i += 1) {
+    for (let i = 0; i < totalCells; i += 1) {
       cells.push(new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i))
     }
 
@@ -407,12 +464,9 @@ export default function Calendar({ showSidebar = true }) {
 
   const getScheduleGroup = (schedule) => {
     if (schedule.isAiRecommendation) return 'ai'
-    if (schedule.type === 'DEPARTMENT') return 'department'
-    if (schedule.type === 'PERSONAL') return 'my'
-
-    const content = `${schedule.title || ''} ${schedule.description || ''}`.toLowerCase()
-    if (/부서|팀|회의|보고|공유|운영|정기/.test(content)) return 'department'
-    return 'my'
+    if (schedule.isTodo) return 'todo'
+    if (schedule.type === 'DEPARTMENT') return 'work'
+    return 'personal'
   }
 
   const toggleFilter = (filter) => {
@@ -454,6 +508,8 @@ export default function Calendar({ showSidebar = true }) {
       endTime: '10:00',
       description: '',
       type: 'PERSONAL',
+      entryMode: 'EVENT',
+      repeatType: 'NONE'
     })
   }
 
@@ -579,6 +635,15 @@ export default function Calendar({ showSidebar = true }) {
     }
   }
 
+  const handleToggleTodo = async (schedule) => {
+    try {
+      await toggleCompleteSchedule(schedule.id)
+      fetchCalendarData()
+    } catch (error) {
+      alert(`할 일 상태 변경 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
+    }
+  }
+
   const todaySchedules = sortByTime(getSchedulesForDate(date))
   const todayDetailSchedules = todaySchedules.filter((schedule) => !schedule.isAiRecommendation)
   const todayAiSchedules = sortByTime(
@@ -588,69 +653,253 @@ export default function Calendar({ showSidebar = true }) {
     }),
   )
 
+  const handleQuickAddTodo = async (e) => {
+    e.preventDefault()
+    if (!quickTodoTitle.trim()) return
+    try {
+      const baseDate = formatDate(date)
+      await createSchedule({
+        title: quickTodoTitle,
+        startDate: baseDate,
+        endDate: baseDate,
+        startTime: '00:00:00',
+        endTime: '23:59:00',
+        type: 'PERSONAL',
+        isTodo: true,
+        repeatType: 'NONE',
+        description: null
+      })
+      setQuickTodoTitle('')
+      fetchCalendarData()
+    } catch (error) {
+      alert(`빠른 추가 실패: ${error.message}`)
+    }
+  }
+
+  const upcomingSchedules = useMemo(() => {
+    const todayDate = new Date()
+    const today = formatDate(todayDate)
+    const nextWeek = new Date()
+    nextWeek.setDate(todayDate.getDate() + 7)
+    const nextWeekStr = formatDate(nextWeek)
+
+    return sortByTime(filteredSchedules.filter(s => {
+      if (s.isAiRecommendation) return false
+      return s.startDate >= today && s.startDate <= nextWeekStr
+    }))
+  }, [filteredSchedules])
+
+  const pendingTodos = filteredSchedules.filter(s => s.isTodo && !s.isCompleted).length
+  const completedTodos = filteredSchedules.filter(s => s.isTodo && s.isCompleted).length
+  const totalEvents = filteredSchedules.filter(s => !s.isTodo && !s.isAiRecommendation).length
+
+  const displayList = sidebarTab === 'DAILY' ? todayDetailSchedules : upcomingSchedules
+
   return (
     <div className="calendar-page">
-      <div className="calendar-container">
-        <div className="calendar-wrapper">
-          <div className="calendar-toolbar">
-            <div className="calendar-filter-group" role="group" aria-label="일정 필터">
-              <button
-                type="button"
-                className={`calendar-filter-pill ${selectedFilters.includes('my') ? 'active' : ''}`}
-                onClick={() => toggleFilter('my')}
-                aria-pressed={selectedFilters.includes('my')}
-              >
-                <span className="calendar-filter-check" aria-hidden="true" />
-                내 일정
-              </button>
-              <button
-                type="button"
-                className={`calendar-filter-pill ${selectedFilters.includes('department') ? 'active' : ''}`}
-                onClick={() => toggleFilter('department')}
-                aria-pressed={selectedFilters.includes('department')}
-              >
-                <span className="calendar-filter-check" aria-hidden="true" />
-                부서 일정
-              </button>
-              <button
-                type="button"
-                className={`calendar-filter-pill ${selectedFilters.includes('ai') ? 'active' : ''}`}
-                onClick={() => toggleFilter('ai')}
-                aria-pressed={selectedFilters.includes('ai')}
-              >
-                <span className="calendar-filter-check" aria-hidden="true" />
-                AI 추천
-              </button>
+      <header className="calendar-main-header">
+        <div className="header-left">
+          <button 
+            type="button" 
+            className="calendar-sidebar-toggle" 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            title={isSidebarOpen ? "사이드바 접기" : "사이드바 상세보기"}
+          >
+            <FiMenu aria-hidden="true" />
+          </button>
+          <button type="button" className="btn btn-primary calendar-add-btn" onClick={handleAddSchedule}>
+            <FiPlus aria-hidden="true" />
+            일정 추가
+          </button>
+        </div>
+
+        <div className="header-center">
+          <div className="calendar-header-controls">
+            <button
+              type="button"
+              className="btn calendar-icon-btn"
+              onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() - 1, 1))}
+              aria-label="이전 달"
+            >
+              <FiChevronLeft aria-hidden="true" />
+            </button>
+            <div className="calendar-current-month">
+              {activeStartDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
             </div>
-            <button type="button" className="btn btn-primary calendar-add-btn" onClick={handleAddSchedule}>
-              <FiPlus aria-hidden="true" />
-              일정 추가
+            <button
+              type="button"
+              className="btn calendar-icon-btn"
+              onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 1))}
+              aria-label="다음 달"
+            >
+              <FiChevronRight aria-hidden="true" />
             </button>
           </div>
+        </div>
 
-          <div className="calendar-grid">
-            <div className="calendar-header-controls">
-              <button
-                type="button"
-                className="btn calendar-icon-btn"
-                onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() - 1, 1))}
-                aria-label="이전 달"
-              >
-                <FiChevronLeft aria-hidden="true" />
-              </button>
-              <div className="calendar-current-month">
-                {activeStartDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
-              </div>
-              <button
-                type="button"
-                className="btn calendar-icon-btn"
-                onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 1))}
-                aria-label="다음 달"
-              >
-                <FiChevronRight aria-hidden="true" />
-              </button>
+        <div className="header-right">
+          <div className="header-summary" title="이번 달 요약">
+            <div className="header-stat-item">
+              <FiAlertCircle className="header-stat-icon header-stat-icon--pending" />
+              <span className="header-stat-value">{pendingTodos}</span>
+              <span className="header-stat-label">남은 할 일</span>
+            </div>
+            <div className="header-stat-item">
+              <FiCheckCircle className="header-stat-icon header-stat-icon--completed" />
+              <span className="header-stat-value">{completedTodos}</span>
+              <span className="header-stat-label">완료한 일</span>
+            </div>
+            <div className="header-stat-item">
+              <FiCalendar className="header-stat-icon header-stat-icon--total" />
+              <span className="header-stat-value">{totalEvents}</span>
+              <span className="header-stat-label">전체 일정</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="calendar-container">
+        {showSidebar && isSidebarOpen && (
+          <aside className="calendar-sidebar">
+            <div className="sidebar-schedule-section">
+              <h3 onClick={() => setIsSchedulesExpanded(!isSchedulesExpanded)}>
+                일정
+                {isSchedulesExpanded ? <FiChevronUp /> : <FiChevronDown />}
+              </h3>
+              {isSchedulesExpanded && (
+                <>
+                  <div className="sidebar-header">
+                    <h2>{date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' })}</h2>
+                    <div className="calendar-sidebar-count">총 {displayList.length}개</div>
+                  </div>
+
+                  <form onSubmit={handleQuickAddTodo} className="quick-add-form">
+                    <input 
+                      type="text" 
+                      placeholder="빠른 할 일 추가... (Enter)"
+                      value={quickTodoTitle}
+                      onChange={(e) => setQuickTodoTitle(e.target.value)}
+                      className="quick-add-input"
+                    />
+                  </form>
+
+                  {todayAiSchedules.length > 0 && (
+                    <div className="calendar-ai-panel" aria-label="AI 일정 추천">
+                      {todayAiSchedules.map((schedule) => (
+                        <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
+                          <div className="calendar-ai-label">
+                            {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : '다가오는 일정'}
+                          </div>
+                          <div className="calendar-ai-message">{schedule.title}</div>
+                          <div className="calendar-ai-meta">{schedule.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {isLoading ? (
+                    <div className="schedule-empty">불러오는 중...</div>
+                  ) : displayList.length > 0 ? (
+                    <div className="schedule-list">
+                      {displayList.map((schedule) => (
+                        <div
+                          key={schedule.id}
+                          className={`schedule-item schedule-item--${getScheduleGroup(schedule)} ${schedule.isAiRecommendation ? `schedule-item--ai-${schedule.aiType}` : ''}`}
+                          style={schedule.isTodo && schedule.isCompleted ? { opacity: 0.6 } : {}}
+                        >
+                          <div className="schedule-time">
+                            {!schedule.isTodo ? (
+                              `${normalizeTime(schedule.startTime)} ~ ${normalizeTime(schedule.endTime)}`
+                            ) : (
+                              `${normalizeTime(schedule.startTime)}`
+                            )}
+                          </div>
+                          
+                          <div className="schedule-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {schedule.isTodo && (
+                              <span 
+                                onClick={() => handleToggleTodo(schedule)} 
+                                style={{ cursor: 'pointer', fontSize: '18px', color: schedule.isCompleted ? '#10b981' : '#cbd5e1' }}
+                              >
+                                {schedule.isCompleted ? '☑' : '☐'}
+                              </span>
+                            )}
+                            <span style={{ textDecoration: (schedule.isTodo && schedule.isCompleted) ? 'line-through' : 'none' }}>
+                              {schedule.title}
+                            </span>
+                          </div>
+
+                          {!schedule.isAiRecommendation && (
+                            <button
+                              type="button"
+                              className="schedule-delete-btn"
+                              onClick={() => handleDeleteSchedule(schedule)}
+                              aria-label={`${schedule.title} 삭제`}
+                            >
+                              <FiTrash2 aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="schedule-empty">일정이 없습니다.</div>
+                  )}
+                </>
+              )}
             </div>
 
+            <div className="sidebar-filter-section">
+              <h3 onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}>
+                필터
+                {isFiltersExpanded ? <FiChevronUp /> : <FiChevronDown />}
+              </h3>
+              {isFiltersExpanded && (
+                <div className="calendar-filter-group" role="group" aria-label="일정 필터">
+                  <button
+                    type="button"
+                    className={`calendar-filter-pill calendar-filter-pill--personal ${selectedFilters.includes('personal') ? 'active' : ''}`}
+                    onClick={() => toggleFilter('personal')}
+                    aria-pressed={selectedFilters.includes('personal')}
+                  >
+                    <span className="calendar-filter-check" aria-hidden="true" />
+                    개인
+                  </button>
+                  <button
+                    type="button"
+                    className={`calendar-filter-pill calendar-filter-pill--work ${selectedFilters.includes('work') ? 'active' : ''}`}
+                    onClick={() => toggleFilter('work')}
+                    aria-pressed={selectedFilters.includes('work')}
+                  >
+                    <span className="calendar-filter-check" aria-hidden="true" />
+                    업무
+                  </button>
+                  <button
+                    type="button"
+                    className={`calendar-filter-pill calendar-filter-pill--todo ${selectedFilters.includes('todo') ? 'active' : ''}`}
+                    onClick={() => toggleFilter('todo')}
+                    aria-pressed={selectedFilters.includes('todo')}
+                  >
+                    <span className="calendar-filter-check" aria-hidden="true" />
+                    할 일
+                  </button>
+                  <button
+                    type="button"
+                    className={`calendar-filter-pill calendar-filter-pill--ai ${selectedFilters.includes('ai') ? 'active' : ''}`}
+                    onClick={() => toggleFilter('ai')}
+                    aria-pressed={selectedFilters.includes('ai')}
+                  >
+                    <span className="calendar-filter-check" aria-hidden="true" />
+                    AI 추천
+                  </button>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
+
+        <main className="calendar-wrapper">
+          <div className="calendar-grid">
             <div className="calendar-weekdays">
               {['일', '월', '화', '수', '목', '금', '토'].map((weekday) => (
                 <div key={weekday} className="calendar-weekday">{weekday}</div>
@@ -658,16 +907,21 @@ export default function Calendar({ showSidebar = true }) {
             </div>
 
             <div className="calendar-cells">
-              {monthGrid.map((cellDate) => {
+              {monthGrid.map((cellDate, index) => {
                 const classes = ['calendar-cell']
-                const daySchedules = sortByTime(getSchedulesForDate(cellDate))
-                const cellSchedules = daySchedules.filter((schedule) => !isMultiDaySchedule(schedule))
+                const daySchedules = getSchedulesForDate(cellDate)
                 const cellDateStr = formatDate(cellDate)
+
+                const row = Math.floor(index / 7) + 1
+                const col = (index % 7) + 1
+                const barsInCell = calendarScheduleBars.filter(bar => bar.row === row && bar.startCol <= col && bar.endCol >= col)
 
                 if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
                 if (cellDateStr === formatDate(date)) classes.push('calendar-cell--selected')
                 if (daySchedules.length > 0) classes.push('calendar-date-with-schedule')
                 if (daySchedules.some((item) => item.isAiRecommendation)) classes.push('calendar-cell--has-ai')
+
+                const hiddenCount = barsInCell.filter(bar => bar.lane >= 3).length
 
                 return (
                   <button
@@ -677,28 +931,16 @@ export default function Calendar({ showSidebar = true }) {
                     onClick={() => handleDateChange(cellDate)}
                   >
                     <span className="calendar-cell-number">{cellDate.getDate()}</span>
-                    <span className="calendar-cell-content">
-                      {cellSchedules.slice(0, 3).map((schedule) => {
-                        let itemClasses = `calendar-schedule-item calendar-schedule-item--${getScheduleGroup(schedule)}`
-                        if (schedule.isAiRecommendation) {
-                          itemClasses += ` calendar-schedule-item--ai-${schedule.aiType}`
-                        }
-
-                        return (
-                          <span key={schedule.id} className={itemClasses} title={schedule.title}>
-                            {schedule.title}
-                          </span>
-                        )
-                      })}
-                      {daySchedules.length > 3 && (
-                        <span className="calendar-schedule-overflow">+{daySchedules.length - 3}</span>
+                    <span className="calendar-cell-content" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+                      {hiddenCount > 0 && (
+                        <span className="calendar-schedule-overflow">+{hiddenCount}개 더보기</span>
                       )}
                     </span>
                   </button>
                 )
               })}
-              <div className="calendar-schedule-bars" aria-hidden="true">
-                {calendarScheduleBars.map((bar) => {
+              <div className="calendar-schedule-bars" aria-hidden="true" style={{ pointerEvents: 'none' }}>
+                {calendarScheduleBars.filter(bar => bar.lane < 3).map((bar) => {
                   const duration = bar.endCol - bar.startCol + 1
                   const segmentType = bar.isFirstSegment && bar.isLastSegment
                     ? 'single'
@@ -708,123 +950,130 @@ export default function Calendar({ showSidebar = true }) {
                         ? 'end'
                         : 'middle'
 
+                  const schedule = bar.schedule
+                  let itemClasses = `calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} calendar-schedule-bar--${segmentType}`
+                  
+                  if (schedule.isAiRecommendation) {
+                    itemClasses += ` calendar-schedule-bar--ai-${schedule.aiType}`
+                  }
+
+                  if (schedule.isTodo) {
+                    itemClasses += ' calendar-schedule-item--todo'
+                    return (
+                      <div
+                        key={bar.key}
+                        className={`${itemClasses} ${schedule.isCompleted ? 'todo-completed' : ''}`}
+                        style={{
+                          left: `calc(${((bar.startCol - 1) / 7) * 100}% + 4px)`,
+                          width: `calc(${(duration / 7) * 100}% - 8px)`,
+                          top: `${((bar.row - 1) * 160) + 36 + (bar.lane * 28)}px`,
+                          pointerEvents: 'auto',
+                          cursor: 'pointer',
+                          textDecoration: schedule.isCompleted ? 'line-through' : 'none'
+                        }}
+                        title={schedule.title}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleTodo(schedule);
+                        }}
+                      >
+                        <span style={{ 
+                          marginRight: '5px', 
+                          fontSize: '14px',
+                          color: schedule.isCompleted ? 'inherit' : (schedule.type === 'DEPARTMENT' ? '#00A3C4' : '#00C471')
+                        }}>
+                          {schedule.isCompleted ? '☑' : '☐'}
+                        </span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{schedule.title}</span>
+                      </div>
+                    )
+                  }
+
                   return (
                     <div
                       key={bar.key}
-                      className={`calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(bar.schedule)} calendar-schedule-bar--${segmentType}`}
+                      className={itemClasses}
                       style={{
-                        left: `${((bar.startCol - 1) / 7) * 100}%`,
-                        width: `${(duration / 7) * 100}%`,
-                        top: `${((bar.row - 1) * 150) + 34 + (bar.lane * 28)}px`,
+                        left: `calc(${((bar.startCol - 1) / 7) * 100}% + 4px)`,
+                        width: `calc(${(duration / 7) * 100}% - 8px)`,
+                        top: `${((bar.row - 1) * 160) + 36 + (bar.lane * 28)}px`,
+                        pointerEvents: 'auto',
+                        cursor: 'pointer'
                       }}
-                      title={bar.schedule.title}
+                      title={schedule.title}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDateChange(new Date(schedule.startDate));
+                      }}
                     >
-                      {bar.schedule.title}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{schedule.title}</span>
                     </div>
                   )
                 })}
               </div>
             </div>
           </div>
-        </div>
-
-        {showSidebar && (
-          <aside className="calendar-sidebar">
-            <h2>{date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
-            <div className="calendar-sidebar-count">총 {todaySchedules.length}개</div>
-
-            {todayAiSchedules.length > 0 && (
-              <div className="calendar-ai-panel" aria-label="AI 일정 추천">
-                {todayAiSchedules.map((schedule) => (
-                  <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
-                    <div className="calendar-ai-label">
-                      {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : '다가오는 일정'}
-                    </div>
-                    <div className="calendar-ai-message">{schedule.title}</div>
-                    <div className="calendar-ai-meta">{schedule.description}</div>
-                    
-                    {schedule.associatedItems && schedule.associatedItems.length > 0 && (
-                      <div className="calendar-ai-assets">
-                        <div className="calendar-ai-assets-label">연관 문서/메모:</div>
-                        {schedule.associatedItems.map((item, idx) => (
-                          <div key={`${item.type}-${item.id}-${idx}`} className="calendar-ai-asset-item">
-                            <span className={`asset-tag asset-tag--${item.type.toLowerCase()}`}>{item.type === 'MEMO' ? '메모' : '파일'}</span>
-                            <span className="asset-name" title={item.title}>{item.title}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {isLoading ? (
-              <div className="schedule-empty">불러오는 중...</div>
-            ) : todayDetailSchedules.length > 0 ? (
-              <div className="schedule-list">
-                {todayDetailSchedules.map((schedule) => (
-                  <div
-                    key={schedule.id}
-                    className={`schedule-item ${schedule.isAiRecommendation ? `schedule-item--ai schedule-item--ai-${schedule.aiType}` : ''}`}
-                  >
-                    <div className="schedule-time">{normalizeTime(schedule.startTime)} ~ {normalizeTime(schedule.endTime)}</div>
-                    <div className="schedule-title">{schedule.title}</div>
-                    {schedule.description && <div className="schedule-desc">{schedule.description}</div>}
-                    {!schedule.isAiRecommendation && (
-                      <button
-                        type="button"
-                        className="schedule-delete-btn"
-                        onClick={() => handleDeleteSchedule(schedule)}
-                        aria-label={`${schedule.title} 삭제`}
-                      >
-                        <FiTrash2 aria-hidden="true" />
-                        삭제
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="schedule-empty">선택한 날짜에 일정이 없습니다.</div>
-            )}
-          </aside>
-        )}
+        </main>
       </div>
 
-      <SimpleModal open={isModalOpen} onClose={() => setIsModalOpen(false)} title="새 일정 추가">
+      <SimpleModal open={isModalOpen} onClose={() => setIsModalOpen(false)} title="새 항목 추가">
         <div className="calendar-form">
-          <input
-            ref={excelInputRef}
-            type="file"
-            accept=".xls,.xlsx"
-            className="calendar-excel-input"
-            onChange={handleExcelFileChange}
-          />
-
-          <div className="calendar-excel-upload">
-            <div>
-              <div className="calendar-excel-upload-title">엑셀로 일정 등록</div>
-              <div className="calendar-excel-upload-desc">
-                날짜, 제목, 시작시간, 종료시간, 설명 컬럼을 인식해 일정을 자동으로 읽어옵니다.
-              </div>
+          <div className="form-group">
+            <div className="calendar-type-selector">
+              <label className={`calendar-type-option ${formData.entryMode === 'EVENT' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="entryMode"
+                  value="EVENT"
+                  checked={formData.entryMode === 'EVENT'}
+                  onChange={(e) => setFormData({ ...formData, entryMode: e.target.value })}
+                />
+                일정
+              </label>
+              <label className={`calendar-type-option ${formData.entryMode === 'TODO' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="entryMode"
+                  value="TODO"
+                  checked={formData.entryMode === 'TODO'}
+                  onChange={(e) => setFormData({ ...formData, entryMode: e.target.value })}
+                />
+                할 일
+              </label>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary calendar-excel-upload-btn"
-              onClick={openExcelPicker}
-              disabled={isImportingExcel}
-            >
-              {isImportingExcel ? '읽는 중...' : '엑셀 파일 업로드'}
-            </button>
           </div>
+          
+          {formData.entryMode === 'EVENT' && (
+            <>
+              <input
+                ref={excelInputRef}
+                type="file"
+                accept=".xls,.xlsx"
+                className="calendar-excel-input"
+                onChange={handleExcelFileChange}
+              />
 
-          <div className="calendar-excel-template">
-            예시 컬럼: 날짜, 제목, 시작시간, 종료시간, 설명
-          </div>
+              <div className="calendar-excel-upload">
+                <div>
+                  <div className="calendar-excel-upload-title">엑셀로 일정 등록</div>
+                  <div className="calendar-excel-upload-desc">
+                    날짜, 제목, 시작시간, 종료시간, 설명 컬럼을 인식해 일정을 자동으로 읽어옵니다.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary calendar-excel-upload-btn"
+                  onClick={openExcelPicker}
+                  disabled={isImportingExcel}
+                >
+                  {isImportingExcel ? '읽는 중...' : '엑셀 파일 업로드'}
+                </button>
+              </div>
+            </>
+          )}
 
           <div className="form-group">
-            <label>일정 구분</label>
+            <label>구분</label>
             <div className="calendar-type-selector">
               <label className={`calendar-type-option ${formData.type === 'PERSONAL' ? 'active' : ''}`}>
                 <input
@@ -834,7 +1083,7 @@ export default function Calendar({ showSidebar = true }) {
                   checked={formData.type === 'PERSONAL'}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                 />
-                개인 일정
+                개인
               </label>
               <label className={`calendar-type-option ${formData.type === 'DEPARTMENT' ? 'active' : ''}`}>
                 <input
@@ -844,16 +1093,16 @@ export default function Calendar({ showSidebar = true }) {
                   checked={formData.type === 'DEPARTMENT'}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                 />
-                부서 일정
+                업무
               </label>
             </div>
           </div>
 
           <div className="form-group">
-            <label>일정 제목</label>
+            <label>{formData.entryMode === 'TODO' ? '할 일 제목' : '일정 제목'}</label>
             <input
               type="text"
-              placeholder="일정 제목을 입력하세요"
+              placeholder={formData.entryMode === 'TODO' ? "무엇을 해야 하나요?" : "일정 제목을 입력하세요"}
               maxLength={200}
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -863,23 +1112,32 @@ export default function Calendar({ showSidebar = true }) {
 
           <div className="form-row">
             <div className="form-group">
-              <label>시작일</label>
+              <label>{formData.entryMode === 'TODO' ? '날짜' : '시작일'}</label>
               <input
                 type="date"
                 value={formData.startDate}
-                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                onChange={(e) => {
+                  const newDate = e.target.value;
+                  setFormData({ 
+                    ...formData, 
+                    startDate: newDate, 
+                    endDate: (formData.entryMode === 'TODO' ? newDate : formData.endDate) 
+                  });
+                }}
                 className="calendar-input"
               />
             </div>
-            <div className="form-group">
-              <label>종료일</label>
-              <input
-                type="date"
-                value={formData.endDate}
-                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                className="calendar-input"
-              />
-            </div>
+            {formData.entryMode === 'EVENT' && (
+              <div className="form-group">
+                <label>종료일</label>
+                <input
+                  type="date"
+                  value={formData.endDate}
+                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  className="calendar-input"
+                />
+              </div>
+            )}
           </div>
 
           <div className="form-row">
@@ -893,7 +1151,7 @@ export default function Calendar({ showSidebar = true }) {
               />
             </div>
             <div className="form-group">
-              <label>종료 시간</label>
+              <label>{formData.entryMode === 'TODO' ? '마감 시간' : '종료 시간'}</label>
               <input
                 type="time"
                 value={formData.endTime}
@@ -902,6 +1160,36 @@ export default function Calendar({ showSidebar = true }) {
               />
             </div>
           </div>
+          
+          {formData.entryMode === 'EVENT' && (
+             <div className="form-row">
+              <div className="form-group">
+                <label>반복 일정</label>
+                <select 
+                  className="calendar-input"
+                  value={formData.repeatType}
+                  onChange={(e) => setFormData({ ...formData, repeatType: e.target.value })}
+                >
+                  <option value="NONE">반복 안 함</option>
+                  <option value="DAILY">매일</option>
+                  <option value="WEEKLY">매주</option>
+                  <option value="MONTHLY">매월</option>
+                  <option value="YEARLY">매년</option>
+                </select>
+              </div>
+              {formData.repeatType !== 'NONE' && (
+                <div className="form-group">
+                  <label>반복 종료일</label>
+                  <input
+                    type="date"
+                    value={formData.repeatEndDate}
+                    onChange={(e) => setFormData({ ...formData, repeatEndDate: e.target.value })}
+                    className="calendar-input"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="form-group">
             <label>설명</label>
