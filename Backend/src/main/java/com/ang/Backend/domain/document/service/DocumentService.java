@@ -187,6 +187,9 @@ public class DocumentService {
         }
 
         AiOutputFormat format = AiOutputFormat.from(outputFormat);
+        if (sourceDocId != null && format != AiOutputFormat.HWP && format != AiOutputFormat.DOCX) {
+            throw new IllegalArgumentException("AI editing does not convert documents to " + format.extension.toUpperCase() + ".");
+        }
         if (format == AiOutputFormat.HWP) {
             return editHwpWithAi(prompt, user, sourceDocId, attachedDocIds);
         }
