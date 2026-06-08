@@ -3,7 +3,6 @@ import api from '../../api/axios'
 import {
   getMyDocuments,
   getDepartmentDocuments,
-  getDocument,
   deleteDocument,
   downloadDocumentFile
 } from '../../api/documentApi'
@@ -132,7 +131,6 @@ export default function DocumentWriter() {
       if (!selectedDoc) return
 
       const previewKind = getDocumentPreviewKind(selectedDoc)
-      const shouldShowPdfPreview = aiOutputFormat === 'pdf' && Boolean(selectedDoc.previewFileId)
 
       if (previewKind === 'text') return
 
@@ -147,7 +145,7 @@ export default function DocumentWriter() {
         return
       }
 
-      const shouldRenderOriginal = !shouldShowPdfPreview && ['word', 'excel', 'hwp', 'hwpx'].includes(previewKind)
+      const shouldRenderOriginal = ['word', 'excel', 'hwp', 'hwpx'].includes(previewKind)
       const previewFileId = shouldRenderOriginal
         ? selectedDoc.fileId
         : selectedDoc.previewFileId || selectedDoc.fileId
@@ -179,7 +177,7 @@ export default function DocumentWriter() {
         })
         const blob = response.data
 
-        if (!shouldShowPdfPreview && ['word', 'excel', 'hwp', 'hwpx'].includes(previewKind)) {
+        if (['word', 'excel', 'hwp', 'hwpx'].includes(previewKind)) {
           setPreviewData(await blob.arrayBuffer())
           return
         }
@@ -205,7 +203,7 @@ export default function DocumentWriter() {
         URL.revokeObjectURL(objectUrl)
       }
     }
-  }, [selectedDoc, aiOutputFormat])
+  }, [selectedDoc])
 
   useEffect(() => {
     if (!showFullView) return undefined
@@ -320,18 +318,9 @@ export default function DocumentWriter() {
       const response = await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 
       if (response.data?.success) {
-        const createdDocId = response.data.data
-        let newDoc = { docId: createdDocId, title: uploadTitle, source: 'uploaded' }
-        try {
-          const detailResponse = await getDocument(createdDocId)
-          newDoc = { ...detailResponse.data?.data, source: 'uploaded' }
-        } catch (detailErr) {
-          console.warn('Uploaded document detail reload failed:', detailErr)
-          await fetchDocuments()
-        }
-
+        const newDoc = { ...response.data.data, source: 'uploaded' }
         if (category === 'my' && !uploadTargetScopeId) {
-          setDocuments((currentDocuments) => [newDoc, ...currentDocuments.filter((doc) => doc.docId !== newDoc.docId)])
+          setDocuments([newDoc, ...documents])
         } else if (category === 'dept' && uploadTargetScopeId) {
           // If we are in department view and uploaded to a department, we should ideally refresh or check if it matches
           fetchDocuments()
@@ -380,55 +369,7 @@ export default function DocumentWriter() {
     setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
   }
 
-  const downloadBlobResponse = async (response, fallbackName) => {
-    const disposition = response.headers['content-disposition']
-    let filename = fallbackName
-    if (disposition) {
-      const match = disposition.match(/filename\*=UTF-8''(.+)|filename="?([^;\\"]+)"?/)
-      if (match) {
-        filename = decodeURIComponent(match[1] || match[2])
-      }
-    }
-
-    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', filename)
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.URL.revokeObjectURL(url)
-  }
-
-  const handleSelectedPdfDownload = async () => {
-    if (!selectedDoc) {
-      alert('PDF로 변환할 문서를 선택하세요.')
-      return
-    }
-
-    const selectedKind = getDocumentPreviewKind(selectedDoc)
-    const pdfFileId = selectedKind === 'pdf' ? selectedDoc.fileId : selectedDoc.previewFileId
-    if (!pdfFileId) {
-      alert('선택한 문서의 PDF 변환 파일이 없습니다.')
-      return
-    }
-
-    try {
-      const response = await downloadDocumentFile(pdfFileId)
-      const baseName = selectedDoc.title || selectedDoc.originalFileName || 'document'
-      await downloadBlobResponse(response, `${baseName.replace(/\.[^.]+$/, '')}.pdf`)
-    } catch (err) {
-      console.error('PDF 변환 다운로드 실패:', err)
-      alert(err.response?.data?.message || err.message || 'PDF 변환 파일을 다운로드할 수 없습니다.')
-    }
-  }
-
   const handleAiGenerate = async (mode = 'create') => {
-    if (mode === 'edit' && aiOutputFormat === 'pdf') {
-      await handleSelectedPdfDownload()
-      return
-    }
-
     if (!prompt.trim()) {
       alert('프롬프트를 입력하세요.')
       return
@@ -449,11 +390,6 @@ export default function DocumentWriter() {
 
     if (mode === 'edit' && !editOutputFormat) {
       alert('현재 AI 수정은 HWP와 DOCX 문서만 지원합니다.')
-      return
-    }
-
-    if (mode === 'edit' && aiOutputFormat !== editOutputFormat) {
-      alert(`선택 문서 수정은 원본 형식(${editOutputFormat.toUpperCase()})으로만 가능합니다. PDF 변환은 AI 수정으로 처리하지 않습니다.`)
       return
     }
 
@@ -486,17 +422,6 @@ export default function DocumentWriter() {
       }
     }
   }
-
-  const selectedDocKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
-  const selectedDocEditFormat =
-    selectedDocKind === 'hwp' || selectedDocKind === 'hwpx'
-      ? 'hwp'
-      : selectedDocKind === 'word'
-        ? 'docx'
-        : null
-  const selectedDocPdfFileId = selectedDocKind === 'pdf' ? selectedDoc?.fileId : selectedDoc?.previewFileId
-  const canEditSelectedFormat = Boolean(selectedDoc && selectedDocEditFormat && aiOutputFormat === selectedDocEditFormat)
-  const canConvertSelectedPdf = Boolean(selectedDoc && aiOutputFormat === 'pdf' && selectedDocPdfFileId)
 
   return (
     <div className="document-writer-container">
@@ -779,17 +704,10 @@ export default function DocumentWriter() {
                   type="button"
                   onClick={() => handleAiGenerate('edit')}
                   className="btn-generate btn-generate--edit"
-                  disabled={aiLoading || (!canEditSelectedFormat && !canConvertSelectedPdf)}
-                  title={
-                    canConvertSelectedPdf
-                      ? 'PDF 변환 파일 다운로드'
-                      : selectedDoc && selectedDocEditFormat && aiOutputFormat !== selectedDocEditFormat
-                      ? `수정은 ${selectedDocEditFormat.toUpperCase()} 형식에서만 가능합니다.`
-                      : '선택 문서 수정'
-                  }
+                  disabled={aiLoading || !selectedDoc}
                 >
                   <FiEdit3 />
-                  <span>{aiLoading ? '처리 중...' : canConvertSelectedPdf ? 'PDF 변환' : '선택 문서 수정'}</span>
+                  <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
               </div>
             </div>
