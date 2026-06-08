@@ -700,26 +700,62 @@
     zoom: var(--docx-preview-scale);
   }
 
+  .docx-preview-shell--editable section.docx {
+    cursor: text;
+  }
+
   .docx-edit-target {
     position: relative;
     border-radius: 3px;
     cursor: text;
-    transition: background-color 0.16s ease, box-shadow 0.16s ease;
+    outline: 1px solid transparent;
+    outline-offset: 2px;
+    transition: background-color 0.16s ease, box-shadow 0.16s ease, outline-color 0.16s ease;
   }
 
   .docx-edit-target:hover {
-    background-color: rgba(37, 99, 235, 0.08);
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+    background-color: rgba(37, 99, 235, 0.1) !important;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2) !important;
+    outline-color: rgba(37, 99, 235, 0.45);
   }
 
   .docx-edit-target--queued {
-    background-color: rgba(15, 118, 110, 0.12);
-    box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.22);
+    background-color: rgba(15, 118, 110, 0.12) !important;
+    box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.24) !important;
+    outline-color: rgba(15, 118, 110, 0.48);
+  }
+
+  .docx-edit-hover-box {
+    position: absolute;
+    z-index: 40;
+    pointer-events: none;
+    border: 2px solid rgba(37, 99, 235, 0.42);
+    border-radius: 6px;
+    background: rgba(37, 99, 235, 0.08);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+    transition: left 0.08s ease, top 0.08s ease, width 0.08s ease, height 0.08s ease;
+  }
+
+  .docx-edit-mode-badge {
+    position: sticky;
+    top: 12px;
+    left: 12px;
+    z-index: 45;
+    width: fit-content;
+    margin: 12px;
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: rgba(15, 118, 110, 0.94);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
   }
 
   .docx-edit-popover {
     position: absolute;
-    z-index: 20;
+    z-index: 50;
     width: min(360px, calc(100% - 32px));
     min-height: 42px;
     display: flex;
@@ -895,6 +931,28 @@
   .doc-type-tag--hwp {
     background: #fff4cc;
     color: #b7791f;
+  }
+
+  .doc-edit-mode-toggle {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 999px;
+    background: #e6fffb;
+    color: #0f766e;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: var(--shadow-soft-xs);
+    transition: var(--transition-soft);
+  }
+
+  .doc-edit-mode-toggle:hover,
+  .doc-edit-mode-toggle.active {
+    background: #0f766e;
+    color: #fff;
+    box-shadow: 0 5px 12px rgba(15, 118, 110, 0.18);
   }
 
   .file-input-hidden {

@@ -57,6 +57,29 @@ function ExcelTablePreview({ tableData }) {
 
 const nextDocxBlockId = (index) => `B${String(index + 1).padStart(3, '0')}`
 
+const getDocxEditableBlocks = (container) => {
+  const section =
+    container?.querySelector('section.docx') ||
+    container?.querySelector('.docx-preview-rendered') ||
+    container?.querySelector('.docx') ||
+    container?.querySelector('section') ||
+    container?.firstElementChild
+  if (!section) return []
+
+  const blockSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th'
+  const blocks = Array.from(section.querySelectorAll(blockSelectors))
+    .filter((element) => element.textContent?.trim())
+
+  if (blocks.length) return blocks
+
+  return Array.from(section.querySelectorAll('div, span'))
+    .filter((element) => {
+      const text = element.textContent?.trim()
+      if (!text) return false
+      return !Array.from(element.children).some((child) => child.textContent?.trim() === text)
+    })
+}
+
 function DocxPreview({
   data,
   editInstructions = [],
@@ -67,6 +90,7 @@ function DocxPreview({
   const containerRef = useRef(null)
   const [error, setError] = useState(null)
   const [activePrompt, setActivePrompt] = useState(null)
+  const [hoveredBlock, setHoveredBlock] = useState(null)
 
   const markInstructionBlocks = () => {
     const container = containerRef.current
@@ -84,9 +108,9 @@ function DocxPreview({
 
     const decorateEditableBlocks = () => {
       if (!editable || !containerRef.current) return
-      const paragraphs = Array.from(containerRef.current.querySelectorAll('section.docx p'))
-        .filter((element) => element.textContent?.trim())
+      const paragraphs = getDocxEditableBlocks(containerRef.current)
 
+      containerRef.current.classList.toggle('docx-edit-enabled', paragraphs.length > 0)
       paragraphs.forEach((element, index) => {
         element.dataset.docxBlockId = nextDocxBlockId(index)
         element.classList.add('docx-edit-target')
@@ -97,7 +121,12 @@ function DocxPreview({
 
     const updateScale = () => {
       const shell = shellRef.current
-      const section = containerRef.current?.querySelector('section.docx')
+      const section =
+        containerRef.current?.querySelector('section.docx') ||
+        containerRef.current?.querySelector('.docx-preview-rendered') ||
+        containerRef.current?.querySelector('.docx') ||
+        containerRef.current?.querySelector('section') ||
+        containerRef.current?.firstElementChild
       if (!shell || !section) return
 
       const availableWidth = shell.clientWidth - 48
@@ -112,6 +141,12 @@ function DocxPreview({
     containerRef.current.style.setProperty('--docx-preview-scale', '1')
     setError(null)
 
+    const decorateRenderedDocx = () => {
+      if (cancelled) return
+      updateScale()
+      decorateEditableBlocks()
+    }
+
     renderAsync(data, containerRef.current, null, {
       className: 'docx-preview-rendered',
       inWrapper: false,
@@ -121,10 +156,10 @@ function DocxPreview({
       useBase64URL: true,
     }).then(() => {
       if (!cancelled) {
-        window.requestAnimationFrame(() => {
-          updateScale()
-          decorateEditableBlocks()
-        })
+        window.requestAnimationFrame(decorateRenderedDocx)
+        window.setTimeout(decorateRenderedDocx, 80)
+        window.setTimeout(decorateRenderedDocx, 250)
+        window.setTimeout(decorateRenderedDocx, 600)
       }
     }).catch((err) => {
       if (!cancelled) {
@@ -138,22 +173,140 @@ function DocxPreview({
     })
     if (shellRef.current) resizeObserver.observe(shellRef.current)
 
+    const mutationObserver = new MutationObserver(() => {
+      window.requestAnimationFrame(decorateRenderedDocx)
+    })
+    mutationObserver.observe(containerRef.current, { childList: true, subtree: true })
+
     return () => {
       cancelled = true
       resizeObserver.disconnect()
+      mutationObserver.disconnect()
     }
-  }, [data])
+  }, [data, editable])
 
   useEffect(() => {
     markInstructionBlocks()
   }, [editInstructions])
 
+  useEffect(() => {
+    if (!editable) {
+      setHoveredBlock(null)
+      setActivePrompt(null)
+    }
+  }, [editable])
+
+  const resolveDocxTarget = (eventTarget) => {
+    const container = containerRef.current
+    const section =
+      container?.querySelector('section.docx') ||
+      container?.querySelector('.docx-preview-rendered') ||
+      container?.querySelector('.docx') ||
+      container?.querySelector('section') ||
+      container?.firstElementChild
+    if (!container || !section || !eventTarget) return null
+
+    const directTarget = eventTarget.closest('[data-docx-block-id]')
+    const fallbackTarget = eventTarget.closest('p, h1, h2, h3, h4, h5, h6, li, td, th, span, div')
+    const target = directTarget || (section.contains(fallbackTarget) ? fallbackTarget : null)
+    if (!target) return null
+
+    if (!target.dataset.docxBlockId) {
+      getDocxEditableBlocks(container).forEach((element, index) => {
+        if (!element.dataset.docxBlockId) {
+          element.dataset.docxBlockId = nextDocxBlockId(index)
+          element.classList.add('docx-edit-target')
+        }
+      })
+    }
+
+    const resolvedTarget = target.closest('[data-docx-block-id]') || target
+    if (!resolvedTarget.dataset.docxBlockId) {
+      resolvedTarget.dataset.docxBlockId = nextDocxBlockId(getDocxEditableBlocks(container).length)
+      resolvedTarget.classList.add('docx-edit-target')
+    }
+
+    return resolvedTarget
+  }
+
+  const resolveDocxTargetFromPoint = (clientX, clientY) => {
+    const container = containerRef.current
+    if (!container) return null
+
+    const blocks = getDocxEditableBlocks(container)
+    if (!blocks.length) return null
+
+    let nearestBlock = null
+    let nearestDistance = Number.POSITIVE_INFINITY
+
+    blocks.forEach((block, index) => {
+      if (!block.dataset.docxBlockId) {
+        block.dataset.docxBlockId = nextDocxBlockId(index)
+        block.classList.add('docx-edit-target')
+      }
+
+      const rect = block.getBoundingClientRect()
+      const inside =
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+
+      if (inside) {
+        nearestBlock = block
+        nearestDistance = 0
+        return
+      }
+
+      const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0
+      const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0
+      const distance = Math.hypot(dx, dy)
+
+      if (distance < nearestDistance) {
+        nearestBlock = block
+        nearestDistance = distance
+      }
+    })
+
+    return nearestDistance <= 80 ? nearestBlock : null
+  }
+
+  const handlePreviewMouseMove = (event) => {
+    if (!editable || activePrompt) return
+    const target = resolveDocxTarget(event.target) || resolveDocxTargetFromPoint(event.clientX, event.clientY)
+    if (!target || !shellRef.current) {
+      const shellRect = shellRef.current?.getBoundingClientRect()
+      if (!shellRect) {
+        setHoveredBlock(null)
+        return
+      }
+      setHoveredBlock({
+        blockId: 'B000',
+        left: Math.max(8, event.clientX - shellRect.left + shellRef.current.scrollLeft - 80),
+        top: Math.max(8, event.clientY - shellRect.top + shellRef.current.scrollTop - 14),
+        width: 160,
+        height: 28,
+      })
+      return
+    }
+
+    const targetRect = target.getBoundingClientRect()
+    const shellRect = shellRef.current.getBoundingClientRect()
+    setHoveredBlock({
+      blockId: target.dataset.docxBlockId,
+      left: targetRect.left - shellRect.left + shellRef.current.scrollLeft,
+      top: targetRect.top - shellRect.top + shellRef.current.scrollTop,
+      width: Math.max(targetRect.width, 24),
+      height: Math.max(targetRect.height, 18),
+    })
+  }
+
   const handlePreviewClick = (event) => {
     if (!editable || !onAddEditInstruction) return
     if (event.target.closest('.docx-edit-popover')) return
 
-    const target = event.target.closest('[data-docx-block-id]')
-    if (!target || !shellRef.current) {
+    const resolvedTarget = resolveDocxTarget(event.target) || resolveDocxTargetFromPoint(event.clientX, event.clientY)
+    if (!shellRef.current) {
       setActivePrompt(null)
       return
     }
@@ -163,8 +316,8 @@ function DocxPreview({
     const top = event.clientY - shellRect.top + shellRef.current.scrollTop
 
     setActivePrompt({
-      blockId: target.dataset.docxBlockId,
-      selectedText: target.textContent.trim().replace(/\s+/g, ' '),
+      blockId: resolvedTarget?.dataset?.docxBlockId || 'B000',
+      selectedText: resolvedTarget?.textContent?.trim().replace(/\s+/g, ' ') || '',
       instruction: '',
       left: Math.max(12, Math.min(left, shellRef.current.scrollLeft + shellRef.current.clientWidth - 380)),
       top: top + 12,
@@ -188,10 +341,29 @@ function DocxPreview({
   if (!data) return <div className="doc-preview-state">미리보기 데이터를 불러오는 중...</div>
 
   return (
-    <div ref={shellRef} className="docx-preview-shell" onClick={handlePreviewClick}>
+    <div
+      ref={shellRef}
+      className={`docx-preview-shell ${editable ? 'docx-preview-shell--editable' : ''}`.trim()}
+      onClick={handlePreviewClick}
+      onMouseMove={handlePreviewMouseMove}
+      onMouseLeave={() => setHoveredBlock(null)}
+    >
       {error && <div className="doc-preview-state error">{error}</div>}
       <div ref={containerRef} className="docx-preview-container" />
-      {activePrompt && (
+      {editable && <div className="docx-edit-mode-badge">DOCX 편집</div>}
+      {editable && hoveredBlock && !activePrompt && (
+        <div
+          className="docx-edit-hover-box"
+          style={{
+            left: hoveredBlock.left,
+            top: hoveredBlock.top,
+            width: hoveredBlock.width,
+            height: hoveredBlock.height,
+          }}
+          aria-hidden="true"
+        />
+      )}
+      {editable && activePrompt && (
         <form
           className="docx-edit-popover"
           style={{ left: activePrompt.left, top: activePrompt.top }}
@@ -350,6 +522,7 @@ export default function DocumentFilePreview({
   variant = 'inline',
   docxEditInstructions = [],
   onAddDocxEditInstruction,
+  docxEditEnabled = false,
 }) {
   const previewKind = getDocumentPreviewKind(doc)
   const isImage = previewKind === 'image'
@@ -400,7 +573,7 @@ export default function DocumentFilePreview({
           data={previewData}
           editInstructions={docxEditInstructions}
           onAddEditInstruction={onAddDocxEditInstruction}
-          editable={variant === 'inline'}
+          editable={variant === 'inline' && docxEditEnabled}
         />
       ) : isExcel && previewData ? (
         <ExcelWorkbookPreview data={previewData} />
