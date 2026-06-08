@@ -157,6 +157,9 @@
 
 .board-item-title {
   font-weight: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .board-item-author {

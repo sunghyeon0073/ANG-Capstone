@@ -1,6 +1,6 @@
 import { RouterProvider } from 'react-router-dom'
 import router from './router/router'
-import Toast from './components/Toast'
+import Toast from './components/common/Toast'
 import { AiGenerationProvider } from './contexts/AiGenerationContext'
 
 function App() {

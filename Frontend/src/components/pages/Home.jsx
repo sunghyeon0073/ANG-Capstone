@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import Calendar from './Calendar'
 import Board from './Board'
-import Memo from './Memo'
 
 export default function Home({ currentSubPage, user }) {
   const [prompt, setPrompt] = useState('')
