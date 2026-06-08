@@ -3,6 +3,7 @@ import {
   FiDownload,
   FiEdit2,
   FiFile,
+  FiLogOut,
   FiMessageCircle,
   FiPaperclip,
   FiPlus,
@@ -134,6 +135,29 @@ const getRoomDisplayName = (room, currentEmpNo) => {
   return room.name || '채팅방'
 }
 
+const getCompactRoomHeaderName = (room, members = [], currentEmpNo) => {
+  const roomName = room?.name?.trim()
+  const activeMembers = Array.isArray(members) && members.length > 0
+    ? members
+    : Array.isArray(room?.members)
+      ? room.members
+      : []
+  const memberNames = activeMembers
+    .filter(member => member.empNo !== currentEmpNo)
+    .map(member => member.name)
+    .filter(Boolean)
+  const commaNames = roomName?.includes(',')
+    ? roomName.split(',').map(name => name.trim()).filter(Boolean)
+    : []
+  const names = commaNames.length > 0 ? commaNames : memberNames
+
+  if (names.length > 2 && (!roomName || commaNames.length > 0)) {
+    return `${names.slice(0, 2).join(', ')} ...`
+  }
+
+  return roomName || names.join(', ') || '채팅방'
+}
+
 const normalizeChatRooms = (rooms, currentEmpNo) => {
   const roomMap = new Map()
 
@@ -178,7 +202,7 @@ const getInitialWindowPosition = () => {
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 function ChatRoomWindow({
-  room,
+  room: originalRoom,
   index,
   messages,
   members,
@@ -205,6 +229,11 @@ function ChatRoomWindow({
   const popupRef = useRef(null)
   const fileInputRef = useRef(null)
   const messageEndRef = useRef(null)
+  const room = {
+    ...originalRoom,
+    originalName: originalRoom?.name,
+    name: getCompactRoomHeaderName(originalRoom, members, currentEmpNo),
+  }
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -299,7 +328,7 @@ function ChatRoomWindow({
             <FiUserPlus />
           </button>
           <button type="button" onClick={handleLeaveClick} title="채팅방 나가기">
-            나가기
+            <FiLogOut />
           </button>
           <button type="button" onClick={handleCloseClick} title="창 닫기">
             <FiX />
@@ -787,12 +816,18 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
 
     const name = window.prompt(
       '채팅방 이름을 입력하세요. 비워두면 기본 이름으로 돌아갑니다.',
-      room.name || ''
+      room.originalName || room.name || ''
     )
     if (name === null) return
 
     try {
       await updateChatRoomName(roomId, name)
+      const nextName = name.trim()
+      setRooms(prev => prev.map(item => (
+        normalizeRoomId(item.roomId) === roomId
+          ? { ...item, name: nextName || getRoomDisplayName({ ...item, name: '' }, currentEmpNo) }
+          : item
+      )))
       await loadRooms()
     } catch (err) {
       console.error('채팅방 이름 변경 실패', err)

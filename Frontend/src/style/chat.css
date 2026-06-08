@@ -411,8 +411,9 @@
 }
 
 .chat-popup-header strong {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
+  line-height: 1.35;
 }
 
 .chat-popup-header span {
