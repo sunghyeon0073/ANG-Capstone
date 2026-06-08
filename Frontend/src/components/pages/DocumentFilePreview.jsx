@@ -55,15 +55,61 @@ function ExcelTablePreview({ tableData }) {
   )
 }
 
-function DocxPreview({ data }) {
+const nextDocxBlockId = (index) => `B${String(index + 1).padStart(3, '0')}`
+
+function DocxPreview({
+  data,
+  editInstructions = [],
+  onAddEditInstruction,
+  editable = false,
+}) {
+  const shellRef = useRef(null)
   const containerRef = useRef(null)
   const [error, setError] = useState(null)
+  const [activePrompt, setActivePrompt] = useState(null)
+
+  const markInstructionBlocks = () => {
+    const container = containerRef.current
+    if (!container) return
+
+    const requestedBlockIds = new Set(editInstructions.map((instruction) => instruction.blockId))
+    container.querySelectorAll('[data-docx-block-id]').forEach((element) => {
+      element.classList.toggle('docx-edit-target--queued', requestedBlockIds.has(element.dataset.docxBlockId))
+    })
+  }
 
   useEffect(() => {
     let cancelled = false
     if (!data || !containerRef.current) return undefined
 
+    const decorateEditableBlocks = () => {
+      if (!editable || !containerRef.current) return
+      const paragraphs = Array.from(containerRef.current.querySelectorAll('section.docx p'))
+        .filter((element) => element.textContent?.trim())
+
+      paragraphs.forEach((element, index) => {
+        element.dataset.docxBlockId = nextDocxBlockId(index)
+        element.classList.add('docx-edit-target')
+        element.setAttribute('title', '클릭해서 이 문단에 수정 요청 추가')
+      })
+      markInstructionBlocks()
+    }
+
+    const updateScale = () => {
+      const shell = shellRef.current
+      const section = containerRef.current?.querySelector('section.docx')
+      if (!shell || !section) return
+
+      const availableWidth = shell.clientWidth - 48
+      const pageWidth = section.offsetWidth
+      if (!availableWidth || !pageWidth) return
+
+      const scale = Math.min(1.6, Math.max(0.45, availableWidth / pageWidth))
+      containerRef.current.style.setProperty('--docx-preview-scale', scale.toFixed(3))
+    }
+
     containerRef.current.innerHTML = ''
+    containerRef.current.style.setProperty('--docx-preview-scale', '1')
     setError(null)
 
     renderAsync(data, containerRef.current, null, {
@@ -73,6 +119,13 @@ function DocxPreview({ data }) {
       ignoreHeight: false,
       breakPages: true,
       useBase64URL: true,
+    }).then(() => {
+      if (!cancelled) {
+        window.requestAnimationFrame(() => {
+          updateScale()
+          decorateEditableBlocks()
+        })
+      }
     }).catch((err) => {
       if (!cancelled) {
         console.error('DOCX preview render failed:', err)
@@ -80,17 +133,85 @@ function DocxPreview({ data }) {
       }
     })
 
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(updateScale)
+    })
+    if (shellRef.current) resizeObserver.observe(shellRef.current)
+
     return () => {
       cancelled = true
+      resizeObserver.disconnect()
     }
   }, [data])
+
+  useEffect(() => {
+    markInstructionBlocks()
+  }, [editInstructions])
+
+  const handlePreviewClick = (event) => {
+    if (!editable || !onAddEditInstruction) return
+    if (event.target.closest('.docx-edit-popover')) return
+
+    const target = event.target.closest('[data-docx-block-id]')
+    if (!target || !shellRef.current) {
+      setActivePrompt(null)
+      return
+    }
+
+    const shellRect = shellRef.current.getBoundingClientRect()
+    const left = event.clientX - shellRect.left + shellRef.current.scrollLeft
+    const top = event.clientY - shellRect.top + shellRef.current.scrollTop
+
+    setActivePrompt({
+      blockId: target.dataset.docxBlockId,
+      selectedText: target.textContent.trim().replace(/\s+/g, ' '),
+      instruction: '',
+      left: Math.max(12, Math.min(left, shellRef.current.scrollLeft + shellRef.current.clientWidth - 380)),
+      top: top + 12,
+    })
+  }
+
+  const handlePromptSubmit = (event) => {
+    event.preventDefault()
+    const instruction = activePrompt?.instruction?.trim()
+    if (!instruction) return
+
+    onAddEditInstruction({
+      id: `${activePrompt.blockId}-${Date.now()}`,
+      blockId: activePrompt.blockId,
+      selectedText: activePrompt.selectedText,
+      instruction,
+    })
+    setActivePrompt(null)
+  }
 
   if (!data) return <div className="doc-preview-state">미리보기 데이터를 불러오는 중...</div>
 
   return (
-    <div className="docx-preview-shell">
+    <div ref={shellRef} className="docx-preview-shell" onClick={handlePreviewClick}>
       {error && <div className="doc-preview-state error">{error}</div>}
       <div ref={containerRef} className="docx-preview-container" />
+      {activePrompt && (
+        <form
+          className="docx-edit-popover"
+          style={{ left: activePrompt.left, top: activePrompt.top }}
+          onClick={(event) => event.stopPropagation()}
+          onSubmit={handlePromptSubmit}
+        >
+          <div className="docx-edit-popover-meta">{activePrompt.blockId}</div>
+          <input
+            type="text"
+            value={activePrompt.instruction}
+            onChange={(event) => setActivePrompt((current) => ({ ...current, instruction: event.target.value }))}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setActivePrompt(null)
+            }}
+            placeholder="이 문단을 어떻게 수정할까요?"
+            autoFocus
+          />
+          <button type="submit">추가</button>
+        </form>
+      )}
     </div>
   )
 }
@@ -227,6 +348,8 @@ export default function DocumentFilePreview({
   previewLoading,
   previewError,
   variant = 'inline',
+  docxEditInstructions = [],
+  onAddDocxEditInstruction,
 }) {
   const previewKind = getDocumentPreviewKind(doc)
   const isImage = previewKind === 'image'
@@ -273,7 +396,12 @@ export default function DocumentFilePreview({
       ) : previewKind === 'hwpx' && (previewUrl || previewData) ? (
         <HwpxPreview data={previewData} fallbackContent={doc.originalContent} />
       ) : isWord && previewData ? (
-        <DocxPreview data={previewData} />
+        <DocxPreview
+          data={previewData}
+          editInstructions={docxEditInstructions}
+          onAddEditInstruction={onAddDocxEditInstruction}
+          editable={variant === 'inline'}
+        />
       ) : isExcel && previewData ? (
         <ExcelWorkbookPreview data={previewData} />
       ) : (isPdf || hasGeneratedPdfPreview) && previewUrl ? (

@@ -154,6 +154,12 @@
   box-shadow: var(--shadow-soft-sm);
 }
 
+.prompt-tab-docx-edit {
+  background-color: #e6fffb;
+  color: #0f766e;
+  box-shadow: var(--shadow-soft-sm);
+}
+
 .prompt-tab-pending {
   background-color: var(--color-surface);
   border: 2px dashed rgba(255, 140, 116, 0.25);

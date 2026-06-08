@@ -70,6 +70,7 @@ export default function DocumentWriter() {
   const [uploadTargetScopeId, setUploadTargetScopeId] = useState('')
   const [aiProgressMode, setAiProgressMode] = useState(null)
   const [aiProgressStep, setAiProgressStep] = useState(0)
+  const [docxEditInstructions, setDocxEditInstructions] = useState([])
   const fileInputRef = useRef(null)
   const mountedRef = useRef(true)
   const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
@@ -97,6 +98,10 @@ export default function DocumentWriter() {
   useEffect(() => {
     fetchDocuments()
   }, [category, selectedScopeId])
+
+  useEffect(() => {
+    setDocxEditInstructions([])
+  }, [selectedDoc?.docId])
 
   useEffect(() => {
     const handleGeneratedDocument = (event) => {
@@ -399,13 +404,23 @@ export default function DocumentWriter() {
     setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
   }
 
+  const handleAddDocxEditInstruction = (instruction) => {
+    setDocxEditInstructions((current) => [...current, instruction])
+  }
+
+  const handleRemoveDocxEditInstruction = (instructionId) => {
+    setDocxEditInstructions((current) => current.filter((instruction) => instruction.id !== instructionId))
+  }
+
   const handleAiGenerate = async (mode = 'create') => {
-    if (!prompt.trim()) {
+    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
+    const hasDocxEditInstructions = mode === 'edit' && selectedKind === 'word' && docxEditInstructions.length > 0
+
+    if (!prompt.trim() && !hasDocxEditInstructions) {
       alert('프롬프트를 입력하세요.')
       return
     }
 
-    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
     const editOutputFormat =
       selectedKind === 'hwp' || selectedKind === 'hwpx'
         ? 'hwp'
@@ -423,8 +438,24 @@ export default function DocumentWriter() {
       return
     }
 
+    const scopedEditPrompt = docxEditInstructions
+      .map((instruction, index) => [
+        `${index + 1}. blockId: ${instruction.blockId}`,
+        `selectedText: ${instruction.selectedText}`,
+        `instruction: ${instruction.instruction}`,
+      ].join('\n'))
+      .join('\n\n')
+
+    const finalPrompt = hasDocxEditInstructions
+      ? [
+        prompt.trim(),
+        '아래 DOCX 블록별 수정 요청을 우선 적용해 주세요. 각 요청은 해당 blockId 안에서 selectedText를 기준으로 처리해 주세요.',
+        scopedEditPrompt,
+      ].filter(Boolean).join('\n\n')
+      : prompt
+
     const payload = {
-      prompt,
+      prompt: finalPrompt,
       mode,
       outputFormat: mode === 'edit' ? editOutputFormat : 'docx',
       sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
@@ -440,6 +471,7 @@ export default function DocumentWriter() {
       if (mountedRef.current) {
         setPrompt('')
         setAttachedDocs([])
+        setDocxEditInstructions([])
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
@@ -633,6 +665,8 @@ export default function DocumentWriter() {
                 previewData={previewData}
                 previewLoading={previewLoading}
                 previewError={previewError}
+                docxEditInstructions={docxEditInstructions}
+                onAddDocxEditInstruction={handleAddDocxEditInstruction}
               />
             </div>
           ) : (
@@ -665,6 +699,20 @@ export default function DocumentWriter() {
                   ×
                 </button>
                 <span className="tab-name">{doc.title}</span>
+              </div>
+            ))}
+
+            {docxEditInstructions.map((instruction) => (
+              <div key={instruction.id} className="prompt-tab prompt-tab-docx-edit">
+                <button
+                  type="button"
+                  className="tab-remove-btn"
+                  onClick={() => handleRemoveDocxEditInstruction(instruction.id)}
+                  title="삭제"
+                >
+                  횞
+                </button>
+                <span className="tab-name">{instruction.blockId} 수정 요청</span>
               </div>
             ))}
 
@@ -761,6 +809,7 @@ export default function DocumentWriter() {
               previewLoading={previewLoading}
               previewError={previewError}
               variant="fullscreen"
+              docxEditInstructions={docxEditInstructions}
             />
             <button
               type="button"
