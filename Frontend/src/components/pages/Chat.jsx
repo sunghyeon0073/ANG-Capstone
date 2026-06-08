@@ -127,11 +127,14 @@ const normalizeRoomId = value => {
   return Number.isFinite(numericRoomId) ? numericRoomId : null
 }
 
+const CHAT_AUTH_ERROR_MESSAGE = '채팅 인증이 만료되었거나 권한이 없습니다. 다시 로그인 후 확인해주세요.'
+const CHAT_SERVER_ERROR_MESSAGE = '채팅 서버에서 오류가 발생했습니다. 백엔드 채팅 API 응답을 확인해주세요.'
+
 const CHAT_MESSAGE_CACHE_KEY = 'ang_chat_local_messages'
 
 const readLocalMessageCache = () => {
   try {
-    return JSON.parse(sessionStorage.getItem(CHAT_MESSAGE_CACHE_KEY) || '{}')
+    return JSON.parse(localStorage.getItem(CHAT_MESSAGE_CACHE_KEY) || '{}')
   } catch {
     return {}
   }
@@ -139,10 +142,17 @@ const readLocalMessageCache = () => {
 
 const writeLocalMessageCache = cache => {
   try {
-    sessionStorage.setItem(CHAT_MESSAGE_CACHE_KEY, JSON.stringify(cache))
+    localStorage.setItem(CHAT_MESSAGE_CACHE_KEY, JSON.stringify(cache))
   } catch {
-    // sessionStorage can fail in private mode; chat should still keep in-memory messages.
+    // localStorage can fail in private mode; chat should still keep in-memory messages.
   }
+}
+
+const getChatRequestErrorMessage = error => {
+  const status = error?.response?.status
+  if (status === 401 || status === 403) return CHAT_AUTH_ERROR_MESSAGE
+  if (status >= 500) return CHAT_SERVER_ERROR_MESSAGE
+  return '채팅 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
 }
 
 const getCachedRoomMessages = roomId => {
@@ -443,7 +453,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       setRooms(normalizeChatRooms(data, currentEmpNo))
     } catch (err) {
       console.error('채팅방 목록 조회 실패', err)
-      setError('채팅방 목록을 불러오지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -464,7 +474,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       loadRooms()
     } catch (err) {
       console.error('채팅 메시지 조회 실패', err)
-      setError('채팅 메시지를 불러오지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }, [loadRooms])
 
@@ -785,7 +795,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       setMemberCandidates(candidates)
     } catch (err) {
       console.error('채팅 인원 목록 조회 실패', err)
-      setError('인원 목록을 불러오지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -864,7 +874,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       closeMemberModal()
     } catch (err) {
       console.error(inviteRoomId ? '채팅방 인원 추가 실패' : '채팅방 생성 실패', err)
-      setError(inviteRoomId ? '인원을 추가하지 못했습니다. 사번을 확인해주세요.' : '채팅방을 만들지 못했습니다. 사번을 확인해주세요.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -888,7 +898,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         appendLocalMessage(normalizedRoomId, payload)
       } catch (err) {
         console.error('채팅 메시지 발송 실패', err)
-        setError('메시지를 보내지 못했습니다. 잠시 후 다시 시도해주세요.')
+        setError('메시지를 보내지 못했습니다. STOMP 전송 경로와 백엔드 메시지 수신 로그를 확인해주세요.')
       }
     }
 
@@ -905,7 +915,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       })
     } catch (err) {
       console.error('채팅 파일 업로드 실패', err)
-      setError('파일 업로드에 실패했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -922,7 +932,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       window.URL.revokeObjectURL(blobUrl)
     } catch (err) {
       console.error('채팅 파일 다운로드 실패', err)
-      setError('파일을 다운로드하지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
@@ -935,7 +945,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       await loadRooms()
     } catch (err) {
       console.error('채팅방 나가기 실패', err)
-      setError('채팅방에서 나가지 못했습니다.')
+      setError(getChatRequestErrorMessage(err))
     }
   }
 
