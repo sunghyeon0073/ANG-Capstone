@@ -103,7 +103,7 @@ public class ApprovalDocService {
 
         doc.setTitle(req.getTitle());
         doc.setFormData(req.getFormData());
-        doc.setAttachmentUrl(req.getAttachmentUrl());
+        if (req.getAttachmentUrl() != null) doc.setAttachmentUrl(req.getAttachmentUrl());
         if (req.getSecurityLevel() != null) doc.setSecurityLevel(req.getSecurityLevel());
         if (req.getRetentionPeriod() != null) doc.setRetentionPeriod(req.getRetentionPeriod());
 

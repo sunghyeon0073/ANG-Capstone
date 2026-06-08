@@ -12,6 +12,7 @@ import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,6 +36,7 @@ public class ApprovalTemplateController {
         return ApiResponse.ok(templateService.getTemplate(id));
     }
 
+    @Transactional
     @PostMapping("/admin/approvals/templates")
     public ApiResponse<ApprovalTemplateDto.Response> createTemplate(
             @RequestBody ApprovalTemplateDto.CreateRequest req,
@@ -50,6 +52,7 @@ public class ApprovalTemplateController {
         return ApiResponse.ok(templateService.createTemplate(req, admin));
     }
 
+    @Transactional
     @PutMapping("/admin/approvals/templates/{id}")
     public ApiResponse<ApprovalTemplateDto.Response> updateTemplate(
             @PathVariable Long id,
@@ -66,6 +69,7 @@ public class ApprovalTemplateController {
         return ApiResponse.ok(templateService.updateTemplate(id, req));
     }
 
+    @Transactional
     @DeleteMapping("/admin/approvals/templates/{id}")
     public ApiResponse<Void> deactivateTemplate(
             @PathVariable Long id,
