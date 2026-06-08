@@ -2,13 +2,20 @@ FROM eclipse-temurin:21-jdk-jammy AS build
 
 WORKDIR /workspace
 
+# 1. 의존성 파일만 먼저 복사
 COPY gradlew gradlew
 COPY gradle gradle
 COPY build.gradle.kts settings.gradle.kts ./
+
+# 2. gradlew 실행 권한 부여 및 의존성 다운로드 (캐싱됨)
+RUN chmod +x gradlew
+RUN --mount=type=cache,target=/root/.gradle ./gradlew dependencies --no-daemon || return 0
+
+# 3. 실제 소스 코드 복사
 COPY src src
 
-RUN chmod +x gradlew
-RUN ./gradlew --no-daemon bootJar -x test
+# 4. 애플리케이션 빌드
+RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon bootJar -x test
 
 FROM eclipse-temurin:21-jre-jammy
 

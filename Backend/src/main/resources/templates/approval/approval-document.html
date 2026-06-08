@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <style>
+        @font-face {
+            font-family: 'NanumGothic';
+            src: url('/fonts/NanumGothic.ttf');
+        }
+        * {
+            font-family: 'NanumGothic', sans-serif;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 40px;
+            font-size: 12px;
+            color: #000;
+        }
+        /* 문서번호 헤더 */
+        .doc-number-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .doc-number {
+            font-size: 11px;
+            color: #333;
+            font-weight: bold;
+        }
+        /* 결재란 표 */
+        .approval-table {
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .approval-table th, .approval-table td {
+            border: 1px solid #333;
+            padding: 4px 8px;
+            text-align: center;
+            min-width: 60px;
+        }
+        .approval-table th {
+            background-color: #f0f0f0;
+        }
+        .signature-img {
+            max-width: 50px;
+            max-height: 40px;
+        }
+        /* 문서 제목 */
+        h1.doc-title {
+            text-align: center;
+            font-size: 20px;
+            margin: 20px 0 10px 0;
+        }
+        /* 문서 기본 정보 */
+        .doc-info {
+            margin-bottom: 16px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 8px;
+        }
+        .doc-info table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .doc-info td {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        .doc-info td:first-child {
+            font-weight: bold;
+            width: 80px;
+            color: #555;
+        }
+        /* 본문 */
+        .form-content {
+            border: 1px solid #ccc;
+            padding: 16px;
+            min-height: 300px;
+            white-space: pre-wrap;
+            line-height: 1.8;
+        }
+        /* 결재 의견 이력 */
+        .opinion-history {
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 2px solid #333;
+        }
+        .opinion-history .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .opinion-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .opinion-table td {
+            border: 1px solid #ccc;
+            padding: 5px 8px;
+            vertical-align: top;
+        }
+        .opinion-role {
+            white-space: nowrap;
+            font-weight: bold;
+            width: 100px;
+            color: #333;
+        }
+        .opinion-text {
+            width: auto;
+        }
+        .opinion-date {
+            white-space: nowrap;
+            width: 120px;
+            color: #555;
+            text-align: right;
+        }
+        /* 푸터 */
+        .footer {
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 문서번호 + 결재란 (같은 줄, 좌우 배치) -->
+    <div class="doc-number-header">
+        <div class="doc-number">
+            <div>문서번호: APPR-<span th:text="${doc.id}">000</span></div>
+            <div th:if="${doc.completedAt != null}">
+                결재완료: <span th:text="${#temporals.format(doc.completedAt, 'yyyy-MM-dd HH:mm')}">-</span>
+            </div>
+        </div>
+
+        <!-- 결재란 (우측 상단) -->
+        <table class="approval-table">
+            <thead>
+                <tr>
+                    <th th:each="line : ${approvalLines}" th:text="${line.lineType.label}">결재</th>
+                </tr>
+                <tr>
+                    <td th:each="line : ${approvalLines}" th:text="${line.approver.position}">직위</td>
+                </tr>
+                <tr>
+                    <td th:each="line : ${approvalLines}" th:text="${line.approver.name}">성명</td>
+                </tr>
+                <tr>
+                    <td th:each="line : ${approvalLines}">
+                        <img th:if="${line.signatureSnapshot != null}"
+                             th:src="${line.signatureSnapshot}"
+                             class="signature-img"
+                             alt="서명"/>
+                        <span th:if="${line.signatureSnapshot == null}">-</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td th:each="line : ${approvalLines}"
+                        th:text="${line.processedAt != null ? #temporals.format(line.processedAt, 'MM/dd') : '-'}">날짜</td>
+                </tr>
+            </thead>
+        </table>
+    </div>
+
+    <!-- 문서 제목 -->
+    <h1 class="doc-title" th:text="${doc.title}">문서 제목</h1>
+
+    <!-- 기본 정보 -->
+    <div class="doc-info">
+        <table>
+            <tr>
+                <td>기안자</td>
+                <td th:text="${doc.drafter.name + ' (' + doc.drafter.position + ')'}">홍길동 (팀장)</td>
+            </tr>
+            <tr>
+                <td>기안일</td>
+                <td th:text="${#temporals.format(doc.createdAt, 'yyyy-MM-dd')}">2025-01-01</td>
+            </tr>
+            <tr>
+                <td>완료일</td>
+                <td th:text="${doc.completedAt != null ? #temporals.format(doc.completedAt, 'yyyy-MM-dd') : '-'}">-</td>
+            </tr>
+            <tr th:if="${doc.template != null}">
+                <td>양식</td>
+                <td th:text="${doc.template.title}">양식명</td>
+            </tr>
+            <tr>
+                <td>보안등급</td>
+                <td>
+                    <span th:text="${doc.securityLevel}">일반문서</span>
+                    <span style="padding-left:24px; font-weight:bold; color:#555;">보존연한</span>
+                    <span th:text="${doc.retentionPeriod}">영구</span>
+                </td>
+            </tr>
+            <tr th:if="${attachmentFilename != null}">
+                <td>첨부파일</td>
+                <td th:text="${attachmentFilename}">파일명.hwp</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- 본문 내용 -->
+    <div class="form-content" th:text="${doc.formData}">
+        본문 내용이 여기에 표시됩니다.
+    </div>
+
+    <!-- 결재 의견 이력 -->
+    <div class="opinion-history" th:if="${commentLines != null and !#lists.isEmpty(commentLines)}">
+        <div class="section-title">결재 의견 이력</div>
+        <table class="opinion-table">
+            <tr th:each="line : ${commentLines}">
+                <td class="opinion-role"
+                    th:text="${line.lineType.label + '/' + line.approver.name}">팀장/홍길동</td>
+                <td class="opinion-text" th:text="${line.comment}">의견 내용</td>
+                <td class="opinion-date"
+                    th:text="${line.processedAt != null ? #temporals.format(line.processedAt, 'yyyy-MM-dd HH:mm') : '-'}">날짜</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- 증적 푸터 -->
+    <div class="footer">
+        이 문서는 전자결재 시스템에서 생성된 공식 결재 기록입니다.<br/>
+        문서번호 <strong th:text="'APPR-' + ${doc.id}">APPR-000</strong> 으로 시스템에서 원본을 확인할 수 있습니다.
+    </div>
+
+</body>
+</html>

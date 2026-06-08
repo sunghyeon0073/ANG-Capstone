@@ -8,4 +8,6 @@ export const createSchedule = (payload) => api.post('/schedules', payload)
 
 export const updateSchedule = (scheduleId, payload) => api.put(`/schedules/${scheduleId}`, payload)
 
+export const toggleCompleteSchedule = (scheduleId) => api.patch(`/schedules/${scheduleId}/complete`)
+
 export const deleteSchedule = (scheduleId) => api.delete(`/schedules/${scheduleId}`)

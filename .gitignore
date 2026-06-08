@@ -55,3 +55,7 @@ AI/venv/
 
 ### Claude ###
 .claude/
+
+# IDE Generated Directories
+bin/
+Backend/bin/

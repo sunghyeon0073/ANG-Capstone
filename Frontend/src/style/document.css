@@ -41,39 +41,44 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
 .document-upload-icon-btn {
-  width: 34px;
+  min-width: 74px;
   height: 34px;
+  padding: 0 12px;
   border: none;
   border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-primary);
-  display: grid;
-  place-items: center;
+  background: var(--color-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
-  box-shadow: var(--shadow-soft-xs);
+  box-shadow: var(--shadow-soft-sm);
   transition: var(--transition-soft);
   flex-shrink: 0;
 }
 
 .document-upload-icon-btn:hover:not(:disabled) {
-  background: var(--color-primary);
-  color: #fff;
-  box-shadow: var(--shadow-soft-sm);
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft-hover);
 }
 
 .document-upload-icon-btn:disabled {
-  color: #9ca3af;
+  background: #d1d5db;
   cursor: not-allowed;
-  opacity: 0.7;
+  box-shadow: none;
 }
 
 .document-upload-icon-btn svg {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
 }
 
   .category-tabs {

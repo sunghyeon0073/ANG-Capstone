@@ -42,6 +42,9 @@ public class User {
     @Column(name = "profile_image_url")
     private String profileImageUrl;
 
+    @Column(name = "signature_image_url")
+    private String signatureImageUrl;
+
     @Column(name = "position", length = 50)
     private String position;
 

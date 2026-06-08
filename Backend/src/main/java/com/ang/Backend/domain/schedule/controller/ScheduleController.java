@@ -46,12 +46,21 @@ public class ScheduleController {
     }
 
     @PostMapping
-    public ApiResponse<ScheduleDto.Response> create(
+    public ApiResponse<List<ScheduleDto.Response>> create(
             @Valid @RequestBody ScheduleDto.SaveRequest request,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         User user = resolveUser(userDetails);
         return ApiResponse.ok(scheduleService.create(request, user));
+    }
+
+    @PatchMapping("/{scheduleId}/complete")
+    public ApiResponse<ScheduleDto.Response> toggleComplete(
+            @PathVariable Long scheduleId,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        User user = resolveUser(userDetails);
+        return ApiResponse.ok(scheduleService.toggleComplete(scheduleId, user));
     }
 
     @PutMapping("/{scheduleId}")
