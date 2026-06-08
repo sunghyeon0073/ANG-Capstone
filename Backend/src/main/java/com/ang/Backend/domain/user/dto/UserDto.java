@@ -20,6 +20,7 @@ public class UserDto {
     private String phone;
     private LocalDate birthdate;
     private String profileImageUrl;
+    private String signatureImageUrl;
     private String position; // Primary or legacy position
     private UserStatus status;
     private String dept;     // Legacy or summary dept
@@ -86,6 +87,7 @@ public class UserDto {
                 .phone(user.getPhone())
                 .birthdate(user.getBirthdate())
                 .profileImageUrl(user.getProfileImageUrl())
+                .signatureImageUrl(user.getSignatureImageUrl())
                 .position(user.getPosition())
                 .status(user.getStatus())
                 .avatar(avatar)

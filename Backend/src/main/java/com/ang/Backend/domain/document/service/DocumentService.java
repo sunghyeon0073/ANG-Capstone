@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.openxml4j.util.ZipSecureFile;
@@ -2038,7 +2037,7 @@ public class DocumentService {
     }
 
     private String parsePdfContent(byte[] bytes) {
-        try (PDDocument document = Loader.loadPDF(bytes)) {
+        try (PDDocument document = PDDocument.load(bytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
             return cleanParsedContent(stripper.getText(document));

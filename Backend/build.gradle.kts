@@ -17,6 +17,15 @@ repositories {
     mavenCentral()
 }
 
+configurations.all {
+    resolutionStrategy.force(
+        "org.apache.pdfbox:pdfbox:2.0.31",
+        "org.apache.pdfbox:xmpbox:2.0.31",
+        "org.apache.pdfbox:pdfbox-tools:2.0.31",
+        "org.apache.pdfbox:fontbox:2.0.31"
+    )
+}
+
 dependencies {
     // Web
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -50,7 +59,11 @@ dependencies {
 
     // Document parsing
     implementation("org.apache.poi:poi-ooxml:5.3.0")
-    implementation("org.apache.pdfbox:pdfbox:3.0.3")
+
+    // 전자결재 PDF 생성 (openhtmltopdf 1.0.10 은 pdfbox 2.x 전용)
+    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
+    implementation("com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10")
+    implementation("org.apache.pdfbox:pdfbox:2.0.31")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
