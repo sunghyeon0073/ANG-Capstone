@@ -2344,13 +2344,23 @@ public class DocumentService {
             return originalFile;
         }
 
-        if (isHwpFile(lowerName, contentType)) {
-            log.info("Skipping HWP preview PDF for {}. The frontend native HWP viewer will use the original file.", originalName);
+        if (!isConvertibleToPdf(lowerName, contentType)) {
             return null;
         }
 
-        if (!isConvertibleToPdf(lowerName, contentType)) {
-            return null;
+        if (isHwpFile(lowerName, contentType)) {
+            FileItem hwpPreview = createHwpBridgePreviewFile(file, user, originalName);
+            if (hwpPreview != null) {
+                return hwpPreview;
+            }
+            throw new IllegalStateException("HWP preview PDF conversion failed. The document was not created.");
+        }
+
+        if (isWordFile(lowerName, contentType)) {
+            FileItem wordPreview = createBridgePreviewFile(file, user, originalName, "/docx/preview-pdf", "DOCX");
+            if (wordPreview != null) {
+                return wordPreview;
+            }
         }
 
         Path tempDir = null;
@@ -2368,13 +2378,10 @@ public class DocumentService {
             Path pdfFile = findConvertedPdf(tempDir, tempFile);
             if (pdfFile == null || !Files.exists(pdfFile)) {
                 log.warn("Preview PDF conversion finished but no PDF was created for {}", originalName);
-                if (shouldCreateParsedPreviewFallback(lowerName, contentType, parsedContent)) {
-                    pdfFile = createParsedContentPreviewPdf(parsedContent, originalName, tempDir);
-                }
             }
 
             if (pdfFile == null || !Files.exists(pdfFile)) {
-                return null;
+                throw new IllegalStateException("Preview PDF conversion failed. The document was not created.");
             }
 
             byte[] pdfBytes = Files.readAllBytes(pdfFile);
@@ -2392,8 +2399,7 @@ public class DocumentService {
                     .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                     .build());
         } catch (Exception e) {
-            log.warn("Preview PDF generation failed: {}", e.getMessage());
-            return null;
+            throw new IllegalStateException("Preview PDF conversion failed. The document was not created.", e);
         } finally {
             deleteQuietly(tempFile);
             deleteDirectoryQuietly(tempDir);
@@ -2401,15 +2407,19 @@ public class DocumentService {
     }
 
     private FileItem createHwpBridgePreviewFile(MultipartFile file, User user, String originalName) {
+        return createBridgePreviewFile(file, user, originalName, "/hwp/preview-pdf", "HWP");
+    }
+
+    private FileItem createBridgePreviewFile(MultipartFile file, User user, String originalName, String endpoint, String label) {
         if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
-            log.warn("HWP preview skipped because HWP_EDIT_BASE_URL is not configured.");
+            log.warn("{} preview skipped because HWP_EDIT_BASE_URL is not configured.", label);
             return null;
         }
 
         try {
-            byte[] pdfBytes = callHwpPreviewBridge(file.getBytes(), originalName).getBody();
+            byte[] pdfBytes = callPreviewBridge(file.getBytes(), originalName, endpoint).getBody();
             if (pdfBytes == null || pdfBytes.length == 0) {
-                log.warn("HWP preview bridge returned an empty PDF for {}", originalName);
+                log.warn("{} preview bridge returned an empty PDF for {}", label, originalName);
                 return null;
             }
 
@@ -2427,12 +2437,16 @@ public class DocumentService {
                     .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                     .build());
         } catch (Exception e) {
-            log.warn("HWP preview bridge failed for {}: {}", originalName, e.getMessage());
+            log.warn("{} preview bridge failed for {}: {}", label, originalName, e.getMessage());
             return null;
         }
     }
 
     private ResponseEntity<byte[]> callHwpPreviewBridge(byte[] originalBytes, String originalName) {
+        return callPreviewBridge(originalBytes, originalName, "/hwp/preview-pdf");
+    }
+
+    private ResponseEntity<byte[]> callPreviewBridge(byte[] originalBytes, String originalName, String endpoint) {
         ByteArrayResource fileResource = new ByteArrayResource(originalBytes) {
             @Override
             public String getFilename() {
@@ -2447,7 +2461,7 @@ public class DocumentService {
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
         return restTemplate.postForEntity(
-                hwpEditBaseUrl.replaceAll("/+$", "") + "/hwp/preview-pdf",
+                hwpEditBaseUrl.replaceAll("/+$", "") + endpoint,
                 new HttpEntity<>(body, headers),
                 byte[].class
         );
@@ -2472,39 +2486,14 @@ public class DocumentService {
         return lowerName.endsWith(".hwp") || contentType.contains("hwp");
     }
 
+    private boolean isWordFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".doc")
+                || lowerName.endsWith(".docx")
+                || contentType.contains("word");
+    }
+
     private boolean isPlainTextFile(String lowerName, String contentType) {
         return lowerName.endsWith(".txt") || contentType.contains("text/plain");
-    }
-
-    private boolean shouldCreateParsedPreviewFallback(String lowerName, String contentType, String parsedContent) {
-        return parsedContent != null
-                && !parsedContent.isBlank()
-                && (isPlainTextFile(lowerName, contentType) || isConvertibleToPdf(lowerName, contentType));
-    }
-
-    private Path createParsedContentPreviewPdf(String parsedContent, String originalName, Path outputDir)
-            throws IOException, InterruptedException {
-        if (parsedContent == null || parsedContent.isBlank()) {
-            return null;
-        }
-
-        String htmlName = originalName.replaceFirst("\\.[^.]+$", "") + "-parsed.html";
-        Path htmlFile = outputDir.resolve(sanitizeFileName(htmlName));
-        Files.writeString(htmlFile, toPreviewHtml(parsedContent), StandardCharsets.UTF_8);
-
-        KordocResult result = runLibreOffice(htmlFile, outputDir);
-        if (result.exitCode() != 0) {
-            log.warn("Parsed content PDF conversion failed with exit code {}: {}", result.exitCode(), result.output());
-            return null;
-        }
-
-        Path pdfFile = findConvertedPdf(outputDir, htmlFile);
-        if (pdfFile == null || !Files.exists(pdfFile)) {
-            log.warn("Parsed content PDF conversion finished but no PDF was created for {}", originalName);
-            return null;
-        }
-
-        return pdfFile;
     }
 
     private String toPreviewHtml(String content) {
