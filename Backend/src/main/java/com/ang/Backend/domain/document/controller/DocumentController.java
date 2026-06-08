@@ -79,7 +79,8 @@ public class DocumentController {
                 user,
                 request.getSourceDocId(),
                 request.getAttachedDocIds(),
-                request.getOutputFormat()
+                request.getOutputFormat(),
+                request.getMode()
         ));
     }
 

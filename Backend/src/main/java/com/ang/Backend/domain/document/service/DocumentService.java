@@ -178,7 +178,7 @@ public class DocumentService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat) {
+    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat, String mode) {
         if (user == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED, "AI 생성을 위해서는 로그인이 필요합니다.");
         }
@@ -187,14 +187,18 @@ public class DocumentService {
         }
 
         AiOutputFormat format = AiOutputFormat.from(outputFormat);
-        if (format == AiOutputFormat.HWP) {
-            return editHwpWithAi(prompt, user, sourceDocId, attachedDocIds);
-        }
-        if (format == AiOutputFormat.DOCX) {
-            DocxEditSource docxSource = findDocxEditSource(sourceDocId, attachedDocIds);
-            if (docxSource != null) {
-                return editDocxWithAi(prompt, user, docxSource);
+        boolean editMode = "edit".equalsIgnoreCase(mode);
+        if (editMode) {
+            if (format == AiOutputFormat.HWP) {
+                return editHwpWithAi(prompt, user, sourceDocId, attachedDocIds);
             }
+            if (format == AiOutputFormat.DOCX) {
+                DocxEditSource docxSource = findDocxEditSource(sourceDocId, attachedDocIds);
+                if (docxSource != null) {
+                    return editDocxWithAi(prompt, user, docxSource);
+                }
+            }
+            throw new IllegalArgumentException("AI 문서 수정은 HWP 또는 DOCX 원본 문서만 지원합니다.");
         }
 
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);

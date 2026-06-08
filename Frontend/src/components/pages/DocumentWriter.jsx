@@ -15,7 +15,7 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiChevronRight, FiUpload } from 'react-icons/fi'
+import { FiChevronRight, FiEdit3, FiPlus } from 'react-icons/fi'
 import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
@@ -36,8 +36,6 @@ export default function DocumentWriter() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
-  const [aiOutputFormat, setAiOutputFormat] = useState('pdf')
-  const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
   const [sortOrder, setSortOrder] = useState('newest')
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -359,40 +357,42 @@ export default function DocumentWriter() {
     }
   }
 
-  const handleAddToPrompt = () => {
-    if (selectedDoc && !attachedDocs.some((doc) => doc.docId === selectedDoc.docId)) {
-      setAttachedDocs([...attachedDocs, selectedDoc])
-    }
-  }
-
-  const handleRemoveAttachedDoc = (docId) => {
-    setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
-  }
-
-  const handleAiGenerate = async () => {
+  const handleAiGenerate = async (mode = 'create') => {
     if (!prompt.trim()) {
       alert('프롬프트를 입력하세요.')
       return
     }
 
+    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
+    const editOutputFormat =
+      selectedKind === 'hwp' || selectedKind === 'hwpx'
+        ? 'hwp'
+        : selectedKind === 'word'
+          ? 'docx'
+          : null
+
+    if (mode === 'edit' && !selectedDoc) {
+      alert('수정할 문서를 선택하세요.')
+      return
+    }
+
+    if (mode === 'edit' && !editOutputFormat) {
+      alert('현재 AI 수정은 HWP와 DOCX 문서만 지원합니다.')
+      return
+    }
+
     const payload = {
       prompt,
-      outputFormat: aiOutputFormat,
-      attachedDocIds: attachedDocs.map((doc) => doc.docId),
-      attachedDocs: attachedDocs.length > 0
-        ? attachedDocs.map((doc) => ({
-            docId: doc.docId,
-            title: doc.title,
-            content: doc.originalContent || doc.title,
-          }))
-        : null,
+      mode,
+      outputFormat: mode === 'edit' ? editOutputFormat : 'docx',
+      sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
+      attachedDocIds: mode === 'create' && selectedDoc ? [selectedDoc.docId] : [],
     }
 
     try {
       await startGeneration(payload)
       if (mountedRef.current) {
         setPrompt('')
-        setAttachedDocs([])
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
@@ -406,7 +406,19 @@ export default function DocumentWriter() {
     <div className="document-writer-container">
       <div className="document-sidebar">
         <div className="sidebar-header">
-          <h3>문서 목록</h3>
+          <div className="document-sidebar-title-row">
+            <h3>문서 목록</h3>
+            <button
+              type="button"
+              className="document-upload-icon-btn"
+              onClick={() => setShowUploadModal(true)}
+              disabled={isUploading}
+              title="파일 업로드"
+              aria-label="파일 업로드"
+            >
+              <FiPlus />
+            </button>
+          </div>
           <div className="category-tabs">
             <button
               type="button"
@@ -597,35 +609,9 @@ export default function DocumentWriter() {
             >
               <FiChevronRight />
             </button>
-            {attachedDocs.map((doc) => (
-              <div key={doc.docId} className="prompt-tab prompt-tab-added">
-                <button
-                  type="button"
-                  className="tab-remove-btn"
-                  onClick={() => handleRemoveAttachedDoc(doc.docId)}
-                  title="제거"
-                >
-                  ×
-                </button>
-                <span className="tab-name">{doc.title}</span>
-              </div>
-            ))}
-
-            {selectedDoc && !attachedDocs.some((doc) => doc.docId === selectedDoc.docId) && (
-              <div
-                className="prompt-tab prompt-tab-pending"
-                onClick={handleAddToPrompt}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    handleAddToPrompt()
-                  }
-                }}
-              >
-                <span className="tab-add-btn">+</span>
-                <span className="tab-name">{selectedDoc.title}</span>
+            {selectedDoc && (
+              <div className="prompt-tab prompt-tab-added">
+                <span className="tab-name">참고 문서: {selectedDoc.title}</span>
               </div>
             )}
           </div>
@@ -644,38 +630,23 @@ export default function DocumentWriter() {
               <div className="prompt-actions-left">
                 <button
                   type="button"
-                  className="btn-prompt-upload"
-                  onClick={() => setShowUploadModal(true)}
-                  disabled={isUploading}
-                  title="파일 업로드"
+                  onClick={() => handleAiGenerate('create')}
+                  className="btn-generate btn-generate--create"
+                  disabled={aiLoading}
                 >
-                  <FiUpload />
-                  <span>업로드</span>
+                  {aiLoading ? '생성 중...' : selectedDoc ? '이 문서로 새 문서 작성' : '새 문서 작성'}
                 </button>
-
-                <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
-                  {['pdf', 'docx', 'xlsx', 'txt', 'hwp'].map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      className={`ai-format-btn ${aiOutputFormat === format ? 'active' : ''}`}
-                      onClick={() => setAiOutputFormat(format)}
-                      disabled={aiLoading}
-                    >
-                      {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               <div className="prompt-actions-right">
                 <button
                   type="button"
-                  onClick={handleAiGenerate}
-                  className="btn-generate"
-                  disabled={aiLoading}
+                  onClick={() => handleAiGenerate('edit')}
+                  className="btn-generate btn-generate--edit"
+                  disabled={aiLoading || !selectedDoc}
                 >
-                  {aiLoading ? '생성 중...' : 'AI 생성'}
+                  <FiEdit3 />
+                  <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
               </div>
             </div>
