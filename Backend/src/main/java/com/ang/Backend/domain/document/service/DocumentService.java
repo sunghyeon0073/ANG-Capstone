@@ -198,7 +198,11 @@ public class DocumentService {
                     return editDocxWithAi(prompt, user, docxSource);
                 }
             }
-            throw new IllegalArgumentException("AI 문서 수정은 HWP 또는 DOCX 원본 문서만 지원합니다.");
+            DocumentEntity sourceDoc = findSourceDocument(sourceDocId, attachedDocIds);
+            if (sourceDoc == null) {
+                throw new IllegalArgumentException("수정할 원본 문서를 찾을 수 없습니다.");
+            }
+            return editByContentWithAi(prompt, user, sourceDoc, format);
         }
 
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);
@@ -256,6 +260,80 @@ public class DocumentService {
         int minSections = (format == AiOutputFormat.PDF || format == AiOutputFormat.DOCX) ? 4 : 1;
 
         return hasTitle && sectionHeadings >= minSections && answer.strip().length() >= 200;
+    }
+
+    private DocumentEntity findSourceDocument(Long sourceDocId, List<Long> attachedDocIds) {
+        LinkedHashSet<Long> docIds = new LinkedHashSet<>();
+        if (sourceDocId != null) {
+            docIds.add(sourceDocId);
+        }
+        if (attachedDocIds != null) {
+            attachedDocIds.stream().filter(Objects::nonNull).forEach(docIds::add);
+        }
+        if (docIds.isEmpty()) {
+            return null;
+        }
+        return transactionTemplate.execute(status -> {
+            for (Long docId : docIds) {
+                DocumentEntity doc = documentRepository.findById(docId).orElse(null);
+                if (doc != null) {
+                    return doc;
+                }
+            }
+            return null;
+        });
+    }
+
+    private DocumentDto.Response editByContentWithAi(String prompt, User user, DocumentEntity source, AiOutputFormat format) {
+        String originalContent = source.getOriginalContent();
+        if (originalContent == null || originalContent.isBlank()) {
+            throw new IllegalArgumentException("원본 문서의 텍스트 내용을 읽을 수 없습니다. 다른 형식으로 시도해 주세요.");
+        }
+
+        String finalPrompt = buildContentEditPrompt(prompt, source.getTitle(), originalContent, format);
+        log.info("AI content edit started: format={}, docId={}, promptChars={}", format.extension, source.getDocId(), finalPrompt.length());
+
+        String answer = callAiChat(finalPrompt);
+        log.info("AI content edit finished: format={}, answerChars={}", format.extension, answer.length());
+        if (cleanParsedContent(answer).isBlank()) {
+            throw new IllegalStateException("AI returned an empty document.");
+        }
+
+        if (!looksLikeCompleteDocument(answer, format)) {
+            log.info("AI content edit result looked incomplete, retrying once: format={}", format.extension);
+            String retryAnswer = callAiChat(finalPrompt + "\n\n" + AI_DOCUMENT_RETRY_REMINDER);
+            if (!cleanParsedContent(retryAnswer).isBlank()) {
+                answer = retryAnswer;
+            }
+        }
+
+        String aiTitle = makeAiTitle(answer);
+        return saveAiDocument(aiTitle, answer, user, format);
+    }
+
+    private String buildContentEditPrompt(String instruction, String sourceTitle, String originalContent, AiOutputFormat format) {
+        String formatInstruction = switch (format) {
+            case XLSX -> "대상 파일 형식이 XLSX이므로 표 구조를 최대한 유지하고 수정된 데이터를 Markdown 표 형식으로 출력하세요.";
+            case PDF  -> "대상 파일 형식이 PDF이므로 문단과 섹션 구조를 유지하며 깔끔한 Markdown 형식으로 출력하세요.";
+            case TXT  -> "대상 파일 형식이 TXT이므로 서식 없이 일반 텍스트로 출력하세요.";
+            default   -> "대상 파일 형식: " + format.extension.toUpperCase();
+        };
+
+        String truncatedContent = originalContent.length() > 12000
+                ? originalContent.substring(0, 12000) + "\n... (이하 생략)"
+                : originalContent;
+
+        return """
+                아래 원본 문서를 사용자 지시에 따라 수정해 주세요.
+                원본의 내용과 구조를 최대한 유지하면서 지시된 부분만 변경합니다.
+                %s
+
+                [원본 문서: %s]
+                %s
+
+                [수정 지시]
+                %s
+                """.formatted(formatInstruction, sourceTitle != null ? sourceTitle : "문서", truncatedContent, instruction);
     }
 
     private DocumentDto.Response editHwpWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds) {

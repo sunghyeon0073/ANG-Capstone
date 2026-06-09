@@ -428,7 +428,13 @@ export default function DocumentWriter() {
         ? 'hwp'
         : selectedKind === 'word'
           ? 'docx'
-          : null
+          : selectedKind === 'excel'
+            ? 'xlsx'
+            : selectedKind === 'pdf'
+              ? 'pdf'
+              : selectedKind === 'text'
+                ? 'txt'
+                : null
 
     // 새 문서 작성 시에는 선택된 문서의 형식을 그대로 따라간다 (hwp 선택 → hwp 생성, xlsx 선택 → xlsx 생성 등).
     const createOutputFormat =
@@ -446,7 +452,7 @@ export default function DocumentWriter() {
     }
 
     if (mode === 'edit' && !editOutputFormat) {
-      alert('현재 AI 수정은 HWP와 DOCX 문서만 지원합니다.')
+      alert('이미지 형식은 AI 수정을 지원하지 않습니다.')
       return
     }
 
