@@ -3,6 +3,7 @@ import {
   FiDownload,
   FiEdit2,
   FiFile,
+  FiLock,
   FiLogOut,
   FiMessageCircle,
   FiPaperclip,
@@ -12,6 +13,7 @@ import {
   FiSend,
   FiUserPlus,
   FiUsers,
+  FiUnlock,
   FiX,
 } from 'react-icons/fi'
 import {
@@ -108,6 +110,62 @@ const getChatRequestErrorMessage = error => {
   return '채팅 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
 }
 
+const getPositionAvatarClass = position => {
+  const normalizedPosition = String(position || '').replace(/\s/g, '')
+
+  if (normalizedPosition.includes('원장')) return 'position-director'
+  if (
+    normalizedPosition.includes('센터장')
+    || normalizedPosition.includes('부서장')
+    || normalizedPosition.includes('본부장')
+  ) return 'position-center-head'
+  if (normalizedPosition.includes('팀장')) return 'position-team-head'
+  if (
+    normalizedPosition.includes('사원')
+    || normalizedPosition.includes('직원')
+    || normalizedPosition.includes('주임')
+    || normalizedPosition.includes('대리')
+  ) return 'position-staff'
+  return 'position-default'
+}
+
+const POSITION_AVATAR_COLORS = {
+  'position-director': '#f05d4e',
+  'position-center-head': '#7457c7',
+  'position-team-head': '#397bd6',
+  'position-staff': '#159a95',
+  'position-default': '#788894',
+}
+
+const getGroupAvatarBackground = (members, memberCandidates, currentUser) => {
+  const activeMembers = Array.isArray(members) ? members : []
+  if (activeMembers.length === 0) return undefined
+
+  const positionByEmpNo = new Map(
+    memberCandidates.map(member => [member.empNo, member.position])
+  )
+  if (currentUser?.empNo) {
+    positionByEmpNo.set(currentUser.empNo, currentUser.position)
+  }
+
+  const colorCounts = new Map()
+  activeMembers.forEach(member => {
+    const position = member.position || positionByEmpNo.get(member.empNo)
+    const positionClass = getPositionAvatarClass(position)
+    const color = POSITION_AVATAR_COLORS[positionClass]
+    colorCounts.set(color, (colorCounts.get(color) || 0) + 1)
+  })
+
+  let accumulated = 0
+  const segments = Array.from(colorCounts.entries()).map(([color, count]) => {
+    const start = accumulated
+    accumulated += (count / activeMembers.length) * 100
+    return `${color} ${start}% ${accumulated}%`
+  })
+
+  return `conic-gradient(${segments.join(', ')})`
+}
+
 const mergeMessages = messages => {
   const merged = []
   messages.forEach(message => {
@@ -188,7 +246,13 @@ const normalizeChatRooms = (rooms, currentEmpNo) => {
     if (currentTime >= previousTime) roomMap.set(key, normalizedRoom)
   })
 
-  return Array.from(roomMap.values())
+  return Array.from(roomMap.values()).sort((left, right) => {
+    const leftTime = new Date(left.lastMessageAt || left.createdAt || 0).getTime()
+    const rightTime = new Date(right.lastMessageAt || right.createdAt || 0).getTime()
+
+    if (rightTime !== leftTime) return rightTime - leftTime
+    return (normalizeRoomId(right.roomId) || 0) - (normalizeRoomId(left.roomId) || 0)
+  })
 }
 
 const getInitialWindowPosition = () => {
@@ -222,10 +286,12 @@ function ChatRoomWindow({
 }) {
   const [content, setContent] = useState('')
   const [showMembers, setShowMembers] = useState(false)
+  const [isPositionLocked, setIsPositionLocked] = useState(false)
   const [position, setPosition] = useState(() => ({
     x: Math.max(24, window.innerWidth - 400 - index * 28),
     y: Math.max(24, window.innerHeight - 570 - index * 24),
   }))
+  const [size, setSize] = useState({ width: 350, height: 520 })
   const popupRef = useRef(null)
   const fileInputRef = useRef(null)
   const messageEndRef = useRef(null)
@@ -270,7 +336,7 @@ function ChatRoomWindow({
   }
 
   const startPopupDrag = event => {
-    if (event.button !== 0 || event.target.closest('button')) return
+    if (isPositionLocked || event.button !== 0 || event.target.closest('button')) return
 
     event.preventDefault()
     const popupRect = popupRef.current?.getBoundingClientRect()
@@ -302,13 +368,67 @@ function ChatRoomWindow({
     window.addEventListener('mouseup', handleMouseUp)
   }
 
+  const startPopupResize = (event, direction) => {
+    if (event.button !== 0) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startY = event.clientY
+    const startWidth = size.width
+    const startHeight = size.height
+    const startLeft = position.x
+    const startTop = position.y
+
+    const handleMouseMove = moveEvent => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+      let nextWidth = startWidth
+      let nextHeight = startHeight
+      let nextLeft = startLeft
+      let nextTop = startTop
+
+      if (direction.includes('right')) {
+        nextWidth = clamp(startWidth + deltaX, 310, window.innerWidth - startLeft - 8)
+      }
+
+      if (direction.includes('left')) {
+        nextWidth = clamp(startWidth - deltaX, 310, startWidth + startLeft - 8)
+        nextLeft = startLeft + startWidth - nextWidth
+      }
+
+      if (direction.includes('bottom')) {
+        nextHeight = clamp(startHeight + deltaY, 360, window.innerHeight - startTop - 8)
+      }
+
+      if (direction.includes('top')) {
+        nextHeight = clamp(startHeight - deltaY, 360, startHeight + startTop - 8)
+        nextTop = startTop + startHeight - nextHeight
+      }
+
+      setSize({ width: nextWidth, height: nextHeight })
+      setPosition({ x: nextLeft, y: nextTop })
+    }
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
+
   return (
     <section
       ref={popupRef}
-      className="chat-popup"
+      className={`chat-popup ${isPositionLocked ? 'position-locked' : ''}`}
       style={{
         left: position.x,
         top: position.y,
+        width: size.width,
+        height: size.height,
         zIndex: 30 + index,
       }}
     >
@@ -318,6 +438,14 @@ function ChatRoomWindow({
           <span>{room.type === 'GROUP' ? `${room.members?.length || 0}명` : '1:1 채팅'}</span>
         </div>
         <div className="chat-popup-actions">
+          <button
+            type="button"
+            onClick={() => setIsPositionLocked(prev => !prev)}
+            title={isPositionLocked ? '채팅창 고정 해제' : '채팅창 위치 고정'}
+            className={isPositionLocked ? 'active' : ''}
+          >
+            {isPositionLocked ? <FiLock /> : <FiUnlock />}
+          </button>
           <button type="button" onClick={() => onRename(room)} title="채팅방 이름 변경">
             <FiEdit2 />
           </button>
@@ -342,7 +470,9 @@ function ChatRoomWindow({
           <div>
             {members.map(member => (
               <span key={member.empNo || member.userId}>
-                <i>{member.name?.[0] || '?'}</i>
+                <i className={getPositionAvatarClass(member.position)}>
+                  {member.name?.[0] || '?'}
+                </i>
                 {member.name || member.empNo}
               </span>
             ))}
@@ -428,11 +558,57 @@ function ChatRoomWindow({
           <FiSend />
         </button>
       </footer>
+      <span
+        className="chat-resize-handle top"
+        onMouseDown={event => startPopupResize(event, 'top')}
+        aria-hidden="true"
+      />
+      <span
+        className="chat-resize-handle left"
+        onMouseDown={event => startPopupResize(event, 'left')}
+        aria-hidden="true"
+      />
+      <span
+        className="chat-resize-handle right"
+        onMouseDown={event => startPopupResize(event, 'right')}
+        aria-hidden="true"
+      />
+      <span
+        className="chat-resize-handle bottom"
+        onMouseDown={event => startPopupResize(event, 'bottom')}
+        aria-hidden="true"
+      />
+      <span
+        className="chat-resize-handle corner top-left"
+        onMouseDown={event => startPopupResize(event, 'top-left')}
+        aria-hidden="true"
+      />
+      <span
+        className="chat-resize-handle corner top-right"
+        onMouseDown={event => startPopupResize(event, 'top-right')}
+        aria-hidden="true"
+      />
+      <span
+        className="chat-resize-handle corner bottom-left"
+        onMouseDown={event => startPopupResize(event, 'bottom-left')}
+        aria-hidden="true"
+      />
+      <span
+        className="chat-resize-handle corner bottom-right"
+        onMouseDown={event => startPopupResize(event, 'right-bottom')}
+        aria-hidden="true"
+      />
     </section>
   )
 }
 
-export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
+export default function Chat({
+  user,
+  windowMode = false,
+  onCloseChatWindow,
+  contactRequest,
+  onContactRequestHandled,
+}) {
   const storedUser = useMemo(getStoredUser, [])
   const currentUser = user || storedUser
   const currentEmpNo = currentUser?.empNo
@@ -457,11 +633,16 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const [error, setError] = useState('')
   const [socketStatus, setSocketStatus] = useState('disconnected')
   const [windowPosition, setWindowPosition] = useState(getInitialWindowPosition)
+  const [windowSize, setWindowSize] = useState(() => ({
+    width: Math.min(400, window.innerWidth - 32),
+    height: Math.min(630, window.innerHeight - 48),
+  }))
 
   const stompClientRef = useRef(null)
   const chatWindowRef = useRef(null)
   const subscribedRoomsRef = useRef(new Map())
   const openRoomIdsRef = useRef([])
+  const processedContactRequestRef = useRef(null)
 
   const loadRooms = useCallback(async () => {
     setLoading(true)
@@ -477,9 +658,11 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         })
         return next
       })
+      return normalizedRooms
     } catch (err) {
       console.error('채팅방 목록 조회 실패', err)
       setError(getChatRequestErrorMessage(err))
+      return []
     } finally {
       setLoading(false)
     }
@@ -661,7 +844,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
 
   const filteredRooms = rooms
 
-  const openRoom = async room => {
+  const openRoom = useCallback(async room => {
     const roomId = normalizeRoomId(room.roomId ?? room)
     if (!roomId) {
       setError('채팅방 정보를 확인하지 못했습니다.')
@@ -677,7 +860,65 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     } else {
       loadMessages(roomId).catch(() => {})
     }
-  }
+  }, [loadMessages, loadRoomMembers, messagesByRoom, subscribeRoom])
+
+  useEffect(() => {
+    const requestId = contactRequest?.requestId
+    const contact = contactRequest?.contact
+    const recipientEmpNo = contact?.empNo ?? contact?.employeeNo ?? contact?.userEmpNo
+
+    if (!requestId || processedContactRequestRef.current === requestId) return
+    processedContactRequestRef.current = requestId
+
+    if (!recipientEmpNo) {
+      setError('채팅 상대의 사번을 확인할 수 없습니다.')
+      onContactRequestHandled?.()
+      return
+    }
+
+    if (recipientEmpNo === currentEmpNo) {
+      setError('본인과의 1:1 채팅은 시작할 수 없습니다.')
+      onContactRequestHandled?.()
+      return
+    }
+
+    const startPrivateChat = async () => {
+      try {
+        const currentRooms = await loadRooms()
+        const existingRoom = currentRooms.find(room => (
+          room.type === 'PRIVATE'
+          && room.members?.some(member => member.empNo === recipientEmpNo)
+        ))
+
+        if (existingRoom) {
+          await openRoom(existingRoom)
+          return
+        }
+
+        const roomId = await createPrivateChatRoom(recipientEmpNo)
+        await loadRooms()
+        await openRoom({
+          roomId,
+          name: contact?.name || recipientEmpNo,
+          type: 'PRIVATE',
+          members: [contact],
+        })
+      } catch (err) {
+        console.error('조직도 1:1 채팅 시작 실패', err)
+        setError(getChatRequestErrorMessage(err))
+      } finally {
+        onContactRequestHandled?.()
+      }
+    }
+
+    startPrivateChat()
+  }, [
+    contactRequest,
+    currentEmpNo,
+    loadRooms,
+    onContactRequestHandled,
+    openRoom,
+  ])
 
   const closeRoom = roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
@@ -705,7 +946,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     }
   }
 
-  const loadMemberCandidates = async () => {
+  const loadMemberCandidates = async ({ silent = false } = {}) => {
     try {
       const data = await getChatMemberCandidates()
       const candidates = data
@@ -714,9 +955,13 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       setMemberCandidates(candidates)
     } catch (err) {
       console.error('채팅 인원 목록 조회 실패', err)
-      setError(getChatRequestErrorMessage(err))
+      if (!silent) setError(getChatRequestErrorMessage(err))
     }
   }
+
+  useEffect(() => {
+    loadMemberCandidates({ silent: true })
+  }, [currentEmpNo])
 
   const closeMemberModal = () => {
     setIsCreateModalOpen(false)
@@ -1025,11 +1270,69 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     window.addEventListener('mouseup', handleMouseUp)
   }, [windowMode, windowPosition])
 
+  const startWindowResize = useCallback((event, direction) => {
+    if (!windowMode || event.button !== 0) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startY = event.clientY
+    const startWidth = windowSize.width
+    const startHeight = windowSize.height
+    const startLeft = windowPosition.x
+    const startTop = windowPosition.y
+
+    const handleMouseMove = moveEvent => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+      let nextWidth = startWidth
+      let nextHeight = startHeight
+      let nextLeft = startLeft
+      let nextTop = startTop
+
+      if (direction.includes('right')) {
+        nextWidth = clamp(startWidth + deltaX, 340, window.innerWidth - startLeft - 8)
+      }
+
+      if (direction.includes('left')) {
+        nextWidth = clamp(startWidth - deltaX, 340, startWidth + startLeft - 8)
+        nextLeft = startLeft + startWidth - nextWidth
+      }
+
+      if (direction.includes('bottom')) {
+        nextHeight = clamp(startHeight + deltaY, 420, window.innerHeight - startTop - 8)
+      }
+
+      if (direction.includes('top')) {
+        nextHeight = clamp(startHeight - deltaY, 420, startHeight + startTop - 8)
+        nextTop = startTop + startHeight - nextHeight
+      }
+
+      setWindowSize({ width: nextWidth, height: nextHeight })
+      setWindowPosition({ x: nextLeft, y: nextTop })
+    }
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }, [windowMode, windowPosition, windowSize])
+
   return (
     <div
       ref={chatWindowRef}
       className={`${windowMode ? 'chat-window-mode' : 'page-content'} chat-page`}
-      style={windowMode ? { left: windowPosition.x, top: windowPosition.y, right: 'auto' } : undefined}
+      style={windowMode ? {
+        left: windowPosition.x,
+        top: windowPosition.y,
+        right: 'auto',
+        width: windowSize.width,
+        height: windowSize.height,
+      } : undefined}
     >
       {windowMode ? (
         <div className="chat-window-titlebar" onMouseDown={startWindowDrag}>
@@ -1127,7 +1430,9 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
                     key={member.empNo}
                     onClick={() => toggleMemberSelection(member.empNo)}
                   >
-                    <span className="chat-member-avatar">{member.name?.[0] || member.empNo?.[0] || '?'}</span>
+                    <span className={`chat-member-avatar ${getPositionAvatarClass(member.position)}`}>
+                      {member.name?.[0] || member.empNo?.[0] || '?'}
+                    </span>
                     <span className="chat-member-info">
                       <strong>{member.name}</strong>
                       <small>{member.empNo}{member.department ? ` · ${member.department}` : ''}{member.position ? ` · ${member.position}` : ''}</small>
@@ -1183,6 +1488,18 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
                 const lastMessage = getRoomLastMessage(room)
                 const preview = lastMessage?.content || room.lastMessageContent || '새 대화를 시작해보세요.'
                 const previewTime = lastMessage?.sentAt || room.lastMessageAt
+                const otherMember = room.type === 'PRIVATE'
+                  ? room.members?.find(member => member.empNo !== currentEmpNo)
+                  : null
+                const otherMemberPosition = memberCandidates.find(
+                  candidate => candidate.empNo === otherMember?.empNo
+                )?.position || otherMember?.position
+                const avatarPositionClass = room.type === 'PRIVATE'
+                  ? getPositionAvatarClass(otherMemberPosition)
+                  : ''
+                const groupAvatarBackground = room.type === 'GROUP'
+                  ? getGroupAvatarBackground(room.members, memberCandidates, currentUser)
+                  : undefined
 
                 return (
                   <button
@@ -1191,7 +1508,12 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
                     key={room.roomId}
                     onClick={() => openRoom(room)}
                   >
-                    <span className="chat-room-avatar">{room.name?.[0] || '채'}</span>
+                    <span
+                      className={`chat-room-avatar ${avatarPositionClass} ${room.type === 'GROUP' ? 'group' : ''}`}
+                      style={groupAvatarBackground ? { background: groupAvatarBackground } : undefined}
+                    >
+                      {room.name?.[0] || '채'}
+                    </span>
                     <span className="chat-room-main">
                       <strong>{room.name || '채팅방'}</strong>
                       <small>{preview}</small>
@@ -1208,6 +1530,19 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         </main>
       </div>
 
+      {windowMode && (
+        <>
+          <span className="chat-window-resize-handle top" onMouseDown={event => startWindowResize(event, 'top')} />
+          <span className="chat-window-resize-handle left" onMouseDown={event => startWindowResize(event, 'left')} />
+          <span className="chat-window-resize-handle right" onMouseDown={event => startWindowResize(event, 'right')} />
+          <span className="chat-window-resize-handle bottom" onMouseDown={event => startWindowResize(event, 'bottom')} />
+          <span className="chat-window-resize-handle corner top-left" onMouseDown={event => startWindowResize(event, 'top-left')} />
+          <span className="chat-window-resize-handle corner top-right" onMouseDown={event => startWindowResize(event, 'top-right')} />
+          <span className="chat-window-resize-handle corner bottom-left" onMouseDown={event => startWindowResize(event, 'bottom-left')} />
+          <span className="chat-window-resize-handle corner bottom-right" onMouseDown={event => startWindowResize(event, 'bottom-right')} />
+        </>
+      )}
+
       <div className="chat-popup-layer">
         {openRooms.map((room, index) => (
           <ChatRoomWindow
@@ -1215,7 +1550,12 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
             room={room}
             index={index}
             messages={messagesByRoom[normalizeRoomId(room.roomId)] || []}
-            members={roomMembersByRoom[normalizeRoomId(room.roomId)] || room.members || []}
+            members={(roomMembersByRoom[normalizeRoomId(room.roomId)] || room.members || []).map(member => ({
+              ...member,
+              position: member.position
+                || memberCandidates.find(candidate => candidate.empNo === member.empNo)?.position
+                || (member.empNo === currentEmpNo ? currentUser?.position : ''),
+            }))}
             currentEmpNo={currentEmpNo}
             isConnected={socketStatus === 'connected' && !leavingRoomIds.includes(normalizeRoomId(room.roomId))}
             onClose={closeRoom}
