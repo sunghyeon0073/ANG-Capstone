@@ -58,8 +58,8 @@
 
 .home-prompt-input:focus {
   outline: none;
-  border-color: rgba(255, 140, 116, 0.45);
-  box-shadow: 0 0 0 4px rgba(255, 140, 116, 0.12);
+  border-color: rgba(35, 48, 103, 0.45);
+  box-shadow: 0 0 0 4px rgba(35, 48, 103, 0.12);
 }
 
 .home-prompt-actions {
@@ -100,9 +100,21 @@
   min-height: 0;
 }
 
-.home-board-panel .board-list,
-.home-board-panel .board-list-body {
+.home-board-panel .board-list {
   overflow: visible;
+}
+
+.home-board-panel .board-list-body {
+  height: 322px;
+  min-height: 322px;
+  max-height: 322px;
+  overflow: hidden;
+}
+
+
+.home-board-panel .board-item--placeholder {
+  pointer-events: none;
+  border-bottom: 1px solid rgba(15, 35, 52, 0.04);
 }
 
 @media (max-width: 1280px) {
