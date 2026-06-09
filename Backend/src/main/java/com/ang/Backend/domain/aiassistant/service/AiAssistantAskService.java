@@ -83,9 +83,9 @@ public class AiAssistantAskService {
     // ===== Intent Classification =====
 
     private IntentResult classify(String prompt) {
-        // Try LLM first; fall back to keyword heuristics
         IntentResult llm = classifyWithLLM(prompt);
-        return llm != null ? llm : classifyByKeyword(prompt);
+        IntentResult fallback = classifyByKeyword(prompt);
+        return normalizeIntentResult(prompt, llm, fallback);
     }
 
     private boolean isSendIntentFast(String p) {
@@ -130,37 +130,100 @@ public class AiAssistantAskService {
     }
 
     private String buildClassifyPrompt(String userInput) {
-        return "사용자 질문의 의도를 분석해서 JSON만 출력하세요. 설명 없이 JSON만 출력하세요.\n\n"
+        return "너는 ANG 그룹웨어 비서의 의도 분석기입니다. 사용자 질문의 의미를 이해해서 JSON만 출력하세요. 설명 없이 JSON만 출력하세요.\n\n"
                 + "인텐트 목록:\n"
-                + "- schedule_query   : 일정/스케줄/캘린더 조회 (오늘 뭐 있어, 이번주 일정, 내일 미팅 등)\n"
-                + "- mail_search      : 메일/이메일 검색 (누가 보낸 메일, 메일 찾아줘 등)\n"
-                + "- document_search  : 문서 검색 (보고서, 기획서, 내가 쓴 문서 등)\n"
-                + "- file_search      : 파일 검색 (첨부파일, 파일 찾아줘 등)\n"
-                + "- approval_query   : 결재/승인 대기 조회 (결재 밀린 거, 승인 기다리는 거 등)\n"
-                + "- scheduled_send   : 메시지/메일 예약 발송 (N분 뒤 보내줘 등)\n"
+                + "- schedule_query   : 일정/스케줄/캘린더/회의/미팅/약속 조회\n"
+                + "- mail_search      : 메일/이메일/받은 것/보낸 것 검색\n"
+                + "- document_search  : 문서/보고서/기획서/자료 검색\n"
+                + "- file_search      : 파일/첨부파일 검색\n"
+                + "- approval_query   : 결재/승인 대기 조회\n"
+                + "- scheduled_send   : 메시지/메일/채팅 예약 또는 즉시 발송\n"
                 + "- unknown          : 위에 해당 없음\n\n"
+                + "규칙:\n"
+                + "- 사용자가 '오늘 일정 뭐있냐', '오늘 뭐 있어', '내일 회의 있나'처럼 물으면 schedule_query입니다.\n"
+                + "- '찾아', '찾아줘', '검색', '알려줘', '보여줘', '있어', '뭐야' 같은 동사/명령어는 keyword가 아닙니다.\n"
+                + "- keyword는 사용자가 찾으려는 핵심 명사만 넣으세요. 예: '계약서 메일 찾아줘' -> 계약서\n"
+                + "- 일정 질문에서 날짜 표현이 없으면 today로 둡니다.\n"
+                + "- dateRange는 today, tomorrow, this_week, next_week, null 중 하나만 사용하세요.\n\n"
                 + "JSON 형식:\n"
                 + "{\"intent\":\"...\","
                 + "\"keyword\":\"검색 키워드(없으면 null)\","
                 + "\"dateRange\":\"today|tomorrow|this_week|next_week|null\"}\n\n"
                 + "예시:\n"
                 + "질문: 오늘 뭐 있어? -> {\"intent\":\"schedule_query\",\"keyword\":null,\"dateRange\":\"today\"}\n"
+                + "질문: 오늘 일정 뭐있냐? -> {\"intent\":\"schedule_query\",\"keyword\":null,\"dateRange\":\"today\"}\n"
                 + "질문: 내일 미팅 있어? -> {\"intent\":\"schedule_query\",\"keyword\":null,\"dateRange\":\"tomorrow\"}\n"
+                + "질문: 회의 일정 알려줘 -> {\"intent\":\"schedule_query\",\"keyword\":\"회의\",\"dateRange\":\"today\"}\n"
                 + "질문: 박부장님한테 온 거 있어? -> {\"intent\":\"mail_search\",\"keyword\":\"박부장\",\"dateRange\":null}\n"
+                + "질문: 계약서 메일 찾아줘 -> {\"intent\":\"mail_search\",\"keyword\":\"계약서\",\"dateRange\":null}\n"
                 + "질문: 결재 밀린 거 있어? -> {\"intent\":\"approval_query\",\"keyword\":null,\"dateRange\":null}\n"
-                + "질문: 내가 쓴 기획서 뭐 있나 -> {\"intent\":\"document_search\",\"keyword\":\"기획서\",\"dateRange\":null}\n\n"
+                + "질문: 내가 쓴 기획서 뭐 있나 -> {\"intent\":\"document_search\",\"keyword\":\"기획서\",\"dateRange\":null}\n"
+                + "질문: 회의자료 찾아봐 -> {\"intent\":\"document_search\",\"keyword\":\"회의자료\",\"dateRange\":null}\n\n"
                 + "질문: " + userInput;
     }
 
     private IntentResult classifyByKeyword(String p) {
         if (containsAny(p, "결재", "결재함", "결재대기", "승인대기", "승인 대기", "결재 대기")) return new IntentResult("approval_query", null, null);
-        if (containsAny(p, "일정", "스케줄", "캘린더")) return new IntentResult("schedule_query", null, detectDateRange(p));
+        if (containsAny(p, "일정", "스케줄", "캘린더", "회의", "미팅", "약속")) return new IntentResult("schedule_query", null, detectDateRange(p));
         if (containsAny(p, "메일", "이메일")) return new IntentResult("mail_search", null, null);
-        if (containsAny(p, "문서", "보고서", "기획서", "계획서")) return new IntentResult("document_search", null, null);
+        if (containsAny(p, "문서", "보고서", "기획서", "계획서", "자료")) return new IntentResult("document_search", null, null);
         if (containsAny(p, "파일", "첨부")) return new IntentResult("file_search", null, null);
         if (containsAny(p, "오늘", "내일", "이번주", "이번 주", "다음주", "다음 주"))
             return new IntentResult("schedule_query", null, detectDateRange(p));
         return new IntentResult("unknown", null, null);
+    }
+
+    private IntentResult normalizeIntentResult(String prompt, IntentResult llm, IntentResult fallback) {
+        if (llm == null) return fallback;
+
+        String intent = normalizeIntent(llm.intent());
+        if ("unknown".equals(intent) && fallback != null && !"unknown".equals(fallback.intent())) {
+            intent = fallback.intent();
+        }
+
+        String dateRange = normalizeDateRange(llm.dateRange());
+        if (dateRange == null && fallback != null && "schedule_query".equals(intent)) {
+            dateRange = fallback.dateRange() != null ? fallback.dateRange() : detectDateRange(prompt);
+        }
+        if (dateRange == null && "schedule_query".equals(intent)) {
+            dateRange = detectDateRange(prompt);
+        }
+
+        String keyword = normalizeKeyword(llm.keyword(), commonCommandWordsForIntent(intent));
+        if (keyword == null && needsKeyword(intent)) {
+            keyword = extractKeyword(prompt, commonCommandWordsForIntent(intent));
+        }
+
+        return new IntentResult(intent, keyword, dateRange);
+    }
+
+    private String normalizeIntent(String intent) {
+        if (intent == null || intent.isBlank()) return "unknown";
+        return switch (intent.trim()) {
+            case "schedule_query", "mail_search", "document_search", "file_search", "approval_query", "scheduled_send" -> intent.trim();
+            default -> "unknown";
+        };
+    }
+
+    private String normalizeDateRange(String dateRange) {
+        if (dateRange == null || dateRange.isBlank() || "null".equalsIgnoreCase(dateRange)) return null;
+        return switch (dateRange.trim()) {
+            case "today", "tomorrow", "this_week", "next_week" -> dateRange.trim();
+            default -> null;
+        };
+    }
+
+    private boolean needsKeyword(String intent) {
+        return "mail_search".equals(intent) || "document_search".equals(intent) || "file_search".equals(intent);
+    }
+
+    private String[] commonCommandWordsForIntent(String intent) {
+        return switch (intent) {
+            case "mail_search" -> new String[]{"메일", "이메일", "찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "보낸", "받은", "최근", "있어", "있냐", "뭐야"};
+            case "document_search" -> new String[]{"문서", "보고서", "기획서", "계획서", "자료", "찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "관련", "최근", "있어", "있냐", "뭐야"};
+            case "file_search" -> new String[]{"파일", "첨부", "첨부파일", "찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "관련", "최근", "있어", "있냐", "뭐야"};
+            default -> new String[]{"찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "뭐야", "있어", "있냐", "최근"};
+        };
     }
 
     private String detectDateRange(String p) {
@@ -208,8 +271,8 @@ public class AiAssistantAskService {
     }
 
     private AiAssistantDto.AskResponse handleMailSearch(String prompt, IntentResult ir, User user) {
-        String keyword = ir.keyword() != null ? ir.keyword()
-                : extractKeyword(prompt, "메일", "이메일", "찾아줘", "검색", "보낸", "받은", "최근", "있어", "있냐", "뭐야");
+        String keyword = resolveSearchKeyword(prompt, ir.keyword(),
+                "메일", "이메일", "찾아줘", "찾아", "검색", "검색해줘", "보낸", "받은", "최근", "있어", "있냐", "뭐야");
         PageRequest page = PageRequest.of(0, MAX_RESULTS);
 
         List<MailRecipient> received = mailRecipientRepository.searchReceivedByKeyword(user, keyword, page);
@@ -247,8 +310,8 @@ public class AiAssistantAskService {
     }
 
     private AiAssistantDto.AskResponse handleDocumentSearch(String prompt, IntentResult ir, User user) {
-        String keyword = ir.keyword() != null ? ir.keyword()
-                : extractKeyword(prompt, "문서", "보고서", "기획서", "계획서", "찾아줘", "검색", "관련", "최근", "있어", "있냐");
+        String keyword = resolveSearchKeyword(prompt, ir.keyword(),
+                "문서", "보고서", "기획서", "계획서", "찾아줘", "찾아", "검색", "검색해줘", "관련", "최근", "있어", "있냐");
         List<DocumentEntity> all = documentRepository.findByOwnerAndDeletedAtIsNull(user);
 
         List<AiAssistantDto.ResultItem> results = all.stream()
@@ -278,8 +341,8 @@ public class AiAssistantAskService {
     }
 
     private AiAssistantDto.AskResponse handleFileSearch(String prompt, IntentResult ir, User user) {
-        String keyword = ir.keyword() != null ? ir.keyword()
-                : extractKeyword(prompt, "파일", "첨부", "찾아줘", "검색", "관련", "최근", "있어", "있냐");
+        String keyword = resolveSearchKeyword(prompt, ir.keyword(),
+                "파일", "첨부", "찾아줘", "찾아", "검색", "검색해줘", "관련", "최근", "있어", "있냐");
         List<FileItem> files = (keyword != null && !keyword.isBlank())
                 ? fileItemRepository.findByUserAndKeyword(user.getUserId(), keyword)
                 : fileItemRepository.findByOwnerTypeAndOwnerIdAndDeletedAtIsNull(OwnerType.USER, user.getUserId());
@@ -454,17 +517,41 @@ public class AiAssistantAskService {
         return AiAssistantDto.ActionItem.builder().label(label).actionType("navigate").payload(route).build();
     }
 
+    private String resolveSearchKeyword(String prompt, String candidate, String... removeWords) {
+        String normalized = normalizeKeyword(candidate, removeWords);
+        return normalized != null ? normalized : extractKeyword(prompt, removeWords);
+    }
+
+    private String normalizeKeyword(String keyword, String... removeWords) {
+        if (keyword == null || keyword.isBlank()) return null;
+        String cleaned = keyword.trim();
+        for (String w : removeWords) cleaned = cleaned.replace(w, " ");
+        cleaned = cleaned
+                .replaceAll("[\"'“”‘’]", " ")
+                .replaceAll("[이가은는을를의에서로](?=\\s|$)", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (cleaned.isBlank()) return null;
+        if (isCommandWord(cleaned)) return null;
+        return cleaned;
+    }
+
     private String extractKeyword(String prompt, String... removeWords) {
         String cleaned = prompt;
         for (String w : removeWords) cleaned = cleaned.replace(w, " ");
         cleaned = cleaned
+                .replaceAll("[\"'“”‘’]", " ")
                 .replaceAll("[이가은는을를의에서로](?=\\s|$)", " ")
                 .replaceAll("\\s+", " ").trim();
         if (cleaned.isBlank()) return null;
         for (String token : cleaned.split("\\s+")) {
-            if (token.length() >= 2) return token;
+            if (token.length() >= 2 && !isCommandWord(token)) return token;
         }
         return null;
+    }
+
+    private boolean isCommandWord(String value) {
+        return containsAny(value, "찾아", "찾아줘", "검색", "검색해줘", "알려줘", "보여줘", "뭐야", "있어", "있냐", "최근");
     }
 
     private String truncate(String text, int max) {
