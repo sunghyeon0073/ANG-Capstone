@@ -18,17 +18,22 @@ import com.ang.Backend.domain.schedule.entity.Schedule;
 import com.ang.Backend.domain.schedule.repository.ScheduleRepository;
 import com.ang.Backend.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiAssistantAskService {
@@ -40,6 +45,10 @@ public class AiAssistantAskService {
     private final FileItemRepository fileItemRepository;
     private final ApprovalDocRepository approvalDocRepository;
     private final AiScheduledActionService aiScheduledActionService;
+    private final RestClient ollamaRestClient;
+
+    @Value("${ollama.secretary-model:ang-secretary:latest}")
+    private String secretaryModel;
 
     private static final int MAX_RESULTS = 5;
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("M월 d일");
@@ -124,9 +133,12 @@ public class AiAssistantAskService {
                         .build())
                 .toList();
 
-        String answer = results.isEmpty()
+        String fallback = results.isEmpty()
                 ? label + " 등록된 일정이 없어요."
                 : label + " 일정이 총 " + all.size() + "개예요.";
+
+        String dataContext = buildScheduleContext(label, all);
+        String answer = enrichAnswerWithLLM(prompt, dataContext, fallback);
 
         return AiAssistantDto.AskResponse.builder()
                 .answer(answer)
@@ -172,9 +184,12 @@ public class AiAssistantAskService {
                     .build()));
         }
 
-        String answer = results.isEmpty()
+        String fallback = results.isEmpty()
                 ? (keyword != null ? "\"" + keyword + "\" 관련 메일을 찾지 못했어요." : "최근 메일이 없어요.")
-                : (keyword != null ? "\"" + keyword + "\" 관련 메일 " + results.size() + "건을 찾았어요." : "최근 메일 " + results.size() + "건이에요.");
+                : (keyword != null ? "\"" + keyword + "\" 관련 메일 " + results.size() + "건을 찾았어요." : "최근 메일 " + results.size() + "건이어요.");
+
+        String dataContext = buildMailContext(keyword, results);
+        String answer = enrichAnswerWithLLM(prompt, dataContext, fallback);
 
         return AiAssistantDto.AskResponse.builder()
                 .answer(answer)
@@ -208,9 +223,12 @@ public class AiAssistantAskService {
                         .build())
                 .toList();
 
-        String answer = results.isEmpty()
+        String fallback = results.isEmpty()
                 ? (keyword != null ? "\"" + keyword + "\" 관련 문서를 찾지 못했어요." : "저장된 문서가 없어요.")
-                : (keyword != null ? "\"" + keyword + "\" 관련 문서 " + results.size() + "건을 찾았어요." : "문서 " + results.size() + "건이에요.");
+                : (keyword != null ? "\"" + keyword + "\" 관련 문서 " + results.size() + "건을 찾았어요." : "문서 " + results.size() + "건이어요.");
+
+        String dataContext = buildDocumentContext(keyword, results);
+        String answer = enrichAnswerWithLLM(prompt, dataContext, fallback);
 
         return AiAssistantDto.AskResponse.builder()
                 .answer(answer)
@@ -241,9 +259,12 @@ public class AiAssistantAskService {
                         .build())
                 .toList();
 
-        String answer = results.isEmpty()
+        String fallback = results.isEmpty()
                 ? (keyword != null ? "\"" + keyword + "\" 파일을 찾지 못했어요." : "저장된 파일이 없어요.")
-                : (keyword != null ? "\"" + keyword + "\" 파일 " + results.size() + "건을 찾았어요." : "파일 " + results.size() + "건이에요.");
+                : (keyword != null ? "\"" + keyword + "\" 파일 " + results.size() + "건을 찾았어요." : "파일 " + results.size() + "건이어요.");
+
+        String dataContext = buildFileContext(keyword, results);
+        String answer = enrichAnswerWithLLM(prompt, dataContext, fallback);
 
         return AiAssistantDto.AskResponse.builder()
                 .answer(answer)
@@ -273,9 +294,12 @@ public class AiAssistantAskService {
                         .build())
                 .toList();
 
-        String answer = results.isEmpty()
+        String fallback = results.isEmpty()
                 ? "결재 대기 중인 문서가 없어요."
                 : "결재 대기 중인 문서가 " + pending.getTotalElements() + "건 있어요.";
+
+        String dataContext = buildApprovalContext(results, pending.getTotalElements());
+        String answer = enrichAnswerWithLLM("결재 대기 알려줘", dataContext, fallback);
 
         return AiAssistantDto.AskResponse.builder()
                 .answer(answer)
@@ -323,6 +347,91 @@ public class AiAssistantAskService {
                     .hasMore(false)
                     .build();
         }
+    }
+
+    // ===== LLM Integration =====
+
+    private String enrichAnswerWithLLM(String userPrompt, String dataContext, String fallback) {
+        String llm = callSecretaryLLM(userPrompt, dataContext);
+        return (llm != null && !llm.isBlank()) ? llm : fallback;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String callSecretaryLLM(String userPrompt, String dataContext) {
+        try {
+            String fullPrompt = "[사용자 질문]\n" + userPrompt + "\n\n[데이터]\n" + dataContext;
+            Map<String, Object> body = Map.of(
+                    "model", secretaryModel,
+                    "prompt", fullPrompt,
+                    "stream", false,
+                    "options", Map.of("temperature", 0.5, "num_predict", 256)
+            );
+            Map<String, Object> response = ollamaRestClient.post()
+                    .uri("/api/generate")
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            if (response != null && response.get("response") != null) {
+                return response.get("response").toString().trim();
+            }
+        } catch (Exception e) {
+            log.debug("Secretary LLM call failed, using rule-based answer: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    // ===== Data Context Builders =====
+
+    private String buildScheduleContext(String label, List<Schedule> schedules) {
+        if (schedules.isEmpty()) {
+            return label + " 등록된 일정 없음";
+        }
+        StringBuilder sb = new StringBuilder(label + " 일정 " + schedules.size() + "개:\n");
+        schedules.stream().limit(MAX_RESULTS).forEach(s ->
+                sb.append("- ").append(s.getTitle())
+                        .append(" (").append(s.getStartDate().format(DATE_FMT))
+                        .append(" ").append(s.getStartTime()).append("~").append(s.getEndTime()).append(")\n"));
+        if (schedules.size() > MAX_RESULTS) {
+            sb.append("...추가 ").append(schedules.size() - MAX_RESULTS).append("개 더 있음");
+        }
+        return sb.toString();
+    }
+
+    private String buildMailContext(String keyword, List<AiAssistantDto.ResultItem> results) {
+        if (results.isEmpty()) {
+            return keyword != null ? "\"" + keyword + "\" 관련 메일 없음" : "메일 없음";
+        }
+        StringBuilder sb = new StringBuilder("메일 " + results.size() + "건:\n");
+        results.forEach(r -> sb.append("- [").append(r.getSourceLabel()).append("] ").append(r.getTitle())
+                .append(" (").append(r.getSummary()).append(")\n"));
+        return sb.toString();
+    }
+
+    private String buildDocumentContext(String keyword, List<AiAssistantDto.ResultItem> results) {
+        if (results.isEmpty()) {
+            return keyword != null ? "\"" + keyword + "\" 관련 문서 없음" : "등록된 문서 없음";
+        }
+        StringBuilder sb = new StringBuilder("문서 " + results.size() + "건:\n");
+        results.forEach(r -> sb.append("- ").append(r.getTitle()).append(" (").append(r.getDate()).append(")\n"));
+        return sb.toString();
+    }
+
+    private String buildFileContext(String keyword, List<AiAssistantDto.ResultItem> results) {
+        if (results.isEmpty()) {
+            return keyword != null ? "\"" + keyword + "\" 파일 없음" : "저장된 파일 없음";
+        }
+        StringBuilder sb = new StringBuilder("파일 " + results.size() + "건:\n");
+        results.forEach(r -> sb.append("- ").append(r.getTitle()).append(" (").append(r.getSummary()).append(")\n"));
+        return sb.toString();
+    }
+
+    private String buildApprovalContext(List<AiAssistantDto.ResultItem> results, long total) {
+        if (results.isEmpty()) {
+            return "결재 대기 문서 없음";
+        }
+        StringBuilder sb = new StringBuilder("결재 대기 " + total + "건:\n");
+        results.forEach(r -> sb.append("- ").append(r.getTitle()).append(" (").append(r.getSummary()).append(")\n"));
+        return sb.toString();
     }
 
     // ===== Utilities =====
