@@ -71,8 +71,28 @@ public class DocumentDto {
             return Response.builder()
                     .docId(entity.getDocId())
                     .title(entity.getTitle())
+                    .status(entity.getStatus())
                     .originalContent(entity.getOriginalContent())
-                    .aiSummary(entity.getAiSummary())
+                    .originalFileName(entity.getFile() != null ? entity.getFile().getOriginalFileName() : null)
+                    .fileId(entity.getFile() != null ? entity.getFile().getFileId() : null)
+                    .fileContentType(entity.getFile() != null ? entity.getFile().getContentType() : null)
+                    .fileSize(entity.getFile() != null ? entity.getFile().getFileSize() : null)
+                    .previewFileId(entity.getPreviewFile() != null ? entity.getPreviewFile().getFileId() : null)
+                    .previewFileContentType(entity.getPreviewFile() != null ? entity.getPreviewFile().getContentType() : null)
+                    .ownerName(entity.getOwner() != null ? entity.getOwner().getName() : "Unknown")
+                    .ownerId(entity.getOwner() != null ? entity.getOwner().getUserId() : null)
+                    .scopeName(entity.getScope() != null ? entity.getScope().getName() : "N/A")
+                    .scopeId(entity.getScope() != null ? entity.getScope().getScopeId() : null)
+                    .createdAt(entity.getCreatedAt())
+                    .deletedAt(entity.getDeletedAt())
+                    .isFavorite(false)
+                    .build();
+        }
+
+        public static Response fromEntitySummary(DocumentEntity entity) {
+            return Response.builder()
+                    .docId(entity.getDocId())
+                    .title(entity.getTitle())
                     .status(entity.getStatus())
                     .originalFileName(entity.getFile() != null ? entity.getFile().getOriginalFileName() : null)
                     .fileId(entity.getFile() != null ? entity.getFile().getFileId() : null)
@@ -86,12 +106,25 @@ public class DocumentDto {
                     .scopeId(entity.getScope() != null ? entity.getScope().getScopeId() : null)
                     .createdAt(entity.getCreatedAt())
                     .deletedAt(entity.getDeletedAt())
-                    .isFavorite(Boolean.TRUE.equals(entity.getIsFavorite()))
+                    .isFavorite(false)
                     .build();
         }
 
         public void setCanDelete(boolean canDelete) {
             this.canDelete = canDelete;
         }
+
+        public void setFavorite(boolean favorite) {
+            this.isFavorite = favorite;
+        }
+    }
+
+    @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+    public static class PagedResponse {
+        private List<Response> content;
+        private int currentPage;
+        private int totalPages;
+        private long totalElements;
+        private int size;
     }
 }

@@ -8,22 +8,16 @@ import com.ang.Backend.domain.document.service.DocumentService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -58,12 +52,14 @@ public class DocumentController {
     }
 
     @GetMapping
-    public ApiResponse<List<DocumentDto.Response>> getDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+    public ApiResponse<DocumentDto.PagedResponse> getDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         User user = null;
         if (userDetails != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.getAllDocuments(user));
+        return ApiResponse.ok(documentService.getAllDocuments(user, pageable));
     }
 
     @PostMapping("/ai-generate")
@@ -85,21 +81,26 @@ public class DocumentController {
     }
 
     @GetMapping("/my")
-    public ApiResponse<List<DocumentDto.Response>> getMyDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+    public ApiResponse<DocumentDto.PagedResponse> getMyDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(required = false) String keyword,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getMyDocuments(user));
+        return ApiResponse.ok(documentService.getMyDocuments(user, keyword, pageable));
     }
 
     @GetMapping("/favorites")
-    public ApiResponse<List<DocumentDto.Response>> getFavoriteDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+    public ApiResponse<DocumentDto.PagedResponse> getFavoriteDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PageableDefault(size = 20) Pageable pageable) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getFavoriteDocuments(user));
+        return ApiResponse.ok(documentService.getFavoriteDocuments(user, pageable));
     }
 
     @PostMapping("/{id}/favorite")
@@ -112,15 +113,16 @@ public class DocumentController {
     }
 
     @GetMapping("/department")
-    public ApiResponse<List<DocumentDto.Response>> getDepartmentDocuments(
+    public ApiResponse<DocumentDto.PagedResponse> getDepartmentDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(required = false) Integer scopeId,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false) String keyword,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getDepartmentDocuments(user, scopeId, keyword));
+        return ApiResponse.ok(documentService.getDepartmentDocuments(user, scopeId, keyword, pageable));
     }
 
     @GetMapping("/{id}")
@@ -168,12 +170,14 @@ public class DocumentController {
     }
 
     @GetMapping("/trash")
-    public ApiResponse<List<DocumentDto.Response>> getTrashDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+    public ApiResponse<DocumentDto.PagedResponse> getTrashDocuments(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PageableDefault(size = 20, sort = "deletedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getTrashDocuments(user));
+        return ApiResponse.ok(documentService.getTrashDocuments(user, pageable));
     }
 
     @DeleteMapping("/{id}")

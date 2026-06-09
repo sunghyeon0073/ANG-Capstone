@@ -4,6 +4,7 @@ import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
 import com.ang.Backend.domain.document.repository.DocumentRepository;
+import com.ang.Backend.domain.document.repository.FavoriteDocumentRepository;
 import com.ang.Backend.domain.file.entity.FileItem;
 import com.ang.Backend.domain.file.repository.FileItemRepository;
 import com.ang.Backend.domain.file.service.FileService;
@@ -37,6 +38,8 @@ import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -88,6 +91,7 @@ public class DocumentService {
     private static final double DOCX_MIN_INFLATE_RATIO = 0.001;
 
     private final DocumentRepository documentRepository;
+    private final FavoriteDocumentRepository favoriteDocumentRepository;
     private final FileItemRepository fileItemRepository;
     private final FileService fileService;
     private final UserMembershipRepository userMembershipRepository;
@@ -144,25 +148,39 @@ public class DocumentService {
     public boolean toggleFavorite(Long docId, User user) {
         DocumentEntity document = documentRepository.findById(docId)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
-        
-        // Ownership check can be added here if needed
-        
-        boolean newState = !Boolean.TRUE.equals(document.getIsFavorite());
-        document.setIsFavorite(newState);
-        documentRepository.save(document);
-        return newState;
+
+        return favoriteDocumentRepository.findByUserAndDocument(user, document)
+                .map(fav -> {
+                    favoriteDocumentRepository.delete(fav);
+                    return false;
+                })
+                .orElseGet(() -> {
+                    favoriteDocumentRepository.save(com.ang.Backend.domain.document.entity.FavoriteDocument.builder()
+                            .user(user)
+                            .document(document)
+                            .build());
+                    return true;
+                });
     }
 
-    public List<DocumentDto.Response> getFavoriteDocuments(User user) {
-        // Find personal favorite documents
-        List<DocumentEntity> favorites = documentRepository.findByOwnerAndIsFavoriteTrueAndDeletedAtIsNull(user);
-        
-        // Optionally add shared documents that are marked as favorite
-        // For now, let's keep it to owner's favorites
-        
-        return favorites.stream()
-                .map(DocumentDto.Response::fromEntity)
+    public DocumentDto.PagedResponse getFavoriteDocuments(User user, Pageable pageable) {
+        Page<com.ang.Backend.domain.document.entity.FavoriteDocument> page = favoriteDocumentRepository.findByUserAndDocument_DeletedAtIsNull(user, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(fav -> {
+                    DocumentDto.Response res = DocumentDto.Response.fromEntitySummary(fav.getDocument());
+                    res.setFavorite(true);
+                    return res;
+                })
                 .collect(Collectors.toList());
+        setCanDeleteFlags(list, user);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
     }
 
     @Transactional
@@ -194,12 +212,21 @@ public class DocumentService {
         return documentRepository.save(doc).getDocId();
     }
 
-    public List<DocumentDto.Response> getAllDocuments(User requester) {
-        List<DocumentDto.Response> list = documentRepository.findAllByDeletedAtIsNull().stream()
-                .map(DocumentDto.Response::fromEntity)
+    public DocumentDto.PagedResponse getAllDocuments(User requester, Pageable pageable) {
+        Page<DocumentEntity> page = documentRepository.findAllByDeletedAtIsNull(pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, requester);
-        return list;
+        setFavoriteFlags(list, requester);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -1069,16 +1096,24 @@ public class DocumentService {
         };
     }
 
-    public List<DocumentDto.Response> getMyDocuments(User user) {
-        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNull(user).stream()
-                .filter(d -> d.getScope() == null)
-                .map(DocumentDto.Response::fromEntity)
+    public DocumentDto.PagedResponse getMyDocuments(User user, String keyword, Pageable pageable) {
+        Page<DocumentEntity> page = documentRepository.findMyDocuments(user, keyword, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
-        return list;
+        setFavoriteFlags(list, user);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
     }
 
-    public List<DocumentDto.Response> getDepartmentDocuments(User user, Integer targetScopeId, String keyword) {
+    public DocumentDto.PagedResponse getDepartmentDocuments(User user, Integer targetScopeId, String keyword, Pageable pageable) {
         List<Integer> scopeIds;
 
         // 사용자가 속한 모든 부서 정보 가져오기 (보안 검증용)
@@ -1091,81 +1126,87 @@ public class DocumentService {
         boolean isSuperAdmin = roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100);
 
         if (targetScopeId != null) {
-            // 특정 부서 필터링 시 보안 검증: 요청한 부서가 사용자의 권한 범위 내에 있는지 확인
             Scope targetScope = scopeRepository.findById(targetScopeId)
                     .orElseThrow(() -> new RuntimeException("해당 부서를 찾을 수 없습니다."));
-            
+
             if (!isSuperAdmin) {
-                // 새로운 로직: 사용자가 속한 부서의 Level 2 조상을 찾음
-                // 예: 영진전문대학교(L1) -> 평생교육원(L2) -> 교육팀(L3)
-                // 사용자가 교육팀 소속이면 평생교육원 산하 모든 부서 문서를 볼 수 있음
-                
                 boolean hasAccess = false;
                 for (Scope myScope : myScopes) {
                     Scope myLevel2 = scopeService.getLevel2Ancestor(myScope);
                     Scope targetLevel2 = scopeService.getLevel2Ancestor(targetScope);
-                    
-                    if (myLevel2 != null && targetLevel2 != null && 
+
+                    if (myLevel2 != null && targetLevel2 != null &&
                         myLevel2.getScopeId().equals(targetLevel2.getScopeId())) {
                         hasAccess = true;
                         break;
                     }
-                    // 혹은 기존처럼 직계 부모-자식 관계인 경우도 허용
                     if (scopeService.isSameOrParent(myScope, targetScope)) {
                         hasAccess = true;
                         break;
                     }
                 }
-                
+
                 if (!hasAccess) {
                     throw new RuntimeException("해당 부서의 문서에 접근할 권한이 없습니다.");
                 }
             }
-            
+
             scopeIds = scopeService.getAllSubScopeIds(targetScope);
         } else {
-            // 전체 조회 시
             if (isSuperAdmin) {
-                // 최고관리자는 모든 부서 ID 가져오기
                 scopeIds = scopeRepository.findAll().stream().map(Scope::getScopeId).collect(Collectors.toList());
             } else {
                 if (myScopes.isEmpty()) {
-                    return List.of();
+                    return DocumentDto.PagedResponse.builder()
+                            .content(List.of())
+                            .currentPage(0)
+                            .totalPages(0)
+                            .totalElements(0)
+                            .size(pageable.getPageSize())
+                            .build();
                 }
 
-                // 사용자가 속한 모든 L2 조상들의 모든 하위 부서 ID를 모음
                 scopeIds = myScopes.stream()
                         .map(scopeService::getLevel2Ancestor)
                         .filter(java.util.Objects::nonNull)
                         .flatMap(l2 -> scopeService.getAllSubScopeIds(l2).stream())
                         .distinct()
-                        .collect(Collectors.toList());
-                
-                // 본인이 속한 부서의 하위 부서들도 포함 (L2가 없는 경우 대비)
+                        .collect(Collectors.toCollection(ArrayList::new));
+
                 List<Integer> myDirectSubScopes = myScopes.stream()
                         .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
                         .distinct()
                         .toList();
-                
+
                 scopeIds.addAll(myDirectSubScopes);
                 scopeIds = scopeIds.stream().distinct().collect(Collectors.toList());
             }
         }
 
-        List<DocumentDto.Response> list = documentRepository.searchByScopesAndDeletedAtIsNull(scopeIds, keyword).stream()
-                .map(DocumentDto.Response::fromEntity)
+        Page<DocumentEntity> page = documentRepository.searchByScopesAndDeletedAtIsNull(scopeIds, keyword, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
-        return list;
+        setFavoriteFlags(list, user);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
     }
 
     public DocumentDto.Response getDocument(Long id, User requester) {
         DocumentDto.Response res = documentRepository.findById(id)
                 .map(DocumentDto.Response::fromEntity)
                 .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
-        
+
         if (requester != null) {
             setCanDeleteFlags(List.of(res), requester);
+            setFavoriteFlags(List.of(res), requester);
         }
         return res;
     }
@@ -1184,7 +1225,6 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
 
-        // 삭제 권한 체크
         if (!canUserDelete(doc, requester)) {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 휴지통으로 이동할 권한이 없습니다.");
         }
@@ -1197,7 +1237,6 @@ public class DocumentService {
         if (doc.getPreviewFile() != null) {
             doc.getPreviewFile().setDeletedAt(now);
         }
-        // 물리 파일은 남겨둡니다. 30일 후 완전 삭제 시 제거됩니다.
     }
 
     @Transactional
@@ -1205,7 +1244,6 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
 
-        // 완전 삭제 권한 체크
         if (!canUserDelete(doc, requester)) {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 완전 삭제할 권한이 없습니다.");
         }
@@ -1213,17 +1251,15 @@ public class DocumentService {
         FileItem file = doc.getFile();
         FileItem previewFile = doc.getPreviewFile();
 
-        // 1. 문서 엔티티를 먼저 삭제하고 DB에 즉시 반영하여 파일 참조를 제거합니다.
+        favoriteDocumentRepository.deleteByDocument(doc);
         documentRepository.delete(doc);
         documentRepository.flush();
-        
-        // 2. 다른 문서에서 사용하지 않는 경우에만 물리 파일과 파일 정보를 삭제합니다.
+
         if (file != null && !documentRepository.existsByFile(file)) {
             fileService.deletePhysicalFile(file);
         }
-        
+
         if (previewFile != null && !previewFile.equals(file)) {
-            // Note: existsByFile checks if ANY document uses this FileItem as its 'file' field.
             if (!documentRepository.existsByFile(previewFile)) {
                 fileService.deletePhysicalFile(previewFile);
             }
@@ -1235,7 +1271,6 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
 
-        // 복구 권한 체크 (삭제 권한과 동일)
         if (!canUserDelete(doc, requester)) {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 복구할 권한이 없습니다.");
         }
@@ -1249,12 +1284,12 @@ public class DocumentService {
         }
     }
 
-    @Scheduled(cron = "0 0 0 * * ?") // 매일 자정에 실행
+    @Scheduled(cron = "0 0 0 * * ?")
     @Transactional
     public void autoDeleteTrashDocuments() {
         LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
         List<DocumentEntity> oldTrashDocuments = documentRepository.findByDeletedAtBefore(cutoffDate);
-        
+
         for (DocumentEntity doc : oldTrashDocuments) {
             try {
                 if (doc.getFile() != null) {
@@ -1264,6 +1299,7 @@ public class DocumentService {
                         && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
                     fileService.deletePhysicalFile(doc.getPreviewFile());
                 }
+                favoriteDocumentRepository.deleteByDocument(doc);
                 documentRepository.delete(doc);
                 log.info("Auto-deleted trash document: {}", doc.getDocId());
             } catch (Exception e) {
@@ -1272,38 +1308,33 @@ public class DocumentService {
         }
     }
 
-    public List<DocumentDto.Response> getTrashDocuments(User user) {
-        // 본인의 휴지통 문서
-        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNotNull(user).stream()
-                .map(DocumentDto.Response::fromEntity)
+    public DocumentDto.PagedResponse getTrashDocuments(User user, Pageable pageable) {
+        Page<DocumentEntity> page = documentRepository.findByOwnerAndDeletedAtIsNotNull(user, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
-        
-        // 만약 관리자라면 해당 부서의 삭제된 문서도 볼 수 있어야 함
-        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
-        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
-        
-        if (maxLevel >= 50) {
-            List<Integer> managedScopeIds = roles.stream()
-                    .filter(r -> r.getRole().getRoleLevel() >= 50)
-                    .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
-                    .distinct()
-                    .collect(Collectors.toList());
-            
-            if (!managedScopeIds.isEmpty()) {
-                List<DocumentDto.Response> deptTrash = documentRepository.searchByScopesAndDeletedAtIsNotNull(managedScopeIds, null).stream()
-                        .map(DocumentDto.Response::fromEntity)
-                        .collect(Collectors.toList());
-                // 중복 제거 (본인이 올린 문서가 부서 문서일 수 있음)
-                for (DocumentDto.Response r : deptTrash) {
-                    if (list.stream().noneMatch(existing -> existing.getDocId().equals(r.getDocId()))) {
-                        list.add(r);
-                    }
-                }
-            }
-        }
-        
+
         setCanDeleteFlags(list, user);
-        return list;
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
+    }
+
+    private void setFavoriteFlags(List<DocumentDto.Response> responses, User requester) {
+        if (responses == null || responses.isEmpty() || requester == null) return;
+
+        List<Long> docIds = responses.stream().map(DocumentDto.Response::getDocId).toList();
+        List<com.ang.Backend.domain.document.entity.FavoriteDocument> favorites = favoriteDocumentRepository.findByUserAndDocument_DocIdIn(requester, docIds);
+        List<Long> favoriteDocIds = favorites.stream().map(f -> f.getDocument().getDocId()).toList();
+
+        for (DocumentDto.Response res : responses) {
+            res.setFavorite(favoriteDocIds.contains(res.getDocId()));
+        }
     }
 
     private boolean canUserDelete(DocumentEntity doc, User requester) {

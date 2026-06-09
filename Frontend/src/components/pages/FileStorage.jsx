@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  FiFile, FiImage, FiFileText, FiGrid, FiList, FiSearch, 
+  FiFileText, FiGrid, FiList, FiSearch, 
   FiFilter, FiInfo, FiDownload, FiTrash2, FiStar, 
-  FiClock, FiUsers, FiFolder, FiChevronRight, FiUploadCloud,
-  FiMoreVertical, FiShare2, FiRotateCcw
+  FiUsers, FiFolder, FiChevronRight, FiUploadCloud,
+  FiShare2, FiRotateCcw, FiChevronLeft
 } from 'react-icons/fi';
 import { 
   FaStar, FaRegStar, FaFilePdf, FaFileWord, FaFileExcel, 
@@ -18,10 +18,10 @@ import {
   deleteDocument,
   permanentDeleteDocument,
   restoreDocument,
-  getDocument,
   downloadDocumentFile,
   toggleFavorite,
-  getFavoriteDocuments
+  getFavoriteDocuments,
+  getAllDocuments
 } from '../../api/documentApi';
 import { getApprovalTemplates } from '../../api/approvalApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
@@ -73,15 +73,17 @@ export default function FileStorage() {
   const [uploading, setUploading] = useState(false);
   const [myScopes, setMyScopes] = useState([]);
   const [targetScopeId, setTargetScopeId] = useState('');
-  const [filterTypes, setFilterTypes] = useState(['all']); // Only 'all' checked by default
+  const [filterTypes, setFilterTypes] = useState(['all']); 
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(0); // Backend is 0-indexed
+  const [totalPages, setTotalPages] = useState(0);
+  const itemsPerPage = 20;
 
-  const fileInputRef = useRef();
   const mainRef = useRef();
 
   const toggleFilter = (type) => {
@@ -95,19 +97,26 @@ export default function FileStorage() {
         return [...next, type];
       }
     });
-    setCurrentPage(1);
+    setCurrentPage(0);
   };
 
   const fetchDocs = async () => {
     try {
       setIsLoading(true);
       let res;
+      const params = {
+        page: currentPage,
+        size: itemsPerPage,
+        sort: `${sortConfig.key},${sortConfig.direction}`,
+        keyword: searchQuery
+      };
+
       if (activeTab === 'trash') {
-        res = await getTrashDocuments();
+        res = await getTrashDocuments(params);
       } else if (activeTab === 'shared') {
-        res = await getDepartmentDocuments({ keyword: searchQuery, scopeId: targetScopeId });
+        res = await getDepartmentDocuments({ ...params, scopeId: targetScopeId });
       } else if (activeTab === 'important') {
-        res = await getFavoriteDocuments();
+        res = await getFavoriteDocuments(params);
       } else if (activeTab === 'template') {
         res = await getApprovalTemplates();
         const templates = res.data?.data || [];
@@ -122,14 +131,23 @@ export default function FileStorage() {
           formSchema: t.formSchema
         }));
         setDocs(transformedTemplates);
+        setTotalPages(1);
         setIsLoading(false);
         return;
+      } else if (activeTab === 'all') {
+        res = await getAllDocuments(params);
       } else {
-        res = await getMyDocuments();
+        res = await getMyDocuments(params);
       }
       
-      let fetchedDocs = res.data?.data || [];
-      setDocs(fetchedDocs);
+      const pagedRes = res.data?.data;
+      if (pagedRes && Array.isArray(pagedRes.content)) {
+        setDocs(pagedRes.content);
+        setTotalPages(pagedRes.totalPages);
+      } else {
+        setDocs([]);
+        setTotalPages(0);
+      }
     } catch (error) {
       console.error('문서 로드 실패', error);
       setDocs([]);
@@ -142,7 +160,6 @@ export default function FileStorage() {
     e.stopPropagation();
     try {
       const res = await toggleFavorite(docId);
-      // Backend returns ApiResponse<Boolean>, so res.data is the ApiResponse object
       const newState = res.data?.data;
       
       if (newState !== undefined) {
@@ -178,6 +195,7 @@ export default function FileStorage() {
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
     }));
+    setCurrentPage(0);
   };
 
   const fetchMyScopes = async () => {
@@ -191,53 +209,12 @@ export default function FileStorage() {
 
   useEffect(() => {
     fetchDocs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, targetScopeId, currentPage, sortConfig]);
+
+  useEffect(() => {
     fetchMyScopes();
-  }, [activeTab, targetScopeId]);
-
-  const filteredDocs = useMemo(() => {
-    return docs.filter(doc => {
-      const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            (doc.originalFileName && doc.originalFileName.toLowerCase().includes(searchQuery.toLowerCase()));
-      
-      if (filterTypes.includes('all')) return matchesSearch;
-
-      const kind = getDocumentPreviewKind(doc);
-      const ext = doc.title?.split('.').pop()?.toLowerCase() || '';
-      
-      const matchesType = filterTypes.some(type => {
-        if (type === 'pdf') return kind === 'pdf';
-        if (type === 'hwp') return kind === 'hwp' || kind === 'hwpx';
-        if (type === 'docx') return kind === 'word' || ext === 'docx' || ext === 'doc';
-        if (type === 'excel') return (kind === 'excel' && ext !== 'csv') || ext === 'xlsx' || ext === 'xls';
-        if (type === 'image') return kind === 'image' || ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext);
-        return false;
-      });
-
-      return matchesSearch && matchesType;
-    });
-  }, [docs, searchQuery, filterTypes]);
-
-  const sortedDocs = useMemo(() => {
-    const sorted = [...filteredDocs];
-    sorted.sort((a, b) => {
-      let valA = a[sortConfig.key];
-      let valB = b[sortConfig.key];
-      
-      if (typeof valA === 'string') valA = valA.toLowerCase();
-      if (typeof valB === 'string') valB = valB.toLowerCase();
-      
-      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return sorted;
-  }, [filteredDocs, sortConfig]);
-
-  const totalPages = Math.ceil(sortedDocs.length / itemsPerPage);
-  const paginatedDocs = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return sortedDocs.slice(start, start + itemsPerPage);
-  }, [sortedDocs, currentPage]);
+  }, []);
 
   const selectedDoc = useMemo(() => {
     return docs.find(d => d.docId === selectedDocId);
@@ -320,6 +297,7 @@ export default function FileStorage() {
         if (activeTab !== id) {
           setActiveTab(id);
           setSelectedDocId(null);
+          setCurrentPage(0);
         }
       }}
     >
@@ -386,6 +364,12 @@ export default function FileStorage() {
                 placeholder="파일 이름으로 검색..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setCurrentPage(0);
+                    fetchDocs();
+                  }
+                }}
               />
             </div>
 
@@ -431,7 +415,10 @@ export default function FileStorage() {
                       <select 
                         className="filter-select"
                         value={targetScopeId}
-                        onChange={(e) => setTargetScopeId(e.target.value)}
+                        onChange={(e) => {
+                          setTargetScopeId(e.target.value);
+                          setCurrentPage(0);
+                        }}
                       >
                         <option value="">전체 부서</option>
                         {myScopes.map(scope => (
@@ -474,14 +461,14 @@ export default function FileStorage() {
                   <div className="spinner" />
                   <p>파일을 불러오는 중...</p>
                   </div>
-                  ) : filteredDocs.length === 0 ? (
+                  ) : docs.length === 0 ? (
                   <div className="file-empty">
                   <FiFolder className="file-empty-icon" />
                   <p>{searchQuery ? '검색 결과가 없습니다.' : '파일이 없습니다.'}</p>
                   </div>
                   ) : viewMode === 'grid' ? (
                   <div className="file-grid">
-                  {paginatedDocs.map(doc => (
+                  {docs.map(doc => (
                   <div 
                   key={doc.docId} 
                   className={`file-card ${selectedDocId === doc.docId ? 'selected' : ''}`}
@@ -525,7 +512,7 @@ export default function FileStorage() {
                   </tr>
                   </thead>
                   <tbody>
-                  {paginatedDocs.map(doc => (
+                  {docs.map(doc => (
                   <tr 
                   key={doc.docId} 
                   className={selectedDocId === doc.docId ? 'selected' : ''}
@@ -571,17 +558,17 @@ export default function FileStorage() {
                     <footer className="file-pagination">
                       <button 
                         className="pagination-btn" 
-                        disabled={currentPage === 1}
+                        disabled={currentPage === 0}
                         onClick={() => setCurrentPage(prev => prev - 1)}
                       >
                         <FiChevronLeft />
                       </button>
                       <span className="pagination-info">
-                        Page <strong>{currentPage}</strong> of {totalPages}
+                        Page <strong>{currentPage + 1}</strong> of {totalPages}
                       </span>
                       <button 
                         className="pagination-btn" 
-                        disabled={currentPage === totalPages}
+                        disabled={currentPage >= totalPages - 1}
                         onClick={() => setCurrentPage(prev => prev + 1)}
                       >
                         <FiChevronRight />

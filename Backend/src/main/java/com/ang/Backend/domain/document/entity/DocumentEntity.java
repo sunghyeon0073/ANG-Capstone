@@ -51,10 +51,6 @@ public class DocumentEntity {
     @Builder.Default
     private Boolean isAiGenerated = false;
 
-    @Column(name = "is_favorite")
-    @Builder.Default
-    private Boolean isFavorite = false;
-
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
