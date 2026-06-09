@@ -248,6 +248,19 @@
   gap: 6px;
 }
 
+.btn-generate--docx-edit {
+  background-color: #e6fffb;
+  color: #0f766e;
+  box-shadow: var(--shadow-soft-xs);
+}
+
+.btn-generate--docx-edit:hover:not(:disabled),
+.btn-generate--docx-edit.active {
+  background-color: #0f766e;
+  color: #fff;
+  box-shadow: 0 4px 6px -1px rgba(15, 118, 110, 0.22);
+}
+
 .btn-generate:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
   transform: translateY(-1px);
