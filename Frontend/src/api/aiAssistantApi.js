@@ -21,3 +21,8 @@ export const cancelAiSchedule = async id => {
   const response = await api.post(`/ai-assistant/schedules/${id}/cancel`)
   return unwrap(response)
 }
+
+export const askAiAssistant = async (prompt, confirm = false) => {
+  const response = await api.post('/ai-assistant/ask', { prompt, confirm })
+  return unwrap(response)
+}

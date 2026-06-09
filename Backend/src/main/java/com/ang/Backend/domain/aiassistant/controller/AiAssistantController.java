@@ -4,6 +4,7 @@ import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
 import com.ang.Backend.common.response.ApiResponse;
 import com.ang.Backend.domain.aiassistant.dto.AiAssistantDto;
+import com.ang.Backend.domain.aiassistant.service.AiAssistantAskService;
 import com.ang.Backend.domain.aiassistant.service.AiScheduledActionService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
@@ -22,7 +23,18 @@ import java.util.List;
 public class AiAssistantController {
 
     private final AiScheduledActionService aiScheduledActionService;
+    private final AiAssistantAskService aiAssistantAskService;
     private final UserRepository userRepository;
+
+    @PostMapping("/ask")
+    public ResponseEntity<ApiResponse<AiAssistantDto.AskResponse>> ask(
+            @RequestBody AiAssistantDto.PromptRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        User user = resolveUser(userDetails);
+        AiAssistantDto.AskResponse response = aiAssistantAskService.ask(request.getPrompt(), request.isConfirm(), user);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
 
     @PostMapping("/schedule")
     public ResponseEntity<ApiResponse<AiAssistantDto.ScheduleResponse>> parseOrSchedule(

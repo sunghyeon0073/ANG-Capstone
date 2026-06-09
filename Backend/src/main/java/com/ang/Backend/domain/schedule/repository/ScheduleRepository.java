@@ -31,4 +31,13 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    @Query("SELECT s FROM Schedule s WHERE s.owner = :owner " +
+           "AND s.startDate <= :endDate AND s.endDate >= :startDate " +
+           "ORDER BY s.startDate ASC, s.startTime ASC")
+    List<Schedule> findByOwnerAndDateRange(
+            @Param("owner") User owner,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }
