@@ -1305,7 +1305,6 @@ export default function Calendar({ showSidebar = true }) {
                       className={classes.join(' ')}
                       onClick={() => {
                         handleDateChange(cellDate)
-                        setViewMode('DAY')
                       }}
                     >
                       <span className="calendar-cell-number">{cellDate.getDate()}</span>

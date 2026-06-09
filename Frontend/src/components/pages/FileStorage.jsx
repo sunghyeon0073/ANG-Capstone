@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  FiFile, FiImage, FiFileText, FiGrid, FiList, FiSearch, 
+  FiFilter, FiInfo, FiDownload, FiTrash2, FiStar, 
+  FiClock, FiUsers, FiFolder, FiChevronRight, FiUploadCloud,
+  FiMoreVertical, FiShare2, FiRotateCcw
+} from 'react-icons/fi';
 import api from '../../api/axios';
 import {
   getMyDocuments,
@@ -11,7 +17,6 @@ import {
   getDocument,
   downloadDocumentFile
 } from '../../api/documentApi';
-import { getScopes } from '../../api/scopeApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
 
 const formatDate = (iso, includeTime = false) => {
@@ -22,64 +27,59 @@ const formatDate = (iso, includeTime = false) => {
   const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
   return `${dateStr} ${timeStr}`;
 };
+
 const formatSize = (bytes) => {
   if (!bytes) return '-';
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const getTagStyle = (doc) => {
+const getFileIcon = (doc) => {
   const kind = getDocumentPreviewKind(doc);
   switch (kind) {
-    case 'pdf': return { background: '#fdecea', color: '#c62828', border: '1px solid #ffcdd2' };
-    case 'image': return { background: '#e8f5e9', color: '#2e7d32', border: '1px solid #c8e6c9' };
-    case 'word': return { background: '#e3f2fd', color: '#1565c0', border: '1px solid #bbdefb' };
-    case 'excel': return { background: '#e8f5e9', color: '#1b5e20', border: '1px solid #c8e6c9' };
-    case 'hwp':
-    case 'hwpx': return { background: '#f3e5f5', color: '#7b1fa2', border: '1px solid #e1bee7' };
-    case 'text': return { background: '#f5f5f5', color: '#616161', border: '1px solid #e0e0e0' };
-    default: return { background: '#e8f0fe', color: '#1a73e8', border: '1px solid #d2e3fc' };
+    case 'pdf': return <FiFileText style={{ color: '#e74c3c' }} />;
+    case 'image': return <FiImage style={{ color: '#2ecc71' }} />;
+    case 'excel': return <FiFileText style={{ color: '#27ae60' }} />;
+    case 'word': return <FiFileText style={{ color: '#2980b9' }} />;
+    case 'hwp': return <FiFileText style={{ color: '#8e44ad' }} />;
+    default: return <FiFile style={{ color: '#95a5a6' }} />;
   }
 };
 
-export default function FileStorage({ currentSubPage = 'file-home' }) {
+export default function FileStorage() {
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+  const [activeTab, setActiveTab] = useState('my'); // 'my', 'shared', 'template', 'important', 'trash'
   const [docs, setDocs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const [showUpload, setShowUpload] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDocId, setSelectedDocId] = useState(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [selectedDoc, setSelectedDoc] = useState(null);
   const [myScopes, setMyScopes] = useState([]);
   const [targetScopeId, setTargetScopeId] = useState('');
+  const [filterType, setFilterType] = useState('all'); // 'all', 'pdf', 'image', 'document'
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+
   const fileInputRef = useRef();
 
-  const isMy = currentSubPage === 'file-my';
-  const isShared = currentSubPage === 'file-shared';
-  const isTrash = currentSubPage === 'file-trash';
-  const showList = isMy || isShared || isTrash;
-
   const fetchDocs = async () => {
-    if (!showList) return;
     try {
       setIsLoading(true);
       let res;
-      if (isMy) {
-        res = await getMyDocuments();
-      } else if (isTrash) {
+      if (activeTab === 'trash') {
         res = await getTrashDocuments();
+      } else if (activeTab === 'shared') {
+        res = await getDepartmentDocuments({ keyword: searchQuery, scopeId: targetScopeId });
       } else {
-        res = await getDepartmentDocuments({ keyword, scopeId: targetScopeId });
+        // For 'my', 'template', 'important' we use getMyDocuments and filter client-side for now
+        res = await getMyDocuments();
       }
       
-      const sortedDocs = (res.data?.data || []).sort((a, b) => {
-        const dateA = isTrash ? new Date(a.deletedAt) : new Date(a.createdAt);
-        const dateB = isTrash ? new Date(b.deletedAt) : new Date(b.createdAt);
-        return dateB - dateA;
-      });
-      setDocs(sortedDocs);
+      let fetchedDocs = res.data?.data || [];
+      setDocs(fetchedDocs);
     } catch (error) {
       console.error('문서 로드 실패', error);
       setDocs([]);
@@ -91,34 +91,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
   const fetchMyScopes = async () => {
     try {
       const res = await api.get('/scopes/my');
-      const data = res.data?.data || [];
-      
-      const map = {};
-      const roots = [];
-      data.forEach(item => { map[item.id] = { ...item, children: [] }; });
-      data.forEach(item => {
-        if (item.parentId && map[item.parentId]) {
-          map[item.parentId].children.push(map[item.id]);
-        } else {
-          roots.push(map[item.id]);
-        }
-      });
-
-      const flatResult = [];
-      const flattenWithIndent = (nodes, depth = 0) => {
-        nodes.forEach(node => {
-          flatResult.push({
-            id: node.id,
-            name: (depth > 0 ? '　'.repeat(depth) + '└ ' : '') + node.name
-          });
-          if (node.children && node.children.length > 0) {
-            flattenWithIndent(node.children, depth + 1);
-          }
-        });
-      };
-      
-      flattenWithIndent(roots);
-      setMyScopes(flatResult);
+      setMyScopes(res.data?.data || []);
     } catch (error) {
       console.error('부서 목록 로드 실패', error);
     }
@@ -126,13 +99,27 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
 
   useEffect(() => {
     fetchDocs();
-    if (showList && !isTrash) fetchMyScopes();
-  }, [currentSubPage, targetScopeId]);
+    fetchMyScopes();
+  }, [activeTab, targetScopeId]);
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    fetchDocs();
-  };
+  const filteredDocs = useMemo(() => {
+    return docs.filter(doc => {
+      const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            (doc.originalFileName && doc.originalFileName.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      const kind = getDocumentPreviewKind(doc);
+      let matchesType = true;
+      if (filterType === 'pdf') matchesType = kind === 'pdf';
+      else if (filterType === 'image') matchesType = kind === 'image';
+      else if (filterType === 'document') matchesType = ['word', 'excel', 'hwp'].includes(kind);
+
+      return matchesSearch && matchesType;
+    });
+  }, [docs, searchQuery, filterType]);
+
+  const selectedDoc = useMemo(() => {
+    return docs.find(d => d.docId === selectedDocId);
+  }, [docs, selectedDocId]);
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -147,7 +134,7 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       }
       
       await uploadDocument(formData);
-      setShowUpload(false);
+      setShowUploadModal(false);
       setUploadTitle('');
       setUploadFile(null);
       setTargetScopeId('');
@@ -165,29 +152,18 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      
-      let downloadName = fileName || 'downloaded_file';
-      const disposition = res.headers['content-disposition'];
-      if (disposition && disposition.indexOf('attachment') !== -1) {
-        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-        const matches = filenameRegex.exec(disposition);
-        if (matches != null && matches[1]) { 
-          downloadName = decodeURIComponent(matches[1].replace(/['"]/g, ''));
-        }
-      }
-      
-      link.setAttribute('download', downloadName);
+      link.setAttribute('download', fileName || 'file');
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('다운로드 실패:', error);
       alert('파일 다운로드에 실패했습니다.');
     }
   };
 
   const handleDelete = async (docId) => {
+    const isTrash = activeTab === 'trash';
     const msg = isTrash 
       ? '정말 영구 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.' 
       : '정말 삭제하시겠습니까? 삭제된 문서는 휴지통으로 이동합니다.';
@@ -198,265 +174,361 @@ export default function FileStorage({ currentSubPage = 'file-home' }) {
       } else {
         await deleteDocument(docId);
       }
-      setDocs(prev => prev.filter(d => d.docId !== docId));
-      if (selectedDoc?.docId === docId) setSelectedDoc(null);
+      fetchDocs();
+      if (selectedDocId === docId) setSelectedDocId(null);
     } catch (error) {
-      alert('삭제 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
+      alert('삭제 실패');
     }
   };
 
   const handleRestore = async (docId) => {
     try {
       await restoreDocument(docId);
-      setDocs(prev => prev.filter(d => d.docId !== docId));
+      fetchDocs();
       alert('문서가 복구되었습니다.');
     } catch (error) {
-      alert('복구 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
+      alert('복구 실패');
     }
   };
 
-  const handleViewDetail = async (docId) => {
-    try {
-      const res = await getDocument(docId);
-      setSelectedDoc(res.data?.data);
-    } catch (error) {
-      console.error('문서 조회 실패', error);
-    }
-  };
+  const renderSidebarItem = (id, icon, label) => (
+    <div 
+      className={`file-sidebar-item ${activeTab === id ? 'active' : ''}`}
+      onClick={() => {
+        setActiveTab(id);
+        setSelectedDocId(null);
+      }}
+    >
+      <span className="file-sidebar-icon">{icon}</span>
+      {label}
+    </div>
+  );
 
   const getPageTitle = () => {
-    switch (currentSubPage) {
-      case 'file-my': return '내 파일';
-      case 'file-shared': return '공유파일';
-      case 'file-template': return '빈 양식';
-      case 'file-important': return '중요 문서함';
-      case 'file-trash': return '휴지통';
+    switch (activeTab) {
+      case 'my': return '내 파일';
+      case 'shared': return '공유 문서함';
+      case 'template': return '빈 양식';
+      case 'important': return '중요 문서';
+      case 'trash': return '휴지통';
       default: return '파일함';
     }
   };
 
-  if (!showList) {
-    return (
-      <div className="file-page">
-        <div className="file-header"><h1>{getPageTitle()}</h1></div>
-        <div className="file-empty">준비 중입니다.</div>
-      </div>
-    );
-  }
-
   return (
     <div className="file-page">
-      <div className="file-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1>{getPageTitle()}</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {isShared && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <select
-                value={targetScopeId}
-                onChange={e => setTargetScopeId(e.target.value)}
-                style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 13 }}
+      {/* Left Sidebar */}
+      <aside className="file-sidebar">
+        <div style={{ padding: '0 24px 20px' }}>
+          <button 
+            className="btn btn-primary" 
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}
+            onClick={() => setShowUploadModal(true)}
+          >
+            <FiUploadCloud /> 업로드
+          </button>
+        </div>
+        
+        {renderSidebarItem('my', <FiFolder />, '내 파일')}
+        {renderSidebarItem('shared', <FiUsers />, '공유 문서함')}
+        {renderSidebarItem('important', <FiStar />, '중요 문서')}
+        {renderSidebarItem('template', <FiFileText />, '빈 양식')}
+        <div style={{ flex: 1 }} />
+        {renderSidebarItem('trash', <FiTrash2 />, '휴지통')}
+      </aside>
+
+      {/* Main Content */}
+      <main className="file-main">
+        <header className="file-main-header">
+          <div className="file-breadcrumb">
+            <FiFolder style={{ marginRight: '8px', color: 'var(--color-primary)' }} />
+            {getPageTitle()}
+            {targetScopeId && (
+              <>
+                <FiChevronRight style={{ fontSize: '14px', color: '#adb5bd' }} />
+                <span style={{ fontSize: '14px', color: '#666', fontWeight: 'normal' }}>
+                  {myScopes.find(s => s.id == targetScopeId)?.name || '부서'}
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="file-actions-bar">
+            <div className="file-search-container">
+              <FiSearch style={{ color: '#adb5bd' }} />
+              <input 
+                type="text" 
+                className="file-search-input" 
+                placeholder="파일 이름으로 검색..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="file-view-controls">
+              <div className="filter-dropdown-container">
+                <button 
+                  className={`icon-btn ${filterType !== 'all' || targetScopeId ? 'active' : ''}`}
+                  onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                  title="필터"
+                >
+                  <FiFilter />
+                </button>
+                {showFilterDropdown && (
+                  <div className="filter-dropdown">
+                    <div className="filter-group">
+                      <label>파일 형식</label>
+                      <select 
+                        className="filter-select"
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                      >
+                        <option value="all">전체</option>
+                        <option value="pdf">PDF 문서</option>
+                        <option value="image">이미지</option>
+                        <option value="document">오피스 문서 (Word, Excel, HWP)</option>
+                      </select>
+                    </div>
+                    {activeTab === 'shared' && (
+                      <div className="filter-group">
+                        <label>부서 선택</label>
+                        <select 
+                          className="filter-select"
+                          value={targetScopeId}
+                          onChange={(e) => setTargetScopeId(e.target.value)}
+                        >
+                          <option value="">전체 부서</option>
+                          {myScopes.map(scope => (
+                            <option key={scope.id} value={scope.id}>{scope.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <button 
+                      className="btn btn-primary" 
+                      style={{ width: '100%', padding: '6px' }}
+                      onClick={() => setShowFilterDropdown(false)}
+                    >
+                      적용
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button 
+                className={`icon-btn ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setViewMode('list')}
+                title="목록 보기"
               >
-                <option value="">전체 부서</option>
-                {myScopes.map(scope => (
-                  <option key={scope.id} value={scope.id}>{scope.name}</option>
+                <FiList />
+              </button>
+              <button 
+                className={`icon-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+                title="그리드 보기"
+              >
+                <FiGrid />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="file-content-scroll">
+          {isLoading ? (
+            <div className="file-empty">
+              <div className="spinner" />
+              <p>파일을 불러오는 중...</p>
+            </div>
+          ) : filteredDocs.length === 0 ? (
+            <div className="file-empty">
+              <FiFolder className="file-empty-icon" />
+              <p>{searchQuery ? '검색 결과가 없습니다.' : '파일이 없습니다.'}</p>
+            </div>
+          ) : viewMode === 'grid' ? (
+            <div className="file-grid">
+              {filteredDocs.map(doc => (
+                <div 
+                  key={doc.docId} 
+                  className={`file-card ${selectedDocId === doc.docId ? 'selected' : ''}`}
+                  onClick={() => setSelectedDocId(doc.docId)}
+                  onDoubleClick={() => activeTab !== 'trash' && handleDownload(doc.fileId, doc.originalFileName)}
+                >
+                  <div className="file-card-icon">
+                    {getFileIcon(doc)}
+                  </div>
+                  <div className="file-card-info">
+                    <div className="file-card-name" title={doc.title}>{doc.title}</div>
+                    <div className="file-card-meta">{formatSize(doc.fileSize)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <table className="file-table">
+              <thead>
+                <tr>
+                  <th>이름</th>
+                  <th>크기</th>
+                  <th>{activeTab === 'trash' ? '삭제일' : '수정한 날짜'}</th>
+                  <th>부서</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDocs.map(doc => (
+                  <tr 
+                    key={doc.docId} 
+                    className={selectedDocId === doc.docId ? 'selected' : ''}
+                    onClick={() => setSelectedDocId(doc.docId)}
+                    onDoubleClick={() => activeTab !== 'trash' && handleDownload(doc.fileId, doc.originalFileName)}
+                  >
+                    <td>
+                      <div className="file-table-name-cell">
+                        <span style={{ fontSize: '18px' }}>{getFileIcon(doc)}</span>
+                        <span>{doc.title}</span>
+                      </div>
+                    </td>
+                    <td>{formatSize(doc.fileSize)}</td>
+                    <td>{formatDate(activeTab === 'trash' ? doc.deletedAt : doc.createdAt)}</td>
+                    <td>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        color: doc.scopeName && doc.scopeName !== 'N/A' ? '#1a73e8' : '#666',
+                        background: doc.scopeName && doc.scopeName !== 'N/A' ? '#e8f0fe' : '#f8f9fa',
+                        padding: '2px 8px',
+                        borderRadius: '10px'
+                      }}>
+                        {doc.scopeName && doc.scopeName !== 'N/A' ? doc.scopeName : '개인'}
+                      </span>
+                    </td>
+                  </tr>
                 ))}
-              </select>
-              <form onSubmit={handleSearch} style={{ display: 'flex', gap: 4 }}>
-                <input
-                  value={keyword}
-                  onChange={e => setKeyword(e.target.value)}
-                  placeholder="검색어 입력"
-                  style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd' }}
-                />
-                <button type="submit" className="btn btn-secondary" style={{ padding: '4px 12px' }}>검색</button>
-              </form>
-            </div>
-          )}
-          {isMy && (
-            <button className="btn btn-primary" onClick={() => setShowUpload(true)} >
-              + 업로드
-            </button>
-          )}
-          {isTrash && (
-            <div style={{ fontSize: 13, color: '#ff4d4f', display: 'flex', alignItems: 'center' }}>
-              * 휴지통에 보관된 문서는 30일 후 자동으로 영구 삭제됩니다.
-            </div>
+              </tbody>
+            </table>
           )}
         </div>
-      </div>
+      </main>
 
-      {showUpload && (
-        <div className="modal-overlay" onClick={() => setShowUpload(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ minWidth: 360, padding: 24 }}>
-            <h3 style={{ marginBottom: 16 }}>파일 업로드</h3>
-            <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input
-                value={uploadTitle}
-                onChange={e => setUploadTitle(e.target.value)}
-                placeholder="문서 제목"
-                required
-                style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
-              />
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 13, color: '#666' }}>저장 위치 (미선택 시 개인 보관함)</label>
+      {/* Right Detail Panel */}
+      {selectedDoc && (
+        <aside className="file-detail-panel">
+          <div className="detail-preview">
+            {getFileIcon(selectedDoc)}
+          </div>
+          <div className="detail-title">{selectedDoc.title}</div>
+          
+          <div className="detail-info-list">
+            <div className="detail-info-item">
+              <span className="detail-info-label">유형</span>
+              <span className="detail-info-value">{getFileTypeLabel(selectedDoc)}</span>
+            </div>
+            <div className="detail-info-item">
+              <span className="detail-info-label">크기</span>
+              <span className="detail-info-value">{formatSize(selectedDoc.fileSize)}</span>
+            </div>
+            <div className="detail-info-item">
+              <span className="detail-info-label">위치</span>
+              <span className="detail-info-value">{selectedDoc.scopeName !== 'N/A' ? selectedDoc.scopeName : '개인 문서함'}</span>
+            </div>
+            <div className="detail-info-item">
+              <span className="detail-info-label">생성일</span>
+              <span className="detail-info-value">{formatDate(selectedDoc.createdAt, true)}</span>
+            </div>
+            {activeTab === 'trash' && (
+              <div className="detail-info-item">
+                <span className="detail-info-label">삭제일</span>
+                <span className="detail-info-value">{formatDate(selectedDoc.deletedAt, true)}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="detail-actions">
+            {activeTab === 'trash' ? (
+              <>
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => handleRestore(selectedDoc.docId)}>
+                  <FiRotateCcw /> 복구하기
+                </button>
+                <button className="btn btn-danger" style={{ width: '100%' }} onClick={() => handleDelete(selectedDoc.docId)}>
+                  <FiTrash2 /> 영구 삭제
+                </button>
+              </>
+            ) : (
+              <>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  onClick={() => handleDownload(selectedDoc.fileId, selectedDoc.originalFileName || selectedDoc.title)}
+                >
+                  <FiDownload /> 다운로드
+                </button>
+                <button className="btn btn-secondary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <FiShare2 /> 공유하기
+                </button>
+                <button 
+                  className="btn btn-danger" 
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '10px' }}
+                  onClick={() => handleDelete(selectedDoc.docId)}
+                >
+                  <FiTrash2 /> 삭제
+                </button>
+              </>
+            )}
+          </div>
+        </aside>
+      )}
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
+          <div className="modal-content DMS-modal" onClick={e => e.stopPropagation()} style={{ width: '400px' }}>
+            <div className="modal-header">
+              <h3>파일 업로드</h3>
+              <button className="modal-close" onClick={() => setShowUploadModal(false)}>&times;</button>
+            </div>
+            <form onSubmit={handleUpload} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div className="form-group">
+                <label>문서 제목</label>
+                <input 
+                  className="calendar-input"
+                  value={uploadTitle}
+                  onChange={e => setUploadTitle(e.target.value)}
+                  placeholder="제목을 입력하세요"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>저장 위치</label>
                 <select 
+                  className="calendar-input"
                   value={targetScopeId} 
                   onChange={e => setTargetScopeId(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
                 >
-                  <option value="">개인 문서함</option>
+                  <option value="">개인 보관함</option>
                   {myScopes.map(scope => (
                     <option key={scope.id} value={scope.id}>{scope.name}</option>
                   ))}
                 </select>
               </div>
-
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={e => setUploadFile(e.target.files[0])}
-                required
-              />
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowUpload(false)}>취소</button>
+              <div className="form-group">
+                <label>파일 선택</label>
+                <input 
+                  type="file" 
+                  onChange={e => {
+                    const file = e.target.files[0];
+                    setUploadFile(file);
+                    if (file && !uploadTitle) setUploadTitle(file.name.split('.').slice(0, -1).join('.'));
+                  }}
+                  required
+                />
+              </div>
+              <div className="form-actions" style={{ marginTop: '10px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)}>취소</button>
                 <button type="submit" className="btn btn-primary" disabled={uploading}>
-                  {uploading ? '업로드 중...' : '업로드'}
+                  {uploading ? '업로드 중...' : '업로드 시작'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {selectedDoc && (
-        <div className="modal-overlay" onClick={() => setSelectedDoc(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ minWidth: 400, padding: 24 }}>
-            <h3 style={{ marginBottom: 16 }}>📄 {selectedDoc.title}</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, color: '#555' }}>
-              <div><strong>{isTrash ? '삭제일' : '업로드일'}:</strong> {formatDate(isTrash ? selectedDoc.deletedAt : selectedDoc.createdAt)}</div>
-              <div><strong>파일명:</strong> {selectedDoc.originalFileName || '-'}</div>
-              <div><strong>파일크기:</strong> {formatSize(selectedDoc.fileSize)}</div>
-              {selectedDoc.scopeName && selectedDoc.scopeName !== 'N/A' && <div><strong>소속 부서:</strong> {selectedDoc.scopeName}</div>}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' }}>
-              {selectedDoc.fileId && !isTrash && (
-                <button 
-                  className="btn btn-primary" 
-                  onClick={() => handleDownload(selectedDoc.fileId, selectedDoc.originalFileName || selectedDoc.title)}
-                >
-                  다운로드
-                </button>
-              )}
-              <button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>닫기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="file-container">
-        {isLoading ? (
-          <div className="file-empty">불러오는 중...</div>
-        ) : docs.length === 0 ? (
-          <div className="file-empty">파일이 없습니다.</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f5f7fa', borderBottom: '2px solid #eee' }}>
-                <th style={{ padding: '10px 12px', textAlign: 'left' }}>제목</th>
-                <th style={{ padding: '10px 12px', textAlign: 'left' }}>{isTrash ? '삭제일' : '등록일'}</th>
-                <th style={{ padding: '10px 12px', textAlign: 'center' }}>작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {docs.map(doc => (
-                <tr key={doc.docId} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span
-                      style={{ cursor: 'pointer', color: '#000' }}
-                      onClick={() => handleViewDetail(doc.docId)}
-                    >
-                      <span style={{ 
-                        display: 'inline-block', 
-                        minWidth: 45, 
-                        fontSize: 10, 
-                        fontWeight: 'bold', 
-                        padding: '2px 4px', 
-                        borderRadius: 3, 
-                        textAlign: 'center',
-                        marginRight: 8,
-                        ...getTagStyle(doc)
-                      }}>
-                        {getFileTypeLabel(doc)}
-                      </span>
-                      {doc.title}
-                    </span>
-                    {isTrash && (
-                      <span style={{ 
-                        marginLeft: 8, 
-                        fontSize: 11, 
-                        color: doc.scopeName && doc.scopeName !== 'N/A' ? '#1a73e8' : '#666', 
-                        background: doc.scopeName && doc.scopeName !== 'N/A' ? '#e8f0fe' : '#f0f0f0', 
-                        padding: '2px 8px', 
-                        borderRadius: 10,
-                        border: '1px solid',
-                        borderColor: doc.scopeName && doc.scopeName !== 'N/A' ? '#d2e3fc' : '#ddd'
-                      }}>
-                        {doc.scopeName && doc.scopeName !== 'N/A' ? doc.scopeName : '개인 문서'}
-                      </span>
-                    )}
-                    {!isMy && !isTrash && doc.scopeName && doc.scopeName !== 'N/A' && (
-                      <span style={{ marginLeft: 8, fontSize: 11, color: '#999', background: '#f0f0f0', padding: '2px 6px', borderRadius: 10 }}>
-                        {doc.scopeName}
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 12px', color: '#888' }}>{formatDate(isTrash ? doc.deletedAt : doc.createdAt, true)}</td>
-                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                    {doc.fileId && !isTrash && (
-                      <button
-                        onClick={() => handleDownload(doc.fileId, doc.originalFileName || doc.title)}
-                        style={{
-                          background: '#4A90D9', color: '#fff', border: 'none',
-                          borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
-                          marginRight: 4
-                        }}
-                      >
-                        다운로드
-                      </button>
-                    )}
-                    {(doc.canDelete || isTrash) && (
-                      <div style={{ display: 'inline-block' }}>
-                        {isTrash && (
-                          <button
-                            onClick={() => handleRestore(doc.docId)}
-                            style={{
-                              background: '#52c41a', color: '#fff', border: 'none',
-                              borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
-                              marginRight: 4
-                            }}
-                          >
-                            복구
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(doc.docId)}
-                          style={{
-                            background: '#ff4d4f', color: '#fff', border: 'none',
-                            borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: 12
-                          }}
-                        >
-                          {isTrash ? '영구 삭제' : '삭제'}
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
     </div>
   );
 }
