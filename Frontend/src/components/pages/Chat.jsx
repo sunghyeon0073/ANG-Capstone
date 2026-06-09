@@ -309,7 +309,7 @@ function ChatRoomWindow({
       style={{
         left: position.x,
         top: position.y,
-        zIndex: 30 + index,
+        zIndex: 2147400000 + index,
       }}
     >
       <header className="chat-popup-header" onMouseDown={startPopupDrag}>

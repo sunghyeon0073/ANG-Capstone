@@ -9,7 +9,9 @@ import {
   FiChevronUp,
   FiAlertCircle,
   FiCheckCircle,
-  FiCalendar
+  FiCalendar,
+  FiCheckSquare,
+  FiSquare
 } from 'react-icons/fi'
 import * as XLSX from 'xlsx'
 import {
@@ -200,12 +202,14 @@ const parseExcelSchedules = (arrayBuffer) => {
     const title = String(
       getCellValueByAliases(row, ['세부업무', 'title', '일정명', '제목', '행사명', '내용']) || '',
     ).trim()
-    const startDate = toDateStringFromValue(
-      getCellValueByAliases(row, ['시작일', 'startDate', '시작날짜']),
-    ) || toDateStringFromValue(getCellValueByAliases(row, ['date', '날짜', '일자', '일정일']))
+    
+    // 날짜 및 주차 정보 파싱
+    const rawDate = getCellValueByAliases(row, ['시작일', 'startDate', '시작날짜', 'date', '날짜', '일자', '일정일'])
+    const startDate = toDateStringFromValue(rawDate)
     const endDate = toDateStringFromValue(
       getCellValueByAliases(row, ['종료일', 'endDate', '종료날짜']),
     ) || startDate
+    
     const startTime = toTimeStringFromValue(
       getCellValueByAliases(row, ['startTime', '시작시간', '시작시각']),
     ) || '09:00'
@@ -219,25 +223,34 @@ const parseExcelSchedules = (arrayBuffer) => {
 
     const gubun = String(getCellValueByAliases(row, ['구분']) || '').trim()
     const workGubun = String(getCellValueByAliases(row, ['업무구분']) || '').trim()
+    const weekInfo = String(getCellValueByAliases(row, ['주차', '시기', 'week', 'timing']) || '').trim()
     
     const extraInfos = []
     if (gubun) extraInfos.push(`[${gubun}]`)
     if (workGubun) extraInfos.push(`[${workGubun}]`)
+    if (weekInfo) extraInfos.push(`[${weekInfo}]`)
     
     if (extraInfos.length > 0) {
       const extraStr = extraInfos.join(' ')
       description = description ? `${extraStr}\n${description}` : extraStr
     }
 
-    if (!title || !startDate) {
+    // 제목이 없거나, 날짜도 없고 주차 정보도 없으면 건너뜀
+    if (!title || (!startDate && !weekInfo)) {
       skippedRows.push(index + 2)
       return
     }
 
+    // 만약 날짜가 없고 주차 정보만 있다면, 현재 달의 1일 등으로 가배정하거나
+    // AI 추천의 근거로 사용될 수 있도록 임시 날짜를 할당할 수 있음
+    // 여기서는 일단 날짜가 필수인 기존 로직을 유지하되, 주차가 있으면 오늘 날짜라도 넣어줌 (사용자가 수정 가능하게)
+    const finalStartDate = startDate || formatDate(new Date())
+    const finalEndDate = endDate || finalStartDate
+
     items.push({
       title,
-      startDate,
-      endDate,
+      startDate: finalStartDate,
+      endDate: finalEndDate,
       startTime,
       endTime,
       type: 'PERSONAL',
@@ -417,10 +430,14 @@ export default function Calendar({ showSidebar = true }) {
   const [excelFileName, setExcelFileName] = useState('')
   const [excelWarnings, setExcelWarnings] = useState([])
   const [isImportingExcel, setIsImportingExcel] = useState(false)
+  const [excelImportType, setExcelImportType] = useState('PERSONAL')
   
   const [sidebarTab, setSidebarTab] = useState('DAILY') // Kept for logic, but tabs are removed
+  const [viewMode, setViewMode] = useState('MONTH') // 'MONTH' or 'DAY'
   const [quickTodoTitle, setQuickTodoTitle] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [todoFilter, setTodoFilter] = useState('ALL') // 'ALL', 'PENDING', 'COMPLETED'
+  const [moreEventsDate, setMoreEventsDate] = useState(null)
 
   // Accordion states
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(true)
@@ -526,8 +543,22 @@ export default function Calendar({ showSidebar = true }) {
 
   const filteredSchedules = useMemo(() => {
     if (selectedFilters.length === 0) return []
-    return visibleSchedules.filter((schedule) => selectedFilters.includes(getScheduleGroup(schedule)))
-  }, [visibleSchedules, selectedFilters])
+    return visibleSchedules.filter((schedule) => {
+      // 1. Basic group filter
+      if (!selectedFilters.includes(getScheduleGroup(schedule))) return false
+      
+      // 2. Interactive Todo Filter from Header Summary
+      if (schedule.isTodo) {
+        if (todoFilter === 'PENDING' && schedule.isCompleted) return false
+        if (todoFilter === 'COMPLETED' && !schedule.isCompleted) return false
+      } else {
+        // If clicking '남은 할 일' or '완료한 일', only show Todos
+        if (todoFilter === 'PENDING' || todoFilter === 'COMPLETED') return false
+      }
+      
+      return true
+    })
+  }, [visibleSchedules, selectedFilters, todoFilter])
 
   const calendarScheduleBars = useMemo(
     () => buildCalendarScheduleBars(filteredSchedules, monthGrid),
@@ -651,7 +682,12 @@ export default function Calendar({ showSidebar = true }) {
 
     try {
       setIsImportingExcel(true)
-      await Promise.all(excelSchedules.map((schedule) => createSchedule(buildSchedulePayload(schedule))))
+      // 모든 엑셀 일정에 선택된 타입(PERSONAL/DEPARTMENT) 적용
+      await Promise.all(
+        excelSchedules.map((schedule) => 
+          createSchedule(buildSchedulePayload({ ...schedule, type: excelImportType }))
+        )
+      )
       setIsExcelConfirmOpen(false)
       resetExcelImportState()
       setIsModalOpen(false)
@@ -776,9 +812,13 @@ export default function Calendar({ showSidebar = true }) {
     }))
   }, [filteredSchedules])
 
-  const pendingTodos = filteredSchedules.filter(s => s.isTodo && !s.isCompleted).length
-  const completedTodos = filteredSchedules.filter(s => s.isTodo && s.isCompleted).length
-  const totalEvents = filteredSchedules.filter(s => !s.isTodo && !s.isAiRecommendation).length
+  const pendingTodos = visibleSchedules.filter(s => s.isTodo && !s.isCompleted).length
+  const completedTodos = visibleSchedules.filter(s => s.isTodo && s.isCompleted).length
+  const totalEvents = visibleSchedules.filter(s => !s.isTodo && !s.isAiRecommendation).length
+
+  const handleSummaryClick = (type) => {
+    setTodoFilter((prev) => (prev === type ? 'ALL' : type))
+  }
 
   const getDayOfWeek = (dateStr) => {
     if (!dateStr) return '';
@@ -793,6 +833,181 @@ export default function Calendar({ showSidebar = true }) {
   const displayList = sidebarTab === 'DAILY' ? todayDetailSchedules : upcomingSchedules
 
   const rowCount = monthGrid.length / 7
+
+  const handlePrev = () => {
+    if (viewMode === 'MONTH') {
+      setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() - 1, 1))
+    } else {
+      const nextDate = new Date(selectedDate || date)
+      nextDate.setDate(nextDate.getDate() - 1)
+      handleDateChange(nextDate)
+    }
+  }
+
+  const handleNext = () => {
+    if (viewMode === 'MONTH') {
+      setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 1))
+    } else {
+      const nextDate = new Date(selectedDate || date)
+      nextDate.setDate(nextDate.getDate() + 1)
+      handleDateChange(nextDate)
+    }
+  }
+
+  const renderDayView = () => {
+    const currentDay = selectedDate || date
+    const currentDayStr = formatDate(currentDay)
+    const daySchedules = getSchedulesForDate(currentDay)
+
+    // All-day header: Only events explicitly spanning the full day (00:00:00 - 23:59:00)
+    // Timed To-dos and AI Recommendations will now also follow side-by-side logic in the grid.
+    const allDayEvents = daySchedules.filter(s => (s.startTime === '00:00:00' && s.endTime === '23:59:00'))
+    const timedEvents = daySchedules.filter(s => !allDayEvents.includes(s))
+    const hours = Array.from({ length: 24 }, (_, i) => i)
+
+    const parseTime = (t) => {
+      const [h, m] = (t || '00:00').split(':').map(Number)
+      return h * 60 + (m || 0)
+    }
+
+    // Prepare timed events with their calculated day-specific start/end minutes
+    const processedTimedEvents = timedEvents.map(schedule => {
+      let sTime = schedule.startTime
+      let eTime = schedule.endTime
+      if (isMultiDaySchedule(schedule)) {
+        if (currentDayStr > schedule.startDate) sTime = '00:00'
+        if (currentDayStr < schedule.endDate) eTime = '23:59'
+      }
+      return {
+        ...schedule,
+        startMins: parseTime(sTime),
+        endMins: parseTime(eTime),
+        displayStartTime: sTime,
+        displayEndTime: eTime
+      }
+    }).sort((a, b) => a.startMins - b.startMins || (b.endMins - b.startMins) - (a.endMins - a.startMins))
+
+    // Calculate columns for overlapping events using a more robust algorithm
+    const columns = []
+    processedTimedEvents.forEach(event => {
+      let colIdx = 0
+      while (true) {
+        if (!columns[colIdx]) {
+          columns[colIdx] = []
+          columns[colIdx].push(event)
+          event.colIdx = colIdx
+          break
+        }
+        const lastInCol = columns[colIdx][columns[colIdx].length - 1]
+        if (event.startMins >= lastInCol.endMins) {
+          columns[colIdx].push(event)
+          event.colIdx = colIdx
+          break
+        }
+        colIdx++
+      }
+    })
+
+    const positionedEvents = processedTimedEvents.map(event => {
+      return {
+        ...event,
+        totalCols: columns.length
+      }
+    })
+
+    return (
+      <div className="calendar-day-view">
+        {allDayEvents.length > 0 && (
+          <div className="calendar-day-header">
+            <div className="calendar-day-allday-label">종일 일정</div>
+            <div className="calendar-day-allday-events">
+              {allDayEvents.map(schedule => (
+                <div 
+                  key={schedule.id} 
+                  className={`calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)}`}
+                  onClick={() => handleEditSchedule(schedule)}
+                  style={{ position: 'relative', marginBottom: '4px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', height: 'auto', ...schedule.isTodo && schedule.isCompleted ? { opacity: 0.6, textDecoration: 'line-through' } : {} }}
+                >
+                  {schedule.isTodo && (
+                    <span
+                      className={`todo-checkbox-icon grid-icon ${schedule.isCompleted ? 'checked' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleTodo(e, schedule);
+                      }}
+                    >
+                      {schedule.isCompleted ? <FiCheckSquare /> : <FiSquare />}
+                    </span>
+                  )}
+                  {schedule.title}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="calendar-day-body">
+          <div className="calendar-day-times">
+            {hours.map(h => (
+              <div key={h} className="calendar-day-time-label">
+                {String(h).padStart(2, '0')}:00
+              </div>
+            ))}
+          </div>
+          <div className="calendar-day-grid-lines">
+            {hours.map(h => (
+              <div key={h} className="calendar-day-grid-line"></div>
+            ))}
+            {positionedEvents.map(schedule => {
+              const top = (schedule.startMins / (24 * 60)) * 100
+              const height = ((schedule.endMins - schedule.startMins) / (24 * 60)) * 100
+              const width = 100 / schedule.totalCols
+              const left = schedule.colIdx * width
+
+              return (
+                <div 
+                  key={schedule.id}
+                  className={`calendar-day-event calendar-schedule-bar--${getScheduleGroup(schedule)}`}
+                  style={{
+                    top: `calc(${top}% + 2px)`,
+                    height: `calc(${Math.max(height, 1.5)}% - 4px)`, 
+                    left: `${left}%`,
+                    width: `calc(${width}% - 4px)`,
+                    margin: '0 2px',
+                    borderLeft: '4px solid currentColor',
+                    zIndex: 10 + schedule.colIdx,
+                    position: 'absolute'
+                  }}
+                  onClick={() => handleEditSchedule(schedule)}
+                >
+                  <div className="calendar-day-event-time">
+                    {schedule.isTodo && (
+                      <span
+                        className={`todo-checkbox-icon grid-icon ${schedule.isCompleted ? 'checked' : ''}`}
+                        style={{ fontSize: '12px', marginRight: '4px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleTodo(e, schedule);
+                        }}
+                      >
+                        {schedule.isCompleted ? <FiCheckSquare /> : <FiSquare />}
+                      </span>
+                    )}
+                    {isMultiDaySchedule(schedule) 
+                      ? `${normalizeTime(schedule.displayStartTime)}${currentDayStr > schedule.startDate ? ' (이전)' : ''} - ${normalizeTime(schedule.displayEndTime)}${currentDayStr < schedule.endDate ? ' (이후)' : ''}`
+                      : `${normalizeTime(schedule.startTime)} - ${normalizeTime(schedule.endTime)}`
+                    }
+                  </div>
+                  <div className="calendar-day-event-title" style={{ textDecoration: (schedule.isTodo && schedule.isCompleted) ? 'line-through' : 'none', opacity: (schedule.isTodo && schedule.isCompleted) ? 0.6 : 1 }}>
+                    {schedule.title}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="calendar-page">
@@ -831,8 +1046,8 @@ export default function Calendar({ showSidebar = true }) {
             <button
               type="button"
               className="btn calendar-icon-btn"
-              onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() - 1, 1))}
-              aria-label="이전 달"
+              onClick={handlePrev}
+              aria-label={viewMode === 'MONTH' ? "이전 달" : "이전 일"}
             >
               <FiChevronLeft aria-hidden="true" />
             </button>
@@ -841,13 +1056,18 @@ export default function Calendar({ showSidebar = true }) {
               onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
               style={{ cursor: 'pointer' }}
             >
-              {activeStartDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
+              {viewMode === 'MONTH' 
+                ? activeStartDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })
+                : (selectedDate || date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+              }
             </div>
             {isMonthPickerOpen && (
               <MonthYearPicker 
                 activeStartDate={activeStartDate} 
                 onSelect={(year, month) => {
-                  setActiveStartDate(new Date(year, month, 1))
+                  const newDate = new Date(year, month, 1)
+                  setActiveStartDate(newDate)
+                  if (viewMode === 'DAY') handleDateChange(newDate)
                   setIsMonthPickerOpen(false)
                 }}
                 onClose={() => setIsMonthPickerOpen(false)}
@@ -856,8 +1076,8 @@ export default function Calendar({ showSidebar = true }) {
             <button
               type="button"
               className="btn calendar-icon-btn"
-              onClick={() => setActiveStartDate(new Date(activeStartDate.getFullYear(), activeStartDate.getMonth() + 1, 1))}
-              aria-label="다음 달"
+              onClick={handleNext}
+              aria-label={viewMode === 'MONTH' ? "다음 달" : "다음 일"}
             >
               <FiChevronRight aria-hidden="true" />
             </button>
@@ -869,25 +1089,47 @@ export default function Calendar({ showSidebar = true }) {
             >
               오늘
             </button>
+
+            <div className="calendar-view-toggle" style={{ marginLeft: '16px', display: 'flex', gap: '4px', background: 'var(--color-surface-muted)', padding: '4px', borderRadius: '8px' }}>
+              <button 
+                type="button" 
+                style={viewMode === 'MONTH' ? { padding: '4px 12px', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' } : { padding: '4px 12px', background: 'transparent', color: 'var(--color-text)', border: 'none', cursor: 'pointer' }}
+                onClick={() => setViewMode('MONTH')}
+              >월</button>
+              <button 
+                type="button" 
+                style={viewMode === 'DAY' ? { padding: '4px 12px', background: 'var(--color-primary)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' } : { padding: '4px 12px', background: 'transparent', color: 'var(--color-text)', border: 'none', cursor: 'pointer' }}
+                onClick={() => setViewMode('DAY')}
+              >일</button>
+            </div>
           </div>
         </div>
 
         <div className="header-right">
-          <div className="header-summary" title="이번 달 요약">
-            <div className="header-stat-item">
+          <div className="header-summary" title="이번 달 요약 (클릭하여 필터링)">
+            <div 
+              className={`header-stat-item ${todoFilter === 'PENDING' ? 'active-filter' : ''}`}
+              onClick={() => handleSummaryClick('PENDING')}
+            >
               <FiAlertCircle className="header-stat-icon header-stat-icon--pending" />
               <span className="header-stat-value">{pendingTodos}</span>
-              <span className="header-stat-label">남은 할 일</span>
+              <span className="header-stat-label">남은 할 일 보기</span>
             </div>
-            <div className="header-stat-item">
+            <div 
+              className={`header-stat-item ${todoFilter === 'COMPLETED' ? 'active-filter' : ''}`}
+              onClick={() => handleSummaryClick('COMPLETED')}
+            >
               <FiCheckCircle className="header-stat-icon header-stat-icon--completed" />
               <span className="header-stat-value">{completedTodos}</span>
-              <span className="header-stat-label">완료한 일</span>
+              <span className="header-stat-label">완료한 일 보기</span>
             </div>
-            <div className="header-stat-item">
+            <div 
+              className={`header-stat-item ${todoFilter === 'ALL' ? 'active-filter' : ''}`}
+              onClick={() => handleSummaryClick('ALL')}
+            >
               <FiCalendar className="header-stat-icon header-stat-icon--total" />
               <span className="header-stat-value">{totalEvents}</span>
-              <span className="header-stat-label">전체 일정</span>
+              <span className="header-stat-label">전체 일정 보기</span>
             </div>
           </div>
         </div>
@@ -932,11 +1174,7 @@ export default function Calendar({ showSidebar = true }) {
                             {isMultiDaySchedule(schedule) ? (
                               `${schedule.startDate.slice(5)} ${normalizeTime(schedule.startTime)} ~ ${schedule.endDate.slice(5)} ${normalizeTime(schedule.endTime)}`
                             ) : (
-                              !schedule.isTodo ? (
-                                `${normalizeTime(schedule.startTime)} ~ ${normalizeTime(schedule.endTime)}`
-                              ) : (
-                                `${normalizeTime(schedule.startTime)}`
-                              )
+                              `${normalizeTime(schedule.startTime)} ~ ${normalizeTime(schedule.endTime)}`
                             )}
                           </div>
                           
@@ -953,6 +1191,19 @@ export default function Calendar({ showSidebar = true }) {
                               {schedule.title}
                             </span>
                           </div>
+                          
+                          {schedule.description && (
+                            <div className="schedule-desc" style={{ 
+                              fontSize: '12px', 
+                              color: 'var(--color-text-muted)', 
+                              marginTop: '4px', 
+                              whiteSpace: 'nowrap', 
+                              overflow: 'hidden', 
+                              textOverflow: 'ellipsis' 
+                            }}>
+                              {schedule.description}
+                            </div>
+                          )}
 
                           {!schedule.isAiRecommendation && (
                             <button
@@ -1020,90 +1271,134 @@ export default function Calendar({ showSidebar = true }) {
         )}
 
         <main className="calendar-wrapper">
-          <div className="calendar-grid">
-            <div className="calendar-weekdays">
-              {['일', '월', '화', '수', '목', '금', '토'].map((weekday) => (
-                <div key={weekday} className="calendar-weekday">{weekday}</div>
-              ))}
-            </div>
+          {viewMode === 'MONTH' ? (
+            <div className="calendar-grid">
+              <div className="calendar-weekdays">
+                {['일', '월', '화', '수', '목', '금', '토'].map((weekday) => (
+                  <div key={weekday} className="calendar-weekday">{weekday}</div>
+                ))}
+              </div>
 
-            <div className="calendar-cells">
-              {monthGrid.map((cellDate, index) => {
-                const classes = ['calendar-cell']
-                const cellDateStr = formatDate(cellDate)
-                const todayStr = formatDate(new Date())
-                const daySchedules = getSchedulesForDate(cellDate)
+              <div className="calendar-cells">
+                {monthGrid.map((cellDate, index) => {
+                  const classes = ['calendar-cell']
+                  const cellDateStr = formatDate(cellDate)
+                  const todayStr = formatDate(new Date())
+                  const daySchedules = getSchedulesForDate(cellDate)
 
-                const row = Math.floor(index / 7) + 1
-                const col = (index % 7) + 1
-                const barsInCell = calendarScheduleBars.filter(bar => bar.row === row && bar.startCol <= col && bar.endCol >= col)
+                  const row = Math.floor(index / 7) + 1
+                  const col = (index % 7) + 1
+                  const barsInCell = calendarScheduleBars.filter(bar => bar.row === row && bar.startCol <= col && bar.endCol >= col)
 
-                if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
-                if (cellDateStr === todayStr) classes.push('calendar-cell--today')
-                if (cellDateStr === formatDate(date)) classes.push('calendar-cell--selected')
-                if (daySchedules.length > 0) classes.push('calendar-date-with-schedule')
-                if (daySchedules.some((item) => item.isAiRecommendation)) classes.push('calendar-cell--has-ai')
+                  if (cellDate.getMonth() !== activeStartDate.getMonth()) classes.push('calendar-cell--other')
+                  if (cellDateStr === todayStr) classes.push('calendar-cell--today')
+                  if (cellDateStr === formatDate(date)) classes.push('calendar-cell--selected')
+                  if (daySchedules.length > 0) classes.push('calendar-date-with-schedule')
+                  if (daySchedules.some((item) => item.isAiRecommendation)) classes.push('calendar-cell--has-ai')
 
-                const hiddenCount = barsInCell.filter(bar => bar.lane >= 3).length
+                  const hiddenCount = barsInCell.filter(bar => bar.lane >= 3).length
 
-                return (
-                  <button
-                    type="button"
-                    key={cellDate.toISOString()}
-                    className={classes.join(' ')}
-                    onClick={() => handleDateChange(cellDate)}
-                  >
-                    <span className="calendar-cell-number">{cellDate.getDate()}</span>
-                    <span className="calendar-cell-content" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
-                      {hiddenCount > 0 && (
-                        <span className="calendar-schedule-overflow">+{hiddenCount}개 더보기</span>
-                      )}
-                    </span>
-                  </button>
-                )
-              })}
-              <div className="calendar-schedule-bars" aria-hidden="true" style={{ pointerEvents: 'none' }}>
-                {calendarScheduleBars.filter(bar => bar.lane < 3).map((bar) => {
-                  const duration = bar.endCol - bar.startCol + 1
-                  const segmentType = bar.isFirstSegment && bar.isLastSegment
-                    ? 'single'
-                    : bar.isFirstSegment
-                      ? 'start'
-                      : bar.isLastSegment
-                        ? 'end'
-                        : 'middle'
+                  return (
+                    <button
+                      type="button"
+                      key={cellDate.toISOString()}
+                      className={classes.join(' ')}
+                      onClick={() => {
+                        handleDateChange(cellDate)
+                        setViewMode('DAY')
+                      }}
+                    >
+                      <span className="calendar-cell-number">{cellDate.getDate()}</span>
+                      <span className="calendar-cell-content" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+                        {hiddenCount > 0 && (
+                          <span 
+                            className="calendar-schedule-overflow"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDateChange(cellDate)
+                              setViewMode('DAY')
+                            }}
+                          >
+                            +{hiddenCount}개 더보기
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  )
+                })}
+                <div className="calendar-schedule-bars" aria-hidden="true" style={{ pointerEvents: 'none' }}>
+                  {calendarScheduleBars.filter(bar => bar.lane < 3).map((bar) => {
+                    const duration = bar.endCol - bar.startCol + 1
+                    const segmentType = bar.isFirstSegment && bar.isLastSegment
+                      ? 'single'
+                      : bar.isFirstSegment
+                        ? 'start'
+                        : bar.isLastSegment
+                          ? 'end'
+                          : 'middle'
 
-                  const schedule = bar.schedule
-                  
-                  // Sync zoom state
-                  const isBarSelected = selectedDateStr && (
-                    (schedule.startDate === selectedDateStr) ||
-                    (schedule.endDate === selectedDateStr) ||
-                    (selectedDateStr >= schedule.startDate && selectedDateStr <= schedule.endDate)
-                  );
+                    const schedule = bar.schedule
+                    
+                    // Sync zoom state
+                    const isBarSelected = selectedDateStr && (
+                      (schedule.startDate === selectedDateStr) ||
+                      (schedule.endDate === selectedDateStr) ||
+                      (selectedDateStr >= schedule.startDate && selectedDateStr <= schedule.endDate)
+                    );
 
-                  let itemClasses = `calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} calendar-schedule-bar--${segmentType}`
-                  if (isBarSelected) itemClasses += ' is-selected';
-                  
-                  if (schedule.isAiRecommendation) {
-                    itemClasses += ` calendar-schedule-bar--ai-${schedule.aiType}`
-                  }
+                    let itemClasses = `calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} calendar-schedule-bar--${segmentType}`
+                    if (isBarSelected) itemClasses += ' is-selected';
+                    
+                    if (schedule.isAiRecommendation) {
+                      itemClasses += ` calendar-schedule-bar--ai-${schedule.aiType}`
+                    }
 
-                  const topPos = `calc(${((bar.row - 1) / rowCount) * 100}% + ${32 + (bar.lane * 28)}px)`
+                    const topPos = `calc(${((bar.row - 1) / rowCount) * 100}% + ${28 + (bar.lane * 22)}px)`
 
-                  if (schedule.isTodo) {
-                    itemClasses += ' calendar-schedule-item--todo'
+                    if (schedule.isTodo) {
+                      itemClasses += ' calendar-schedule-item--todo'
+                      return (
+                        <div
+                          key={bar.key}
+                          className={`${itemClasses} ${schedule.isCompleted ? 'todo-completed' : ''}`}
+                          style={{
+                            left: `calc(${((bar.startCol - 1) / 7) * 100}% + ${4 + (bar.startCol - 1) / 7}px)`,
+                            width: `calc(${(duration / 7) * 100}% - ${9 - duration / 7}px)`,
+                            top: topPos,
+                            pointerEvents: 'auto',
+                            cursor: 'pointer',
+                            textDecoration: schedule.isCompleted ? 'line-through' : 'none'
+                          }}
+                          title={schedule.title}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSchedule(schedule);
+                          }}
+                        >
+                          <span
+                            className={`todo-checkbox-icon grid-icon ${schedule.isCompleted ? 'checked' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTodo(e, schedule);
+                            }}
+                          >
+                            {schedule.isCompleted ? <FiCheckSquare /> : <FiSquare />}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{schedule.title}</span>
+                        </div>
+                      )
+                    }
+
                     return (
                       <div
                         key={bar.key}
-                        className={`${itemClasses} ${schedule.isCompleted ? 'todo-completed' : ''}`}
+                        className={itemClasses}
                         style={{
                           left: `calc(${((bar.startCol - 1) / 7) * 100}% + 4px)`,
                           width: `calc(${(duration / 7) * 100}% - 8px)`,
                           top: topPos,
                           pointerEvents: 'auto',
-                          cursor: 'pointer',
-                          textDecoration: schedule.isCompleted ? 'line-through' : 'none'
+                          cursor: 'pointer'
                         }}
                         title={schedule.title}
                         onClick={(e) => {
@@ -1111,46 +1406,16 @@ export default function Calendar({ showSidebar = true }) {
                           handleEditSchedule(schedule);
                         }}
                       >
-                        <span style={{ 
-                          marginRight: '5px', 
-                          fontSize: '14px',
-                          color: schedule.isCompleted ? 'inherit' : '#10b981'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleTodo(schedule);
-                        }}>
-                          {schedule.isCompleted ? '☑' : '☐'}
-                        </span>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{schedule.title}</span>
                       </div>
                     )
-                  }
-
-                  return (
-                    <div
-                      key={bar.key}
-                      className={itemClasses}
-                      style={{
-                        left: `calc(${((bar.startCol - 1) / 7) * 100}% + 4px)`,
-                        width: `calc(${(duration / 7) * 100}% - 8px)`,
-                        top: topPos,
-                        pointerEvents: 'auto',
-                        cursor: 'pointer'
-                      }}
-                      title={schedule.title}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditSchedule(schedule);
-                      }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{schedule.title}</span>
-                    </div>
-                  )
-                })}
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            renderDayView()
+          )}
         </main>
       </div>
 
@@ -1174,7 +1439,11 @@ export default function Calendar({ showSidebar = true }) {
                   name="entryMode"
                   value="TODO"
                   checked={formData.entryMode === 'TODO'}
-                  onChange={(e) => setFormData({ ...formData, entryMode: e.target.value })}
+                  onChange={(e) => setFormData({ 
+                    ...formData, 
+                    entryMode: e.target.value,
+                    endDate: formData.startDate // Sync endDate to startDate for Todo
+                  })}
                 />
                 할 일
               </label>
@@ -1281,38 +1550,26 @@ export default function Calendar({ showSidebar = true }) {
             )}
           </div>
 
-          {formData.entryMode === 'TODO' ? (
+          <div className="form-row">
             <div className="form-group">
-              <label>마감 시간</label>
+              <label>시작 시간</label>
               <input
                 type="time"
-                value={formData.endTime}
-                onChange={(e) => setFormData({ ...formData, endTime: e.target.value, startTime: e.target.value })}
+                value={formData.startTime}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                 className="calendar-input"
               />
             </div>
-          ) : (
-            <div className="form-row">
-              <div className="form-group">
-                <label>시작 시간</label>
-                <input
-                  type="time"
-                  value={formData.startTime}
-                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                  className="calendar-input"
-                />
-              </div>
-              <div className="form-group">
-                <label>종료 시간</label>
-                <input
-                  type="time"
-                  value={formData.endTime}
-                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                  className="calendar-input"
-                />
-              </div>
+            <div className="form-group">
+              <label>{formData.entryMode === 'TODO' ? '마감 시간' : '종료 시간'}</label>
+              <input
+                type="time"
+                value={formData.endTime}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                className="calendar-input"
+              />
             </div>
-          )}
+          </div>
           
           {formData.entryMode === 'EVENT' && (
              <div className="form-row">
@@ -1368,6 +1625,32 @@ export default function Calendar({ showSidebar = true }) {
             <strong>{excelFileName}</strong>에서 {excelSchedules.length}개의 일정을 읽었습니다.
           </div>
 
+          <div className="form-group" style={{ marginTop: '15px' }}>
+            <label>가져올 일정 구분</label>
+            <div className="calendar-type-selector">
+              <label className={`calendar-type-option ${excelImportType === 'PERSONAL' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="excelImportType"
+                  value="PERSONAL"
+                  checked={excelImportType === 'PERSONAL'}
+                  onChange={(e) => setExcelImportType(e.target.value)}
+                />
+                개인 일정으로 추가
+              </label>
+              <label className={`calendar-type-option ${excelImportType === 'DEPARTMENT' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="excelImportType"
+                  value="DEPARTMENT"
+                  checked={excelImportType === 'DEPARTMENT'}
+                  onChange={(e) => setExcelImportType(e.target.value)}
+                />
+                부서 공용 일정으로 추가
+              </label>
+            </div>
+          </div>
+
           {excelWarnings.length > 0 && (
             <div className="calendar-excel-warning">
               {excelWarnings.length}개 행은 날짜 또는 제목이 없어 건너뛰었습니다. 행 번호: {excelWarnings.join(', ')}
@@ -1411,24 +1694,59 @@ export default function Calendar({ showSidebar = true }) {
               삭제
             </button>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>닫기</button>
               <button type="button" className="btn btn-primary" onClick={handleUpdateSchedule}>수정 저장</button>
             </div>
           </div>
 
-          <div style={{ 
-            marginBottom: '20px', 
-            padding: '12px', 
-            background: 'var(--color-surface-muted)', 
-            borderRadius: '10px',
-            fontSize: '14px', 
-            fontWeight: '600',
-            color: 'var(--color-text)' 
-          }}>
-            <FiCalendar style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-            {formData.startDate} ({getDayOfWeek(formData.startDate)})
-            {formData.startDate !== formData.endDate && ` ~ ${formData.endDate} (${getDayOfWeek(formData.endDate)})`}
-            {formData.startTime && ` | ${formData.startTime} ~ ${formData.endTime}`}
+          <div className="form-row" style={{ marginTop: '10px' }}>
+            <div className="form-group">
+              <label>{formData.entryMode === 'TODO' ? '날짜' : '시작일'}</label>
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => {
+                  const newDate = e.target.value;
+                  setFormData({ 
+                    ...formData, 
+                    startDate: newDate, 
+                    endDate: (formData.entryMode === 'TODO' ? newDate : formData.endDate) 
+                  });
+                }}
+                className="calendar-input"
+              />
+            </div>
+            {formData.entryMode === 'EVENT' && (
+              <div className="form-group">
+                <label>종료일</label>
+                <input
+                  type="date"
+                  value={formData.endDate}
+                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  className="calendar-input"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>시작 시간</label>
+              <input
+                type="time"
+                value={formData.startTime}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                className="calendar-input"
+              />
+            </div>
+            <div className="form-group">
+              <label>{formData.entryMode === 'TODO' ? '마감 시간' : '종료 시간'}</label>
+              <input
+                type="time"
+                value={formData.endTime}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                className="calendar-input"
+              />
+            </div>
           </div>
 
           <div className="form-group">
@@ -1452,6 +1770,47 @@ export default function Calendar({ showSidebar = true }) {
               placeholder="상세 설명"
             />
           </div>
+        </div>
+      </SimpleModal>
+
+      <SimpleModal open={!!moreEventsDate} onClose={() => setMoreEventsDate(null)} title={`${moreEventsDate ? formatDate(moreEventsDate) : ''} 전체 일정`}>
+        <div className="schedule-list" style={{ padding: '10px 0', maxHeight: '50vh', overflowY: 'auto' }}>
+          {moreEventsDate && getSchedulesForDate(moreEventsDate).map(schedule => (
+            <div
+              key={schedule.id}
+              className={`schedule-item schedule-item--${getScheduleGroup(schedule)} ${schedule.isAiRecommendation ? `schedule-item--ai-${schedule.aiType}` : ''}`}
+              style={schedule.isTodo && schedule.isCompleted ? { opacity: 0.6 } : {}}
+              onClick={() => {
+                setMoreEventsDate(null)
+                handleEditSchedule(schedule)
+              }}
+            >
+                          <div className="schedule-time">
+                            {isMultiDaySchedule(schedule) ? (
+                              `${schedule.startDate.slice(5)} ${normalizeTime(schedule.startTime)} ~ ${schedule.endDate.slice(5)} ${normalizeTime(schedule.endTime)}`
+                            ) : (
+                              `${normalizeTime(schedule.startTime)} ~ ${normalizeTime(schedule.endTime)}`
+                            )}
+                          </div>
+              
+              <div className="schedule-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {schedule.isTodo && (
+                  <span 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleToggleTodo(e, schedule)
+                    }} 
+                    style={{ cursor: 'pointer', fontSize: '18px', color: schedule.isCompleted ? '#10b981' : '#94a3b8', display: 'inline-flex' }}
+                  >
+                    {schedule.isCompleted ? <FiCheckSquare /> : <FiSquare />}
+                  </span>
+                )}
+                <span style={{ textDecoration: (schedule.isTodo && schedule.isCompleted) ? 'line-through' : 'none' }}>
+                  {schedule.title}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </SimpleModal>
     </div>
