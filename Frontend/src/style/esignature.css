@@ -166,6 +166,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: #ffffff;
 }
 
 /* Error banner */
@@ -434,6 +435,55 @@
 .esig-table-wrap {
   flex: 1;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.esig-pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.esig-page-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-soft);
+}
+
+.esig-page-btn:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.esig-page-btn.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  font-weight: 700;
+}
+
+.esig-page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.esig-page-info {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 44px;
+  text-align: center;
 }
 
 .esig-table {
@@ -1066,6 +1116,17 @@
   border-radius: 12px;
   background: var(--color-surface);
   box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.esig-doc-iframe {
+  width: 100%;
+  border: none;
+  border-radius: 0 0 12px 12px;
+  background: #fff;
+  display: block;
+  overflow: hidden;
 }
 
 .esig-doc-sheet-header {
@@ -1259,6 +1320,7 @@
 }
 
 /* ── Signature management page ───────────────────────────── */
+/* legacy - keep for compat */
 .esig-sign-page {
   flex: 1;
   overflow: auto;
@@ -1266,6 +1328,318 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
+}
+
+/* ── 새 서명 관리 전체 레이아웃 ── */
+.esig-sign-fullpage {
+  flex: 1;
+  overflow: auto;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.esig-sign-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+  height: 100%;
+}
+
+.esig-sign-left,
+.esig-sign-right {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.esig-sign-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.esig-sign-current {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.esig-sign-current-img-wrap {
+  position: relative;
+  cursor: zoom-in;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-muted);
+}
+
+.esig-sign-current-img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
+  padding: 16px;
+}
+
+.esig-sign-current-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.esig-sign-current-img-wrap:hover .esig-sign-current-overlay {
+  opacity: 1;
+}
+
+.esig-sign-current-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.esig-sign-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 160px;
+  border: 2px dashed var(--color-border-subtle);
+  border-radius: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 24px;
+}
+
+.esig-sign-empty-state p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.esig-sign-empty-state span {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* 서명 히스토리 */
+.esig-sign-history {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.esig-sign-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.esig-sign-history-item {
+  position: relative;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  background: var(--color-surface-muted);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.esig-sign-history-item img {
+  width: 100%;
+  max-height: 60px;
+  object-fit: contain;
+}
+
+.esig-sign-history-label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.esig-sign-history-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.12);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.esig-sign-history-del:hover {
+  background: #fecaca;
+  color: #dc2626;
+}
+
+/* 탭 */
+.esig-sign-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: var(--input-bg);
+  border-radius: 12px;
+}
+
+.esig-sign-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-soft);
+}
+
+.esig-sign-tab.active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 700;
+  box-shadow: var(--shadow-soft-sm);
+}
+
+/* 업로드 패널 */
+.esig-sign-upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.esig-sign-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 직접 서명 패널 */
+.esig-sign-draw-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.esig-sign-draw-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--color-surface-muted);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.esig-sign-draw-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.esig-sign-draw-tool input[type="color"] {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 2px;
+  background: none;
+}
+
+.esig-sign-draw-tool input[type="range"] {
+  width: 80px;
+}
+
+.esig-sign-canvas {
+  width: 100%;
+  border: 2px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: #fff;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.esig-sign-draw-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* 라이트박스 */
+.esig-sign-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.esig-sign-lightbox img {
+  max-width: 80vw;
+  max-height: 80vh;
+  border-radius: 12px;
+  background: #fff;
+  padding: 24px;
+  object-fit: contain;
+}
+
+.esig-sign-lightbox-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
 }
 
 .esig-sign-page-card {

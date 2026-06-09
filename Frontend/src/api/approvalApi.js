@@ -34,6 +34,9 @@ export const cancelApprovalDoc = (id) => api.delete(`/approvals/documents/${id}`
 export const getApprovalAttachment = (id) =>
   api.get(`/approvals/documents/${id}/attachment`, { responseType: 'arraybuffer' })
 
+export const downloadApprovalPdf = (id) =>
+  api.get(`/approvals/documents/${id}/pdf/download`, { responseType: 'arraybuffer' })
+
 export const uploadApprovalAttachment = (id, file) => {
   const formData = new FormData()
   formData.append('file', file)
@@ -49,6 +52,9 @@ export const rejectApprovalDoc = (id, payload) => api.post(`/approvals/documents
 export const delegateApprovalDoc = (id, payload) => api.post(`/approvals/documents/${id}/delegate`, payload)
 
 export const getApprovalSign = () => api.get('/approvals/sign')
+
+export const getApprovalSignImage = () =>
+  api.get('/approvals/sign/image', { responseType: 'arraybuffer' })
 
 export const uploadApprovalSign = (file) => {
   const formData = new FormData()

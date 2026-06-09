@@ -70,6 +70,19 @@ public class ApprovalDocController {
                 .build();
     }
 
+    @GetMapping("/{id}/pdf/download")
+    public ResponseEntity<byte[]> downloadPdf(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        byte[] data = docService.downloadPdf(id, user);
+        String filename = "APPR-" + id + ".pdf";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .body(data);
+    }
+
     // ─── 결재 액션 ────────────────────────────────────────────────────────────
 
     @GetMapping("/{id}/attachment")

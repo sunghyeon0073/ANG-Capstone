@@ -259,6 +259,18 @@ public class ApprovalDocService {
         return doc.getFinalPdfUrl();
     }
 
+    public byte[] downloadPdf(Long docId, User user) {
+        ApprovalDoc doc = findDocAndCheckAccess(docId, user);
+        if (doc.getFinalPdfUrl() == null) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+        String key = doc.getFinalPdfUrl().substring(doc.getFinalPdfUrl().indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+        return s3Client.getObject(
+                GetObjectRequest.builder().bucket(bucket).key(key).build(),
+                ResponseTransformer.toBytes()
+        ).asByteArray();
+    }
+
     // ─── 내부 헬퍼 ────────────────────────────────────────────────────────────
 
     private void buildApprovalLines(ApprovalDoc doc, List<ApprovalLineDto.Request> lineRequests, boolean submitNow) {
