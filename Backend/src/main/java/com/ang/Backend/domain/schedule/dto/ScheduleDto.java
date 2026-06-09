@@ -68,8 +68,13 @@ public class ScheduleDto {
         private LocalTime endTime;
         private String description;
         private ScheduleType type;
+
+        @JsonProperty("isTodo")
         private boolean isTodo;
+
+        @JsonProperty("isCompleted")
         private boolean isCompleted;
+
         private Long parentScheduleId;
         private String repeatType;
         private LocalDate repeatEndDate;

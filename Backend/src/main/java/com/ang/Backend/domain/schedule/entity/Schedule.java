@@ -28,6 +28,10 @@ public class Schedule {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scope_id")
+    private com.ang.Backend.domain.scope.entity.Scope scope;
+
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import Calendar from './Calendar'
+import HomeCalendar from './HomeCalendar'
 import Board from './Board'
 
-export default function Home({ currentSubPage, user }) {
+export default function Home({ currentSubPage, user, onSubPageChange }) {
   const [prompt, setPrompt] = useState('')
 
   if (currentSubPage === 'home-memo') {
@@ -33,8 +33,8 @@ export default function Home({ currentSubPage, user }) {
       </div>
 
       <div className="home-dashboard-grid">
-        <section className="home-panel home-calendar-panel">
-          <Calendar showSidebar={false} />
+        <section className="home-panel home-calendar-panel" style={{ overflow: 'hidden' }}>
+          <HomeCalendar onNavigateToCalendar={() => onSubPageChange('calendar')} />
         </section>
         <section className="home-panel home-board-panel">
           <Board currentSubPage="board-notice" />

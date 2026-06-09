@@ -12,17 +12,22 @@ import java.util.List;
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     List<Schedule> findByOwnerOrderByStartDateAscStartTimeAsc(User owner);
 
-    List<Schedule> findByOwnerAndStartDateBetweenOrderByStartDateAscStartTimeAsc(
-            User owner,
-            LocalDate startDate,
-            LocalDate endDate
-    );
-
-    @Query("SELECT s FROM Schedule s WHERE s.owner = :owner " +
+    @Query("SELECT s FROM Schedule s WHERE (s.owner = :owner OR (s.scope.scopeId = :scopeId AND s.type = 'DEPARTMENT')) " +
            "AND s.startDate <= :endDate AND s.endDate >= :startDate " +
            "ORDER BY s.startDate ASC, s.startTime ASC")
-    List<Schedule> findByOwnerAndDateRangeOverlap(
+    List<Schedule> findByOwnerOrScopeAndDateRangeOverlap(
             @Param("owner") User owner,
+            @Param("scopeId") Integer scopeId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query("SELECT s FROM Schedule s WHERE (s.owner = :owner OR (s.scope.scopeId = :scopeId AND s.type = 'DEPARTMENT')) " +
+           "AND s.startDate BETWEEN :startDate AND :endDate " +
+           "ORDER BY s.startDate ASC, s.startTime ASC")
+    List<Schedule> findByOwnerOrScopeAndStartDateBetween(
+            @Param("owner") User owner,
+            @Param("scopeId") Integer scopeId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
