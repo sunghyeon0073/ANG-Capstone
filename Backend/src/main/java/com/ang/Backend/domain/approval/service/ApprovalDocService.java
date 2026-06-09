@@ -29,7 +29,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
@@ -336,6 +338,38 @@ public class ApprovalDocService {
         doc.setAttachmentUrl(url);
         doc.setAttachmentName(originalFilename);
         return url;
+    }
+
+    public byte[] downloadAttachment(Long docId, User user) {
+        ApprovalDoc doc = findDocAndCheckAccess(docId, user);
+        String url = doc.getAttachmentUrl();
+        if (url == null || url.isBlank()) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+        // Extract S3 key from full URL: https://bucket.s3.region.amazonaws.com/key
+        String key = url.substring(url.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+        return s3Client.getObject(
+                GetObjectRequest.builder().bucket(bucket).key(key).build(),
+                ResponseTransformer.toBytes()
+        ).asByteArray();
+    }
+
+    public String getAttachmentContentType(Long docId) {
+        ApprovalDoc doc = docRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_DOC_NOT_FOUND));
+        String url = doc.getAttachmentUrl();
+        if (url == null) return "application/octet-stream";
+        String lower = url.toLowerCase();
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".doc")) return "application/msword";
+        if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+        return "application/octet-stream";
     }
 
     public ApprovalDoc findDocAndCheckAccess(Long docId, User user) {

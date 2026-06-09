@@ -95,8 +95,15 @@ body {
 .main-content {
   flex: 1;
   overflow-y: auto;
-    padding: var(--space-lg);
+  padding: var(--space-lg);
   min-height: 0;
+}
+
+.main-content--fill {
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 /* ============================================================================
    BUTTONS

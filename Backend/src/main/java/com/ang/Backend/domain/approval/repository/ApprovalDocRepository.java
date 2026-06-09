@@ -28,13 +28,21 @@ public interface ApprovalDocRepository extends JpaRepository<ApprovalDoc, Long> 
                                        @Param("keyword") String keyword,
                                        Pageable pageable);
 
-    // 결재 완료함: 내가 APPROVED/REJECTED 처리한 문서
+    // 결재 완료함: 내가 APPROVED 처리한 문서
     @Query("SELECT DISTINCT ad FROM ApprovalDoc ad JOIN ad.approvalLines al " +
            "WHERE (al.approver.userId = :userId OR al.delegatee.userId = :userId) " +
-           "AND al.status IN :statuses")
+           "AND al.status = :status")
     Page<ApprovalDoc> findCompletedInbox(@Param("userId") Integer userId,
-                                         @Param("statuses") List<ApprovalLineStatus> statuses,
+                                         @Param("status") ApprovalLineStatus status,
                                          Pageable pageable);
+
+    // 결재 반려함: 내가 REJECTED 처리한 문서
+    @Query("SELECT DISTINCT ad FROM ApprovalDoc ad JOIN ad.approvalLines al " +
+           "WHERE (al.approver.userId = :userId OR al.delegatee.userId = :userId) " +
+           "AND al.status = :status")
+    Page<ApprovalDoc> findRejectedInbox(@Param("userId") Integer userId,
+                                        @Param("status") ApprovalLineStatus status,
+                                        Pageable pageable);
 
     // 수신함: RECEIVER 타입으로 등록된 사용자가 보는 최종 승인 문서
     @Query("SELECT DISTINCT ad FROM ApprovalDoc ad JOIN ad.approvalLines al " +
