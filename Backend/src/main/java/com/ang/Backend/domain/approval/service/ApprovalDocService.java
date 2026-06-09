@@ -10,10 +10,12 @@ import com.ang.Backend.common.response.PageResult;
 import com.ang.Backend.domain.approval.dto.ApprovalActionDto;
 import com.ang.Backend.domain.approval.dto.ApprovalDocDto;
 import com.ang.Backend.domain.approval.dto.ApprovalLineDto;
+import com.ang.Backend.domain.approval.entity.ApprovalAttachment;
 import com.ang.Backend.domain.approval.entity.ApprovalDoc;
 import com.ang.Backend.domain.approval.entity.ApprovalLine;
 import com.ang.Backend.domain.approval.entity.ApprovalTemplate;
 import com.ang.Backend.domain.approval.event.ApprovalCompletedEvent;
+import com.ang.Backend.domain.approval.repository.ApprovalAttachmentRepository;
 import com.ang.Backend.domain.approval.repository.ApprovalDocRepository;
 import com.ang.Backend.domain.approval.repository.ApprovalLineRepository;
 import com.ang.Backend.domain.approval.repository.ApprovalTemplateRepository;
@@ -45,6 +47,7 @@ import java.util.stream.Collectors;
 public class ApprovalDocService {
 
     private final ApprovalDocRepository docRepository;
+    private final ApprovalAttachmentRepository attachmentRepository;
     private final ApprovalLineRepository lineRepository;
     private final ApprovalTemplateRepository templateRepository;
     private final UserRepository userRepository;
@@ -382,6 +385,76 @@ public class ApprovalDocService {
         if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
         if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
         return "application/octet-stream";
+    }
+
+    @Transactional
+    public ApprovalDocDto.AttachmentInfo uploadAttachmentMulti(Long docId, MultipartFile file, User user) {
+        ApprovalDoc doc = docRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_DOC_NOT_FOUND));
+        if (!doc.getDrafter().getUserId().equals(user.getUserId())) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+        if (doc.getStatus() != ApprovalStatus.DRAFT) {
+            throw new CustomException(ErrorCode.APPROVAL_NOT_MODIFIABLE);
+        }
+
+        String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "attachment";
+        String ext = originalFilename.contains(".")
+                ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                : "";
+        String key = "e-approval/attachments/" + docId + "/" + java.util.UUID.randomUUID() + ext;
+        String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+
+        try {
+            s3Client.putObject(
+                    PutObjectRequest.builder().bucket(bucket).key(key).contentType(ct).build(),
+                    RequestBody.fromBytes(file.getBytes())
+            );
+        } catch (IOException e) {
+            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
+        }
+
+        String fileUrl = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key;
+        ApprovalAttachment saved = attachmentRepository.save(
+                ApprovalAttachment.builder()
+                        .doc(doc)
+                        .fileName(originalFilename)
+                        .fileUrl(fileUrl)
+                        .contentType(ct)
+                        .build()
+        );
+        return ApprovalDocDto.AttachmentInfo.from(saved);
+    }
+
+    public List<ApprovalDocDto.AttachmentInfo> listAttachments(Long docId, User user) {
+        ApprovalDoc doc = findDocAndCheckAccess(docId, user);
+        return attachmentRepository.findByDoc_IdOrderByCreatedAtAsc(doc.getId()).stream()
+                .map(ApprovalDocDto.AttachmentInfo::from)
+                .collect(Collectors.toList());
+    }
+
+    public static class AttachmentDownload {
+        public final byte[] data;
+        public final String contentType;
+        public final String fileName;
+        public AttachmentDownload(byte[] data, String contentType, String fileName) {
+            this.data = data; this.contentType = contentType; this.fileName = fileName;
+        }
+    }
+
+    public AttachmentDownload downloadAttachmentById(Long docId, Long attachmentId, User user) {
+        findDocAndCheckAccess(docId, user);
+        ApprovalAttachment att = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> new CustomException(ErrorCode.FILE_NOT_FOUND));
+        if (!att.getDoc().getId().equals(docId)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+        String key = att.getFileUrl().substring(att.getFileUrl().indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+        byte[] data = s3Client.getObject(
+                GetObjectRequest.builder().bucket(bucket).key(key).build(),
+                ResponseTransformer.toBytes()
+        ).asByteArray();
+        return new AttachmentDownload(data, att.getContentType() != null ? att.getContentType() : "application/octet-stream", att.getFileName());
     }
 
     public ApprovalDoc findDocAndCheckAccess(Long docId, User user) {

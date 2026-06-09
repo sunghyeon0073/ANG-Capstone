@@ -7,6 +7,8 @@ import com.ang.Backend.domain.approval.dto.ApprovalActionDto;
 import com.ang.Backend.domain.approval.dto.ApprovalDocDto;
 import com.ang.Backend.domain.approval.service.ApprovalDocService;
 import com.ang.Backend.domain.user.entity.User;
+
+import java.util.List;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -106,6 +108,36 @@ public class ApprovalDocController {
         User user = getUser(userDetails);
         docService.uploadAttachment(id, file, user);
         return ApiResponse.ok("첨부파일이 업로드되었습니다.");
+    }
+
+    @PostMapping(value = "/{id}/attachments", consumes = "multipart/form-data")
+    public ApiResponse<ApprovalDocDto.AttachmentInfo> uploadAttachmentMulti(
+            @PathVariable Long id,
+            @RequestPart("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        return ApiResponse.ok(docService.uploadAttachmentMulti(id, file, user));
+    }
+
+    @GetMapping("/{id}/attachments")
+    public ApiResponse<List<ApprovalDocDto.AttachmentInfo>> listAttachments(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        return ApiResponse.ok(docService.listAttachments(id, user));
+    }
+
+    @GetMapping("/{id}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadAttachmentById(
+            @PathVariable Long id,
+            @PathVariable Long attachmentId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        ApprovalDocService.AttachmentDownload result = docService.downloadAttachmentById(id, attachmentId, user);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, result.contentType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + result.fileName + "\"")
+                .body(result.data);
     }
 
     @PostMapping("/{id}/approve")

@@ -34,6 +34,19 @@ export const cancelApprovalDoc = (id) => api.delete(`/approvals/documents/${id}`
 export const getApprovalAttachment = (id) =>
   api.get(`/approvals/documents/${id}/attachment`, { responseType: 'arraybuffer' })
 
+export const uploadApprovalAttachmentMulti = (id, file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post(`/approvals/documents/${id}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+export const getApprovalAttachments = (id) =>
+  api.get(`/approvals/documents/${id}/attachments`)
+
+export const getApprovalAttachmentById = (docId, attachmentId) =>
+  api.get(`/approvals/documents/${docId}/attachments/${attachmentId}`, { responseType: 'arraybuffer' })
 export const downloadApprovalPdf = (id) =>
   api.get(`/approvals/documents/${id}/pdf/download`, { responseType: 'arraybuffer' })
 

@@ -26,6 +26,8 @@ import {
 import {
   approveApprovalDoc,
   getApprovalAttachment,
+  getApprovalAttachmentById,
+  getApprovalAttachments,
   downloadApprovalPdf,
   createApprovalDoc,
   createMyApprovalLine,
@@ -47,6 +49,7 @@ import {
   rejectApprovalDoc,
   updateApprovalDoc,
   uploadApprovalAttachment,
+  uploadApprovalAttachmentMulti,
   uploadApprovalSign,
 } from '../../api/approvalApi'
 import { getAllUsers } from '../../api/userApi'
@@ -301,12 +304,13 @@ function ExcelSheetViewer({ data }) {
   )
 }
 
-function AttachmentViewer({ docId, attachmentUrl }) {
+function AttachmentViewer({ docId, attachmentId, fileName, attachmentUrl }) {
   const [viewer, setViewer] = useState({ status: 'idle', type: null, url: null, data: null })
   const docxRef = useRef(null)
 
   useEffect(() => {
-    if (!docId || !attachmentUrl) {
+    const hasAttachment = attachmentId != null || attachmentUrl
+    if (!docId || !hasAttachment) {
       setViewer({ status: 'none', type: null, url: null, data: null })
       return
     }
@@ -314,11 +318,15 @@ function AttachmentViewer({ docId, attachmentUrl }) {
     let blobUrl = null
     setViewer({ status: 'loading', type: null, url: null, data: null })
 
-    getApprovalAttachment(docId)
+    const fetchFn = attachmentId != null
+      ? () => getApprovalAttachmentById(docId, attachmentId)
+      : () => getApprovalAttachment(docId)
+
+    fetchFn()
       .then(async (res) => {
         const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' })
         const ct = (res.headers['content-type'] || '').toLowerCase()
-        const urlLower = (attachmentUrl || '').toLowerCase()
+        const urlLower = (fileName || attachmentUrl || '').toLowerCase()
 
         let type = 'other'
         if (ct.includes('pdf') || urlLower.match(/\.pdf(\?|$)/)) type = 'pdf'
@@ -348,7 +356,7 @@ function AttachmentViewer({ docId, attachmentUrl }) {
       })
 
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl) }
-  }, [docId])
+  }, [docId, attachmentId, attachmentUrl])
 
   useEffect(() => {
     if (viewer.type !== 'word' || !viewer.data || !docxRef.current) return
@@ -822,6 +830,8 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [approvalLines, setApprovalLines] = useState([])
   const [attachmentFile, setAttachmentFile] = useState(null)
+  const [attachmentFiles, setAttachmentFiles] = useState([])
+  const [selectedAttachmentId, setSelectedAttachmentId] = useState(null)
   const [userSearch, setUserSearch] = useState('')
   const [saveState, setSaveState] = useState('idle')
   const [linePresetSaving, setLinePresetSaving] = useState(false)
@@ -950,6 +960,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
     setSelectedTemplateId('')
     setApprovalLines([])
     setAttachmentFile(null)
+    setAttachmentFiles([])
     setActiveListSearch('')
     onSubPageChange?.('esignature-waiting')
   }
@@ -966,6 +977,9 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       setSelectedApproval(detail)
       setSelectedApprovalId(docId)
       setMode('view')
+      // auto-select first attachment if available
+      const firstAtt = (detail.attachments || [])[0]
+      setSelectedAttachmentId(firstAtt ? firstAtt.id : null)
     } catch (e) {
       console.error(e)
       setError('문서 상세를 불러오지 못했습니다.')
@@ -1014,6 +1028,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       approverPosition: line.approverPosition, lineOrder: line.lineOrder, lineType: line.lineType || 'APPROVAL',
     })))
     setAttachmentFile(null)
+    setAttachmentFiles([])
     setMode('compose')
   }
 
@@ -1083,7 +1098,9 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       if (docId) { await updateApprovalDoc(docId, payload) }
       else { const created = await createApprovalDoc(payload); docId = unwrap(created)?.id }
       if (!docId) throw new Error('문서 ID를 확인할 수 없습니다.')
-      if (attachmentFile) await uploadApprovalAttachment(docId, attachmentFile)
+      for (const file of attachmentFiles) {
+        await uploadApprovalAttachmentMulti(docId, file)
+      }
       if (submitNow) await updateApprovalDoc(docId, { ...payload, submitNow: true })
       const detail = await loadApprovalDetail(docId)
       setSelectedApproval(detail)
@@ -1091,6 +1108,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       setMode('view')
       setForm((c) => ({ ...c, docId }))
       setAttachmentFile(null)
+      setAttachmentFiles([])
       await refreshAll()
       alert(submitNow ? '결재가 상신되었습니다.' : '임시저장되었습니다.')
     } catch (e) {
@@ -1322,8 +1340,40 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                     </div>
                     <div className="esig-field">
                       <label>첨부파일</label>
-                      <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.hwp,.hwpx,.txt,image/*" onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)} />
-                      {attachmentFile && <span className="esig-file-name">{attachmentFile.name}</span>}
+                      <label className="esig-file-add-btn">
+                        <FiPlus size={13} /> 파일 추가
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.hwp,.hwpx,.txt,image/*"
+                          multiple
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || [])
+                            setAttachmentFiles((prev) => {
+                              const names = new Set(prev.map((f) => f.name))
+                              return [...prev, ...files.filter((f) => !names.has(f.name))]
+                            })
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      {attachmentFiles.length > 0 && (
+                        <ul className="esig-file-list">
+                          {attachmentFiles.map((file, idx) => (
+                            <li key={idx} className="esig-file-list-item">
+                              <FiFileText size={13} />
+                              <span className="esig-file-list-name">{file.name}</span>
+                              <button
+                                className="esig-icon-btn"
+                                type="button"
+                                onClick={() => setAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                <FiX size={12} />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -1555,42 +1605,75 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                       if (doc) e.target.style.height = doc.documentElement.scrollHeight + 'px'
                     }}
                   />
+
+                  {/* 첨부파일 목록 */}
+                  {(selectedApproval.attachments || []).length > 0 && (
+                    <div className="esig-attach-list">
+                      <div className="esig-attach-list-title">
+                        <FiFileText size={13} /> 첨부파일 ({selectedApproval.attachments.length})
+                      </div>
+                      <div className="esig-attach-items">
+                        {selectedApproval.attachments.map((att) => (
+                          <button
+                            key={att.id}
+                            className={`esig-attach-item ${selectedAttachmentId === att.id ? 'active' : ''}`}
+                            onClick={() => setSelectedAttachmentId(att.id)}
+                            title={att.fileName}
+                          >
+                            <FiFileText size={13} />
+                            <span className="esig-attach-item-name">{att.fileName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="esig-detail-side">
-                <div className="esig-viewer-header">
-                  <h2 className="esig-section-title">첨부파일</h2>
-                  {selectedApproval.attachmentUrl && (
-                    <button
-                      className="esig-btn esig-btn-ghost"
-                      style={{ padding: '6px 12px', fontSize: '12px' }}
-                      onClick={async () => {
-                        try {
-                          const res = await getApprovalAttachment(selectedApproval.id)
-                          const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' })
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          const raw = selectedApproval.attachmentUrl
-                          a.download = raw.split('/').pop().split('?')[0] || '첨부파일'
-                          a.click()
-                          URL.revokeObjectURL(url)
-                        } catch {
-                          alert('파일 다운로드에 실패했습니다.')
-                        }
-                      }}
-                    >
-                      <FiDownload size={13} /> 다운로드
-                    </button>
-                  )}
-                </div>
-                <div className="esig-viewer-body">
-                  <AttachmentViewer
-                    docId={selectedApproval.id}
-                    attachmentUrl={selectedApproval.attachmentUrl}
-                  />
-                </div>
+                {(() => {
+                  const attachments = selectedApproval.attachments || []
+                  const currentAtt = attachments.find((a) => a.id === selectedAttachmentId) || attachments[0] || null
+                  return (
+                    <>
+                      <div className="esig-viewer-header">
+                        <h2 className="esig-section-title">
+                          {currentAtt ? currentAtt.fileName : '첨부파일'}
+                        </h2>
+                        {currentAtt && (
+                          <button
+                            className="esig-btn esig-btn-ghost"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            onClick={async () => {
+                              try {
+                                const res = await getApprovalAttachmentById(selectedApproval.id, currentAtt.id)
+                                const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' })
+                                const url = URL.createObjectURL(blob)
+                                const a = document.createElement('a')
+                                a.href = url
+                                a.download = currentAtt.fileName || '첨부파일'
+                                a.click()
+                                URL.revokeObjectURL(url)
+                              } catch {
+                                alert('파일 다운로드에 실패했습니다.')
+                              }
+                            }}
+                          >
+                            <FiDownload size={13} /> 다운로드
+                          </button>
+                        )}
+                      </div>
+                      <div className="esig-viewer-body">
+                        <AttachmentViewer
+                          docId={selectedApproval.id}
+                          attachmentId={currentAtt?.id ?? null}
+                          fileName={currentAtt?.fileName ?? null}
+                          attachmentUrl={null}
+                        />
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           </>

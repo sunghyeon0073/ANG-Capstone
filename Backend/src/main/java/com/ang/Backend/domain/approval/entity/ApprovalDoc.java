@@ -74,4 +74,8 @@ public class ApprovalDoc {
     @OneToMany(mappedBy = "doc", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ApprovalLine> approvalLines = new ArrayList<>();
+
+    @OneToMany(mappedBy = "doc", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ApprovalAttachment> attachments = new ArrayList<>();
 }
