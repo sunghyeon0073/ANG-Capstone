@@ -18,13 +18,19 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -63,12 +69,23 @@ public class ApprovalPdfService {
                     .sorted(Comparator.comparing(ApprovalLine::getProcessedAt, Comparator.nullsLast(Comparator.naturalOrder())))
                     .collect(Collectors.toList());
 
+            // 서명 이미지를 S3(비공개)에서 직접 받아 base64 data URI로 변환
+            // → openhtmltopdf가 공개 URL 접근(403) 없이 렌더링 가능
+            Map<Long, String> signatureDataUris = new HashMap<>();
+            for (ApprovalLine line : approvedLines) {
+                String dataUri = toDataUri(line.getSignatureSnapshot());
+                if (dataUri != null) {
+                    signatureDataUris.put(line.getId(), dataUri);
+                }
+            }
+
             // Thymeleaf 렌더링
             Context ctx = new Context();
             ctx.setVariable("doc", doc);
             ctx.setVariable("approvalLines", approvedLines);
             ctx.setVariable("commentLines", commentLines);
-            ctx.setVariable("attachmentFilename", extractFilename(doc.getAttachmentUrl()));
+            ctx.setVariable("signatureDataUris", signatureDataUris);
+            ctx.setVariable("attachmentFilename", doc.getAttachmentName());
             String html = templateEngine.process("approval/approval-document", ctx);
 
             // HTML → PDF
@@ -89,26 +106,28 @@ public class ApprovalPdfService {
             doc.setFinalPdfUrl(pdfUrl);
             docRepository.save(doc);
 
-            log.info("PDF 생성 완료: docId={}, url={}", docId, pdfUrl);
+            log.info("PDF 생성 완료: docId={}, pdfBytes={}, 서명변환={}/{}건, url={}",
+                    docId, pdfBytes.length, signatureDataUris.size(), approvedLines.size(), pdfUrl);
         } catch (Exception e) {
             log.error("PDF 생성 실패: docId={}", docId, e);
         }
     }
 
-    private String extractFilename(String url) {
+    // S3 비공개 객체 URL → base64 data URI (PDF 렌더 시 네트워크 접근 없이 이미지 삽입용)
+    private String toDataUri(String url) {
         if (url == null || url.isBlank()) return null;
-        String lastSegment = url.substring(url.lastIndexOf('/') + 1);
-        // e-approval/attachments/{docId}/{UUID}.확장자 구조에서 UUID 부분 제거
-        int dotIdx = lastSegment.lastIndexOf('.');
-        if (dotIdx > 0) {
-            String ext = lastSegment.substring(dotIdx);        // .hwp, .docx 등
-            String uuidPart = lastSegment.substring(0, dotIdx);
-            // UUID 패턴(8-4-4-4-12) 이면 의미없는 이름이므로 확장자만 반환
-            if (uuidPart.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
-                return "첨부파일" + ext;
-            }
+        try {
+            String key = url.substring(url.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+            ResponseBytes<GetObjectResponse> obj = s3Client.getObjectAsBytes(
+                    GetObjectRequest.builder().bucket(bucket).key(key).build());
+            String contentType = obj.response().contentType();
+            if (contentType == null || contentType.isBlank()) contentType = "image/png";
+            String base64 = Base64.getEncoder().encodeToString(obj.asByteArray());
+            return "data:" + contentType + ";base64," + base64;
+        } catch (Exception e) {
+            log.warn("서명 이미지 변환 실패: url={}, error={}", url, e.getMessage());
+            return null;
         }
-        return lastSegment;
     }
 
     private byte[] renderPdf(String html) throws Exception {
