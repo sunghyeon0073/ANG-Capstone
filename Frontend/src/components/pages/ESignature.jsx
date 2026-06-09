@@ -100,7 +100,7 @@ const parseFormData = (formData) => {
   try { return JSON.parse(formData) } catch { return { raw: formData } }
 }
 
-const PRIMARY = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#FF8C74'
+const PRIMARY = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#3a5cad'
 
 const approvalStatusMeta = {
   DRAFT: { label: '임시저장', color: '#6B7280' },

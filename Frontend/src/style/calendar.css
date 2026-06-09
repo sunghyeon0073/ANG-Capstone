@@ -198,13 +198,11 @@
 
 /* --- Add Button Hover Animation --- */
 .calendar-add-btn {
-  box-shadow: 0 4px 14px 0 rgba(249, 115, 22, 0.39);
   transition: all 0.25s ease;
 }
 
 .calendar-add-btn:hover {
   transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.45);
 }
 
 
@@ -246,7 +244,6 @@
 .sidebar-header h2 {
   font-size: 18px; /* Larger */
   font-weight: 700;
-  color: var(--color-text);
   margin: 0;
 }
 

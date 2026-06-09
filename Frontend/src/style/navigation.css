@@ -343,6 +343,7 @@
     margin-left: 4px;
   text-align: left;
     box-shadow: none;
+  color: white;
 }
 
 .sidebar-menu-item:hover {
