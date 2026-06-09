@@ -7,10 +7,8 @@
   right: 24px;
   bottom: 22px;
   z-index: 1200;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  width: 96px;
+  height: 118px;
   pointer-events: none;
 }
 
@@ -23,13 +21,22 @@
 }
 
 .floating-mascot-character {
-  position: relative;
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 96px;
   height: 118px;
   padding: 0;
   background: transparent;
   pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
   animation: mascot-float 3.2s ease-in-out infinite;
+}
+
+.floating-mascot-character:active,
+.floating-mascot-restore:active {
+  cursor: grabbing;
 }
 
 .floating-mascot-character img {
@@ -61,7 +68,9 @@
 }
 
 .floating-mascot-bubble {
-  position: relative;
+  position: absolute;
+  right: 38px;
+  bottom: 104px;
   width: min(280px, calc(100vw - 40px));
   padding: 14px 40px 14px 16px;
     border-radius: var(--radius-lg);
@@ -201,6 +210,9 @@
 }
 
 .floating-mascot-controls {
+  position: absolute;
+  right: 32px;
+  top: -34px;
   height: 28px;
   pointer-events: auto;
 }
@@ -228,6 +240,8 @@
   width: 48px;
   height: 48px;
   font-size: 20px;
+  cursor: grab;
+  touch-action: none;
 }
 
 @keyframes mascot-float {
@@ -255,10 +269,22 @@
   .floating-mascot {
     right: 14px;
     bottom: 14px;
+    width: 76px;
+    height: 94px;
   }
 
   .floating-mascot-character {
     width: 76px;
     height: 94px;
+  }
+
+  .floating-mascot-bubble {
+    right: 24px;
+    bottom: 84px;
+  }
+
+  .floating-mascot-controls {
+    right: 24px;
+    top: -30px;
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FiCalendar, FiCheck, FiChevronDown, FiMessageCircle, FiSend, FiX } from 'react-icons/fi'
 import { confirmAiSchedule, previewAiSchedule } from '../../api/aiAssistantApi'
 
@@ -39,6 +39,28 @@ const formatMissingFields = fields => (
   fields?.map(field => MISSING_FIELD_LABELS[field] || field).join(', ')
 )
 
+const MASCOT_POSITION_KEY = 'ang:floating-mascot-position'
+const MASCOT_WIDTH = 96
+const MASCOT_HEIGHT = 118
+const MASCOT_MARGIN = 12
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
+const getDefaultMascotPosition = () => ({
+  x: Math.max(window.innerWidth - MASCOT_WIDTH - 24, MASCOT_MARGIN),
+  y: Math.max(window.innerHeight - MASCOT_HEIGHT - 22, MASCOT_MARGIN),
+})
+
+const readSavedMascotPosition = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MASCOT_POSITION_KEY) || 'null')
+    if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) return saved
+  } catch {
+    return null
+  }
+  return null
+}
+
 export default function FloatingMascot({ mode = 'default' }) {
   const [collapsed, setCollapsed] = useState(false)
   const [bubbleOpen, setBubbleOpen] = useState(false)
@@ -50,6 +72,9 @@ export default function FloatingMascot({ mode = 'default' }) {
   const [schedulePreview, setSchedulePreview] = useState(null)
   const [scheduleStatus, setScheduleStatus] = useState('')
   const [isScheduling, setIsScheduling] = useState(false)
+  const [position, setPosition] = useState(null)
+  const dragStateRef = useRef(null)
+  const dragMovedRef = useRef(false)
 
   const modeMessage = useMemo(() => (
     mode === 'ai' ? AI_MESSAGE : DEFAULT_MESSAGE
@@ -57,6 +82,30 @@ export default function FloatingMascot({ mode = 'default' }) {
 
   const frameConfig = ANIMATION_FRAMES[animation] || ANIMATION_FRAMES.idle
   const mascotSrc = frameConfig.path(frame)
+  const mascotPositionStyle = position
+    ? { left: position.x, top: position.y, right: 'auto', bottom: 'auto' }
+    : undefined
+
+  useEffect(() => {
+    const initial = readSavedMascotPosition() || getDefaultMascotPosition()
+    setPosition({
+      x: clamp(initial.x, MASCOT_MARGIN, window.innerWidth - MASCOT_WIDTH - MASCOT_MARGIN),
+      y: clamp(initial.y, MASCOT_MARGIN, window.innerHeight - MASCOT_HEIGHT - MASCOT_MARGIN),
+    })
+
+    const handleResize = () => {
+      setPosition(current => {
+        const next = current || getDefaultMascotPosition()
+        return {
+          x: clamp(next.x, MASCOT_MARGIN, window.innerWidth - MASCOT_WIDTH - MASCOT_MARGIN),
+          y: clamp(next.y, MASCOT_MARGIN, window.innerHeight - MASCOT_HEIGHT - MASCOT_MARGIN),
+        }
+      })
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     setMessage(modeMessage)
@@ -96,8 +145,60 @@ export default function FloatingMascot({ mode = 'default' }) {
   }, [])
 
   const handleMascotClick = () => {
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false
+      return
+    }
     setBubbleOpen((open) => !open)
     setHasAlert(false)
+  }
+
+  const handleRestoreClick = () => {
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false
+      return
+    }
+    setCollapsed(false)
+  }
+
+  const handleDragStart = (event) => {
+    if (event.button !== 0 && event.pointerType === 'mouse') return
+    const current = position || getDefaultMascotPosition()
+    dragMovedRef.current = false
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: current.x,
+      originY: current.y,
+    }
+    event.preventDefault()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const handleDragMove = (event) => {
+    const drag = dragStateRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    const deltaX = event.clientX - drag.startX
+    const deltaY = event.clientY - drag.startY
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) dragMovedRef.current = true
+
+    const nextPosition = {
+      x: clamp(drag.originX + deltaX, MASCOT_MARGIN, window.innerWidth - MASCOT_WIDTH - MASCOT_MARGIN),
+      y: clamp(drag.originY + deltaY, MASCOT_MARGIN, window.innerHeight - MASCOT_HEIGHT - MASCOT_MARGIN),
+    }
+    event.preventDefault()
+    setPosition(nextPosition)
+  }
+
+  const handleDragEnd = (event) => {
+    if (!dragStateRef.current || dragStateRef.current.pointerId !== event.pointerId) return
+    dragStateRef.current = null
+    setPosition(current => {
+      if (current) localStorage.setItem(MASCOT_POSITION_KEY, JSON.stringify(current))
+      return current
+    })
   }
 
   const handleSchedulePreview = async () => {
@@ -143,7 +244,12 @@ export default function FloatingMascot({ mode = 'default' }) {
       <button
         type="button"
         className="floating-mascot-restore"
-        onClick={() => setCollapsed(false)}
+        style={mascotPositionStyle}
+        onClick={handleRestoreClick}
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
         aria-label="AI 도우미 열기"
         title="AI 도우미 열기"
       >
@@ -153,7 +259,7 @@ export default function FloatingMascot({ mode = 'default' }) {
   }
 
   return (
-    <div className={`floating-mascot ${hasAlert ? 'has-alert' : ''}`}>
+    <div className={`floating-mascot ${hasAlert ? 'has-alert' : ''}`} style={mascotPositionStyle}>
       {bubbleOpen && (
         <div className="floating-mascot-bubble" role="status">
           <p>{message}</p>
@@ -209,22 +315,28 @@ export default function FloatingMascot({ mode = 'default' }) {
         </div>
       )}
 
-      <div className="floating-mascot-controls">
-        <button
-          type="button"
-          className="floating-mascot-collapse"
-          onClick={() => setCollapsed(true)}
-          aria-label="AI 도우미 접기"
-          title="접기"
-        >
-          <FiChevronDown />
-        </button>
-      </div>
+      {!bubbleOpen && (
+        <div className="floating-mascot-controls">
+          <button
+            type="button"
+            className="floating-mascot-collapse"
+            onClick={() => setCollapsed(true)}
+            aria-label="AI 도우미 접기"
+            title="접기"
+          >
+            <FiChevronDown />
+          </button>
+        </div>
+      )}
 
       <button
         type="button"
         className={`floating-mascot-character is-${animation}`}
         onClick={handleMascotClick}
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
         aria-label="AI 도우미 말풍선 열기"
         title="AI 도우미"
       >
