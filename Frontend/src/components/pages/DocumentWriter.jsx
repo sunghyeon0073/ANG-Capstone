@@ -634,16 +634,6 @@ export default function DocumentWriter() {
             >
               <FiPlus />
             </button>
-            <button
-              type="button"
-              className="document-upload-icon-btn"
-              onClick={() => setShowUploadModal(true)}
-              disabled={isUploading}
-              title="파일 업로드"
-              aria-label="파일 업로드"
-            >
-              <FiPlus />
-            </button>
           </div>
 
           <div className="document-content">
