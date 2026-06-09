@@ -115,6 +115,44 @@ public class AiScheduledActionService {
         action.cancel();
     }
 
+    @Transactional
+    public AiAssistantDto.ScheduleResponse reserve(AiAssistantDto.ReserveRequest req, User requester) {
+        if (req.getRecipientEmpNos() == null || req.getRecipientEmpNos().isEmpty()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT, "수신자를 1명 이상 선택해주세요.");
+        }
+        if (req.getBody() == null || req.getBody().isBlank()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT, "본문을 입력해주세요.");
+        }
+
+        ScheduledActionChannel channel = "mail".equalsIgnoreCase(req.getChannel())
+                ? ScheduledActionChannel.MAIL : ScheduledActionChannel.CHAT;
+        LocalDateTime scheduledAt = req.getScheduledAt() != null ? req.getScheduledAt() : LocalDateTime.now().plusSeconds(10);
+
+        String empNos = String.join(",", req.getRecipientEmpNos());
+        String names = req.getRecipientNames() != null ? String.join(",", req.getRecipientNames()) : "";
+        String fileIdsStr = req.getFileIds() != null && !req.getFileIds().isEmpty()
+                ? req.getFileIds().stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) : null;
+
+        ScheduledAction action = ScheduledAction.builder()
+                .requester(requester)
+                .channel(channel)
+                .scheduledAt(scheduledAt)
+                .recipientEmpNos(empNos)
+                .recipientNames(names)
+                .title(req.getSubject())
+                .message(req.getBody())
+                .fileIds(fileIdsStr)
+                .build();
+
+        ScheduledAction saved = scheduledActionRepository.save(action);
+        return AiAssistantDto.ScheduleResponse.from(
+                saved,
+                req.getRecipientEmpNos(),
+                req.getRecipientNames() != null ? req.getRecipientNames() : List.of(),
+                req.getFileIds() != null ? req.getFileIds() : List.of()
+        );
+    }
+
     @Scheduled(fixedDelay = 30000)
     @Transactional
     public void dispatchDueActions() {

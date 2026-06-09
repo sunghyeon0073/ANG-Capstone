@@ -16,7 +16,7 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiCheck, FiChevronRight, FiEdit3, FiPlus, FiX } from 'react-icons/fi'
+import { FiCheck, FiChevronRight, FiEdit3, FiX } from 'react-icons/fi'
 import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
@@ -558,19 +558,6 @@ export default function DocumentWriter() {
     <div className="document-writer-container">
       <div className="document-sidebar">
         <div className="sidebar-header">
-          <div className="document-sidebar-title-row">
-            <h3>문서 목록</h3>
-            <button
-              type="button"
-              className="document-upload-icon-btn"
-              onClick={() => setShowUploadModal(true)}
-              disabled={isUploading}
-              title="파일 업로드"
-              aria-label="파일 업로드"
-            >
-              <FiPlus />
-            </button>
-          </div>
           <div className="category-tabs">
             <button
               type="button"
