@@ -8,6 +8,8 @@ import com.ang.Backend.domain.approval.service.ApprovalSignService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -34,6 +36,17 @@ public class ApprovalSignController {
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = getUser(userDetails);
         return ApiResponse.ok(signService.uploadSign(file, user));
+    }
+
+    @GetMapping("/image")
+    public ResponseEntity<byte[]> getSignImage(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        byte[] data = signService.downloadSign(user);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "image/png")
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+                .body(data);
     }
 
     @DeleteMapping

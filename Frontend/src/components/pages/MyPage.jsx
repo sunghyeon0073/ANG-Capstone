@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getScopes } from '../../api/scopeApi'
-import { updateUser } from '../../api/userApi'
+import { getUserProfileImage, updateUser, uploadUserProfileImage } from '../../api/userApi'
 
 const normalizeScopeType = (scope) => scope?.scopeType ?? scope?.type ?? ''
 
@@ -54,6 +54,8 @@ export default function MyPage({ user, onUserUpdate }) {
     email: '',
     profileImageUrl: '',
   })
+  const [profileImageFile, setProfileImageFile] = useState(null)
+  const [profileImagePreviewUrl, setProfileImagePreviewUrl] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -80,7 +82,31 @@ export default function MyPage({ user, onUserUpdate }) {
       email: user.email || '',
       profileImageUrl: user.profileImageUrl || '',
     })
+    setProfileImageFile(null)
   }, [user])
+
+  useEffect(() => {
+    if (!user?.id || !user.profileImageUrl || profileImageFile) return undefined
+
+    let objectUrl = ''
+    let cancelled = false
+
+    getUserProfileImage(user.id)
+      .then((response) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(response.data)
+        setProfileImagePreviewUrl(objectUrl)
+      })
+      .catch((error) => {
+        console.error('프로필 이미지 조회 실패', error)
+        setProfileImagePreviewUrl('')
+      })
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [profileImageFile, user?.id, user?.profileImageUrl])
 
   const displayScope = useMemo(() => buildDisplayScope(user, scopes), [user, scopes])
 
@@ -88,19 +114,16 @@ export default function MyPage({ user, onUserUpdate }) {
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 등록할 수 있습니다.')
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      alert('JPG 또는 PNG 이미지만 등록할 수 있습니다.')
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      setFormData((prev) => ({
-        ...prev,
-        profileImageUrl: String(reader.result || ''),
-      }))
-    }
-    reader.readAsDataURL(file)
+    setProfileImageFile(file)
+    setProfileImagePreviewUrl((previousUrl) => {
+      if (previousUrl?.startsWith('blob:')) URL.revokeObjectURL(previousUrl)
+      return URL.createObjectURL(file)
+    })
   }
 
   const handleSaveProfile = async (event) => {
@@ -118,11 +141,16 @@ export default function MyPage({ user, onUserUpdate }) {
       const payload = {
         name: formData.name.trim(),
         email: formData.email.trim(),
-        profileImageUrl: formData.profileImageUrl || null,
       }
 
-      const response = await updateUser(user.id, payload)
-      const updatedUser = response.data?.data || response.data
+      const profileResponse = await updateUser(user.id, payload)
+      let updatedUser = profileResponse.data?.data || profileResponse.data
+
+      if (profileImageFile) {
+        const imageResponse = await uploadUserProfileImage(user.id, profileImageFile)
+        updatedUser = imageResponse.data?.data || imageResponse.data
+        setProfileImageFile(null)
+      }
 
       if (onUserUpdate) {
         onUserUpdate(updatedUser)
@@ -139,8 +167,8 @@ export default function MyPage({ user, onUserUpdate }) {
     }
   }
 
-  const avatarContent = formData.profileImageUrl
-    ? <img src={formData.profileImageUrl} alt="프로필 미리보기" className="mypage-avatar-image" />
+  const avatarContent = profileImagePreviewUrl
+    ? <img src={profileImagePreviewUrl} alt="프로필 미리보기" className="mypage-avatar-image" />
     : <span>{getAvatarFallback(formData.name)}</span>
 
   return (
@@ -174,9 +202,13 @@ export default function MyPage({ user, onUserUpdate }) {
               <button
                 type="button"
                 className="mypage-text-button"
-                onClick={() => setFormData((prev) => ({ ...prev, profileImageUrl: '' }))}
+                disabled={!profileImageFile}
+                onClick={() => {
+                  setProfileImageFile(null)
+                  setProfileImagePreviewUrl('')
+                }}
               >
-                사진 제거
+                선택 취소
               </button>
             </div>
 

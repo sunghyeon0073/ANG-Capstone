@@ -142,6 +142,15 @@
   background: #f0f4f7;
 }
 
+.chat-window-controls button.active {
+  background: #fff0ec;
+  color: #e85f4b;
+}
+
+.chat-window-mode.position-locked .chat-window-titlebar {
+  cursor: default;
+}
+
 .chat-window-mode .chat-shell {
   height: calc(100% - 54px);
   min-height: 0;
@@ -1065,27 +1074,32 @@
 }
 
 .chat-member-avatar.position-director,
-.chat-room-avatar.position-director {
+.chat-room-avatar.position-director,
+.chat-avatar.position-director {
   background: linear-gradient(135deg, #ff8f76, #f05d4e);
 }
 
 .chat-member-avatar.position-center-head,
-.chat-room-avatar.position-center-head {
+.chat-room-avatar.position-center-head,
+.chat-avatar.position-center-head {
   background: linear-gradient(135deg, #a98bea, #7457c7);
 }
 
 .chat-member-avatar.position-team-head,
-.chat-room-avatar.position-team-head {
+.chat-room-avatar.position-team-head,
+.chat-avatar.position-team-head {
   background: linear-gradient(135deg, #69aef8, #397bd6);
 }
 
 .chat-member-avatar.position-staff,
-.chat-room-avatar.position-staff {
+.chat-room-avatar.position-staff,
+.chat-avatar.position-staff {
   background: linear-gradient(135deg, #46c5bd, #159a95);
 }
 
 .chat-member-avatar.position-default,
-.chat-room-avatar.position-default {
+.chat-room-avatar.position-default,
+.chat-avatar.position-default {
   background: linear-gradient(135deg, #aab6bf, #788894);
 }
 

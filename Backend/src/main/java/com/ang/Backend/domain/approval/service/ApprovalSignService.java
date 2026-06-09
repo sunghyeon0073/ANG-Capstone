@@ -12,8 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
@@ -84,6 +86,18 @@ public class ApprovalSignService {
         deleteFromS3(user.getSignatureImageUrl());
         user.setSignatureImageUrl(null);
         userRepository.save(user);
+    }
+
+    public byte[] downloadSign(User user) {
+        if (user.getSignatureImageUrl() == null) {
+            throw new CustomException(ErrorCode.APPROVAL_SIGN_NOT_FOUND);
+        }
+        String url = user.getSignatureImageUrl();
+        String key = url.substring(url.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
+        return s3Client.getObject(
+                GetObjectRequest.builder().bucket(bucket).key(key).build(),
+                ResponseTransformer.toBytes()
+        ).asByteArray();
     }
 
     private void deleteFromS3(String url) {

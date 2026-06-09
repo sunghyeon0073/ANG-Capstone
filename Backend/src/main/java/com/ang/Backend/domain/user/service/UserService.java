@@ -92,6 +92,18 @@ public class UserService {
     }
 
     @Transactional
+    public UserDto deleteProfileImage(Integer userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        if (user.getProfileImageUrl() == null) {
+            throw new CustomException(ErrorCode.FILE_NOT_FOUND);
+        }
+        s3FileService.delete(user.getProfileImageUrl());
+        user.setProfileImageUrl(null);
+        return toDto(userRepository.save(user));
+    }
+
+    @Transactional
     public UserDto updateUser(Integer userId, UserUpdateRequest req) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));

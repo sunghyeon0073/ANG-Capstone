@@ -1,6 +1,7 @@
 package com.ang.Backend.domain.approval.dto;
 
 import com.ang.Backend.common.enums.ApprovalStatus;
+import com.ang.Backend.domain.approval.entity.ApprovalAttachment;
 import com.ang.Backend.domain.approval.entity.ApprovalDoc;
 import lombok.Builder;
 import lombok.Getter;
@@ -38,6 +39,22 @@ public class ApprovalDocDto {
 
     @Getter
     @Builder
+    public static class AttachmentInfo {
+        private Long id;
+        private String fileName;
+        private String contentType;
+
+        public static AttachmentInfo from(ApprovalAttachment a) {
+            return AttachmentInfo.builder()
+                    .id(a.getId())
+                    .fileName(a.getFileName())
+                    .contentType(a.getContentType())
+                    .build();
+        }
+    }
+
+    @Getter
+    @Builder
     public static class Response {
         private Long id;
         private Long templateId;
@@ -57,6 +74,7 @@ public class ApprovalDocDto {
         private LocalDateTime updatedAt;
         private LocalDateTime completedAt;
         private List<ApprovalLineDto.Response> approvalLines;
+        private List<AttachmentInfo> attachments;
 
         public static Response from(ApprovalDoc doc) {
             return Response.builder()
@@ -79,6 +97,9 @@ public class ApprovalDocDto {
                     .completedAt(doc.getCompletedAt())
                     .approvalLines(doc.getApprovalLines().stream()
                             .map(ApprovalLineDto.Response::from)
+                            .collect(Collectors.toList()))
+                    .attachments(doc.getAttachments().stream()
+                            .map(AttachmentInfo::from)
                             .collect(Collectors.toList()))
                     .build();
         }

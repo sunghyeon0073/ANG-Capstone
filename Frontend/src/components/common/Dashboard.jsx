@@ -147,7 +147,9 @@ export default function Dashboard() {
           onCloseChatWindow={() => setIsChatWindowOpen(false)}
         />
       )}
-      <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} />
+      {getMainCategory(currentPage) !== 'esignature' && (
+        <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} onSubPageChange={handlePageChange} />
+      )}
     </div>
   )
 }
