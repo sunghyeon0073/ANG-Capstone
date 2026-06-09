@@ -98,19 +98,23 @@ export default function Dashboard() {
   const renderPage = () => {
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
+    const componentKey = mainCategory
 
     if (!Component) return <Home user={user} />
 
-    return <Component
-      user={user}
-      currentSubPage={currentPage}
-      me={user}
-      contactRequest={contactRequest}
-      onContactRequestHandled={() => setContactRequest(null)}
-      onSendMail={openMailCompose}
-      onStartChat={openPrivateChat}
-      onSubPageChange={handlePageChange}
-    />
+    return (
+      <Component
+        key={componentKey}
+        user={user}
+        currentSubPage={currentPage}
+        me={user}
+        contactRequest={contactRequest}
+        onContactRequestHandled={() => setContactRequest(null)}
+        onSendMail={openMailCompose}
+        onStartChat={openPrivateChat}
+        onSubPageChange={handlePageChange}
+      />
+    )
   }
 
   if (!user) {
@@ -127,14 +131,14 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
       />
-      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file') ? 'full-width' : ''}`}>
-        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && (
+      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature') ? 'full-width' : ''}`}>
+        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && (
           <Sidebar
             currentPage={currentPage}
             onPageChange={handlePageChange}
           />
         )}
-        <div className="main-content">
+        <div className={`main-content${getMainCategory(currentPage) === 'esignature' ? ' main-content--fill' : ''}`}>
           {renderPage()}
         </div>
       </div>
