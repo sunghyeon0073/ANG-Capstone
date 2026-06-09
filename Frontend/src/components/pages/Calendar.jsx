@@ -1352,7 +1352,7 @@ export default function Calendar({ showSidebar = true }) {
                       itemClasses += ` calendar-schedule-bar--ai-${schedule.aiType}`
                     }
 
-                    const topPos = `calc(${((bar.row - 1) / rowCount) * 100}% + ${28 + (bar.lane * 22)}px)`
+                    const topPos = `calc(${((bar.row - 1) / rowCount) * 100}% + ${36 + (bar.lane * 22)}px)`
 
                     if (schedule.isTodo) {
                       itemClasses += ' calendar-schedule-item--todo'

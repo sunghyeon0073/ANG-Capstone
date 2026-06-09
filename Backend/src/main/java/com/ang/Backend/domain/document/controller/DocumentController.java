@@ -93,6 +93,24 @@ public class DocumentController {
         return ApiResponse.ok(documentService.getMyDocuments(user));
     }
 
+    @GetMapping("/favorites")
+    public ApiResponse<List<DocumentDto.Response>> getFavoriteDocuments(@AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        return ApiResponse.ok(documentService.getFavoriteDocuments(user));
+    }
+
+    @PostMapping("/{id}/favorite")
+    public ApiResponse<Boolean> toggleFavorite(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
+        return ApiResponse.ok(documentService.toggleFavorite(id, user));
+    }
+
     @GetMapping("/department")
     public ApiResponse<List<DocumentDto.Response>> getDepartmentDocuments(
             @AuthenticationPrincipal UserDetails userDetails,

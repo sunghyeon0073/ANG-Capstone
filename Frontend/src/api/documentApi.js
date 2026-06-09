@@ -22,5 +22,9 @@ export const permanentDeleteDocument = (docId) => api.delete(`/documents/${docId
 
 export const restoreDocument = (docId) => api.put(`/documents/${docId}/restore`);
 
+export const toggleFavorite = (docId) => api.post(`/documents/${docId}/favorite`);
+
+export const getFavoriteDocuments = () => api.get('/documents/favorites');
+
 export const downloadDocumentFile = (fileId) => 
   api.get(`/files/download/${fileId}`, { responseType: 'blob' });

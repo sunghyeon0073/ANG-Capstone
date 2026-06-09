@@ -141,6 +141,31 @@ public class DocumentService {
     }
 
     @Transactional
+    public boolean toggleFavorite(Long docId, User user) {
+        DocumentEntity document = documentRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+        
+        // Ownership check can be added here if needed
+        
+        boolean newState = !Boolean.TRUE.equals(document.getIsFavorite());
+        document.setIsFavorite(newState);
+        documentRepository.save(document);
+        return newState;
+    }
+
+    public List<DocumentDto.Response> getFavoriteDocuments(User user) {
+        // Find personal favorite documents
+        List<DocumentEntity> favorites = documentRepository.findByOwnerAndIsFavoriteTrueAndDeletedAtIsNull(user);
+        
+        // Optionally add shared documents that are marked as favorite
+        // For now, let's keep it to owner's favorites
+        
+        return favorites.stream()
+                .map(DocumentDto.Response::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
     public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
         Scope targetScope = null;
         String subPath = null;

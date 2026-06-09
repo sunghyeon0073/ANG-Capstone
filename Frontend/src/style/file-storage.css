@@ -57,6 +57,7 @@
   flex-direction: column;
   overflow: hidden;
   background: white;
+  transition: width 0.3s ease;
 }
 
 .file-main-header {
@@ -70,8 +71,8 @@
 .file-breadcrumb {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 18px;
+  gap: 10px;
+  font-size: 20px;
   font-weight: 600;
   color: #212529;
 }
@@ -87,9 +88,9 @@
   align-items: center;
   background: #f1f3f5;
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 10px 16px;
   width: 100%;
-  max-width: 400px;
+  max-width: 450px;
   transition: all 0.2s;
   border: 1px solid transparent;
 }
@@ -106,7 +107,7 @@
   outline: none;
   padding: 0 10px;
   width: 100%;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .file-view-controls {
@@ -118,8 +119,8 @@
   background: white;
   border: 1px solid #dee2e6;
   border-radius: 6px;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -149,13 +150,14 @@
 /* Grid View */
 .file-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, 180px);
   gap: 20px;
+  justify-content: flex-start;
 }
 
 .file-card {
   border: 1px solid #e9ecef;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -164,6 +166,10 @@
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
+  background: white;
+  width: 180px;
+  height: 180px;
+  box-sizing: border-box;
 }
 
 .file-card:hover {
@@ -178,14 +184,15 @@
 }
 
 .file-card-icon {
-  width: 64px;
-  height: 64px;
+  width: 60px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #f8f9fa;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 32px;
+  flex-shrink: 0;
 }
 
 .file-card-info {
@@ -194,7 +201,7 @@
 }
 
 .file-card-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #212529;
   white-space: nowrap;
@@ -204,7 +211,7 @@
 }
 
 .file-card-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: #adb5bd;
 }
 
@@ -216,8 +223,8 @@
 
 .file-table th {
   text-align: left;
-  padding: 12px 16px;
-  font-size: 12px;
+  padding: 14px 16px;
+  font-size: 13px;
   text-transform: uppercase;
   color: #adb5bd;
   border-bottom: 2px solid #f1f3f5;
@@ -239,27 +246,50 @@
 }
 
 .file-table td {
-  padding: 14px 16px;
-  font-size: 14px;
+  padding: 20px 16px;
+  font-size: 16px;
   color: #495057;
 }
 
 .file-table-name-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
   font-weight: 500;
+}
+
+.file-table-name-cell span:first-child {
+  font-size: 22px;
 }
 
 /* Detail Panel */
 .file-detail-panel {
-  width: 320px;
-  border-left: 1px solid #e9ecef;
+  width: 350px;
   background: white;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
+  border-left: 1px solid #e9ecef;
+  box-sizing: border-box;
   padding: 24px;
-  gap: 20px;
+}
+
+/* No more .open class needed as it's always fixed */
+
+.detail-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #adb5bd;
+  text-align: center;
+  gap: 16px;
+}
+
+.detail-empty-state-icon {
+  font-size: 48px;
+  opacity: 0.3;
 }
 
 .detail-preview {
@@ -273,6 +303,7 @@
   font-size: 64px;
   color: #dee2e6;
   border: 1px solid #e9ecef;
+  flex-shrink: 0;
 }
 
 .detail-title {
@@ -280,18 +311,20 @@
   font-weight: 700;
   color: #212529;
   word-break: break-all;
+  margin-top: 20px;
 }
 
 .detail-info-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  margin-top: 24px;
 }
 
 .detail-info-item {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .detail-info-label {
@@ -308,6 +341,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-top: 20px;
 }
 
 /* Empty State */
@@ -337,25 +371,92 @@
   right: 0;
   margin-top: 8px;
   background: white;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-  border: 1px solid #e9ecef;
-  padding: 16px;
-  width: 260px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  border: 1px solid #e0e0e0;
+  padding: 20px;
+  width: 320px;
   z-index: 100;
 }
 
 .filter-group {
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
 
 .filter-group label {
   display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: #adb5bd;
-  margin-bottom: 6px;
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 600;
+  color: #3c4043;
+  margin-bottom: 12px;
+}
+
+.filter-checkbox-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.filter-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #5f6368;
+}
+
+.filter-checkbox-item input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  margin-right: 4px;
+}
+
+/* Pagination */
+.file-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 16px 24px;
+  border-top: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.pagination-btn {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #495057;
+  transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: #e7f1ff;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f1f3f5;
+}
+
+.pagination-info {
+  font-size: 14px;
+  color: #666;
+}
+
+.pagination-info strong {
+  color: var(--color-primary);
 }
 
 .filter-select {
@@ -364,4 +465,76 @@
   border-radius: 6px;
   border: 1px solid #dee2e6;
   font-size: 13px;
+}
+
+/* Star Icon Styles */
+.file-star-icon {
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 18px;
+  color: #dee2e6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-star-icon:hover {
+  transform: scale(1.2);
+  color: #f1c40f;
+}
+
+.file-star-icon.active {
+  color: #f1c40f;
+}
+
+.file-card-star {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+}
+
+.file-table-star-cell {
+  width: 40px;
+  text-align: center;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Custom File Upload Styling */
+.custom-file-upload {
+  display: inline-block;
+  padding: 10px 16px;
+  cursor: pointer;
+  background: #f8f9fa;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #495057;
+  transition: all 0.2s;
+  text-align: center;
+  width: 100%;
+}
+
+.custom-file-upload:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.selected-file-info {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #1a73e8;
+  word-break: break-all;
+  background: #e8f0fe;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.DMS-modal {
+  border-radius: 4px !important;
+}
+
+.DMS-modal h3 {
+  font-weight: 600;
 }

@@ -2,6 +2,7 @@ package com.ang.Backend.domain.document.dto;
 
 import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -63,6 +64,8 @@ public class DocumentDto {
         private LocalDateTime createdAt;
         private LocalDateTime deletedAt;
         private boolean canDelete;
+        @JsonProperty("isFavorite")
+        private boolean isFavorite;
 
         public static Response fromEntity(DocumentEntity entity) {
             return Response.builder()
@@ -83,6 +86,7 @@ public class DocumentDto {
                     .scopeId(entity.getScope() != null ? entity.getScope().getScopeId() : null)
                     .createdAt(entity.getCreatedAt())
                     .deletedAt(entity.getDeletedAt())
+                    .isFavorite(Boolean.TRUE.equals(entity.getIsFavorite()))
                     .build();
         }
 

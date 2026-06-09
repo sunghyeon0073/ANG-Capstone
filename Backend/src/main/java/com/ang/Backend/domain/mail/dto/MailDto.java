@@ -4,6 +4,7 @@ import com.ang.Backend.common.enums.MailStatus;
 import com.ang.Backend.domain.mail.entity.Mail;
 import com.ang.Backend.domain.mail.entity.MailAttachment;
 import com.ang.Backend.domain.mail.entity.MailRecipient;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -68,7 +69,9 @@ public class MailDto {
         private String senderEmpNo;
         private MailStatus status;
         private LocalDateTime sentAt;
+        @JsonProperty("isRead")
         private boolean isRead;             // 수신함용 (발신함에서는 무시)
+        @JsonProperty("isFavorite")
         private boolean isFavorite;
 
         public static MailSummary fromMail(Mail mail) {
@@ -172,6 +175,7 @@ public class MailDto {
     public static class RecipientInfo {
         private String recipientName;
         private String recipientEmpNo;
+        @JsonProperty("isRead")
         private boolean isRead;
         private LocalDateTime readAt;
 
@@ -191,6 +195,7 @@ public class MailDto {
     public static class ReadStatusItem {
         private String recipientName;
         private String recipientEmpNo;
+        @JsonProperty("isRead")
         private boolean isRead;
         private LocalDateTime readAt;
 
