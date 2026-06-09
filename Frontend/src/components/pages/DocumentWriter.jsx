@@ -428,7 +428,23 @@ export default function DocumentWriter() {
         ? 'hwp'
         : selectedKind === 'word'
           ? 'docx'
-          : null
+          : selectedKind === 'excel'
+            ? 'xlsx'
+            : selectedKind === 'pdf'
+              ? 'pdf'
+              : selectedKind === 'text'
+                ? 'txt'
+                : null
+
+    // 새 문서 작성 시에는 선택된 문서의 형식을 그대로 따라간다 (hwp 선택 → hwp 생성, xlsx 선택 → xlsx 생성 등).
+    const createOutputFormat =
+      selectedKind === 'hwp' || selectedKind === 'hwpx'
+        ? 'hwp'
+        : selectedKind === 'excel'
+          ? 'xlsx'
+          : selectedKind === 'pdf'
+            ? 'pdf'
+            : 'docx'
 
     if (mode === 'edit' && !selectedDoc) {
       alert('수정할 문서를 선택하세요.')
@@ -436,7 +452,7 @@ export default function DocumentWriter() {
     }
 
     if (mode === 'edit' && !editOutputFormat) {
-      alert('현재 AI 수정은 HWP와 DOCX 문서만 지원합니다.')
+      alert('이미지 형식은 AI 수정을 지원하지 않습니다.')
       return
     }
 
@@ -451,7 +467,7 @@ export default function DocumentWriter() {
     const finalPrompt = hasDocxEditInstructions
       ? [
         prompt.trim(),
-        '아래 DOCX 블록별 수정 요청을 우선 적용해 주세요. 각 요청은 해당 blockId 안에서 selectedText를 기준으로 처리해 주세요.',
+        '아래 DOCX 블록별 수정 요청은 사용자가 미리보기에서 직접 지정한 위치입니다. 반드시 각 요청의 blockId를 유지하고, selectedText를 find 값으로 우선 사용해 주세요. instruction에 해당하는 내용만 replace에 반영하고, 요청하지 않은 문단은 수정하지 마세요. selectedText가 비어 있으면 해당 blockId 근처 문맥에서 instruction만 반영할 최소 find/replace를 만드세요.',
         scopedEditPrompt,
       ].filter(Boolean).join('\n\n')
       : prompt
@@ -459,7 +475,7 @@ export default function DocumentWriter() {
     const payload = {
       prompt: finalPrompt,
       mode,
-      outputFormat: mode === 'edit' ? editOutputFormat : 'docx',
+      outputFormat: mode === 'edit' ? editOutputFormat : createOutputFormat,
       sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
       attachedDocIds: attachedDocs
         .filter((doc) => mode !== 'edit' || doc.docId !== selectedDoc.docId)
@@ -722,7 +738,7 @@ export default function DocumentWriter() {
                   onClick={() => handleRemoveDocxEditInstruction(instruction.id)}
                   title="삭제"
                 >
-                  횞
+                  ×
                 </button>
                 <span className="tab-name">{instruction.blockId} 수정 요청</span>
               </div>
@@ -794,6 +810,16 @@ export default function DocumentWriter() {
                   <FiEdit3 />
                   <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
+                {selectedDoc && getDocumentPreviewKind(selectedDoc) === 'word' && (
+                  <button
+                    type="button"
+                    className={`btn-generate btn-generate--docx-edit ${docxEditMode ? 'active' : ''}`}
+                    onClick={() => setDocxEditMode((enabled) => !enabled)}
+                    disabled={aiLoading}
+                  >
+                    {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
+                  </button>
+                )}
               </div>
             </div>
           </div>

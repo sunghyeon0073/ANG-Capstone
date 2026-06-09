@@ -17,6 +17,7 @@ public class MailDto {
     // 메일 발송 요청
     @Getter
     @NoArgsConstructor
+    @AllArgsConstructor
     public static class SendRequest {
         private String title;
         private String body;
