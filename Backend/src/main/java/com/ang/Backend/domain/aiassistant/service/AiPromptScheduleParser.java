@@ -29,7 +29,9 @@ public class AiPromptScheduleParser {
     private static final Pattern TIME_PATTERN = Pattern.compile("(오전|오후|아침|저녁|밤)?\\s*(\\d{1,2})시(?:\\s*(\\d{1,2})분)?");
     private static final Pattern RELATIVE_HOUR_PATTERN = Pattern.compile("(\\d+)\\s*시간\\s*(?:뒤|후|있다가)");
     private static final Pattern RELATIVE_MIN_PATTERN = Pattern.compile("(\\d+)\\s*분\\s*(?:뒤|후|있다가)");
-    private static final Pattern TITLE_PATTERN = Pattern.compile("(?:제목|타이틀)\\s*(?:은|는|:)?\\s*([^\\n,]+)");
+    private static final Pattern TITLE_PATTERN = Pattern.compile("(?:제목|타이틀)\\s*(?:은|는|:)\\s*([^\\n,]+)");
+    private static final Pattern TITLE_BEFORE_NOUN = Pattern.compile(
+            "(.+?)\\s*(?:이라는|라는|인)\\s*(?:제목|타이틀)(?:이|가|을|를|에|으로|로)?");
     private static final Pattern FILE_ID_PATTERN = Pattern.compile("(?:fileId|file_id|파일)\\s*[:#]\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
     // parseMessage 전용 패턴들
     private static final Pattern MSG_QUOTED = Pattern.compile(
@@ -191,6 +193,14 @@ public class AiPromptScheduleParser {
     private String parseTitle(String prompt, ScheduledActionChannel channel, String message) {
         Matcher matcher = TITLE_PATTERN.matcher(prompt);
         if (matcher.find()) return cleanEnding(matcher.group(1));
+        Matcher beforeMatcher = TITLE_BEFORE_NOUN.matcher(prompt);
+        if (beforeMatcher.find()) {
+            String raw = beforeMatcher.group(1).trim();
+            String stripped = MSG_STRUCTURAL_PREFIX.matcher(raw).replaceFirst("").trim();
+            if (stripped.isBlank()) stripped = raw;
+            String title = cleanMessage(stripped);
+            if (!title.isBlank()) return title;
+        }
         if (channel != ScheduledActionChannel.MAIL) return null;
         if (message != null && !message.isBlank()) {
             String compact = message.length() > 24 ? message.substring(0, 24) + "..." : message;
@@ -257,6 +267,7 @@ public class AiPromptScheduleParser {
 
     private String cleanMessage(String value) {
         return cleanEnding(value)
+                .replaceAll("^.*(?:제목|타이틀)\\s*(?:에|으로|로|,)?\\s*", "")
                 .replaceAll("^(?:메일|이메일|채팅|메시지|메세지)\\s*(?:으로|로|과|와|은|는|을|를)?\\s*", "")
                 .replaceAll("^(?:과|와)\\s+", "")
                 .trim();
