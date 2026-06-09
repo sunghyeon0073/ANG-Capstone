@@ -80,7 +80,7 @@
 
 .info-group input:focus {
   outline: none;
-  border-color: rgba(255, 140, 116, 0.45);
+  border-color: rgba(35, 48, 103, 0.45);
   box-shadow: var(--shadow-focus-glow);
 }
 

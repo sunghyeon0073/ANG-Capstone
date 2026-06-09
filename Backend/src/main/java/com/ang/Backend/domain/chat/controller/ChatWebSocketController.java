@@ -7,6 +7,7 @@ import com.ang.Backend.domain.chat.dto.ChatDto;
 import com.ang.Backend.domain.chat.repository.ChatMemberRepository;
 import com.ang.Backend.domain.chat.repository.ChatRoomRepository;
 import com.ang.Backend.domain.chat.service.ChatMessageService;
+import com.ang.Backend.domain.chat.service.ChatRoomService;
 import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
@@ -22,6 +23,7 @@ import java.security.Principal;
 public class ChatWebSocketController {
 
     private final ChatMessageService chatMessageService;
+    private final ChatRoomService chatRoomService;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatRoomRepository chatRoomRepository;
@@ -37,6 +39,14 @@ public class ChatWebSocketController {
         messagingTemplate.convertAndSend("/topic/room." + req.getRoomId(), response);
 
         chatRoomRepository.findById(req.getRoomId()).ifPresent(room -> {
+            // 나갔던 PRIVATE 멤버 재참여 + 방 목록에 다시 띄우기 (상대가 메시지 보내면 방 자동 재오픈)
+            for (User u : chatRoomService.rejoinLeftMembersOnMessage(room, sender)) {
+                java.util.List<ChatDto.MemberInfo> members = chatMemberRepository.findByRoomAndLeftAtIsNull(room)
+                        .stream().map(m -> ChatDto.MemberInfo.from(m.getUser())).toList();
+                ChatDto.RoomSummary summary = ChatDto.RoomSummary.from(room, 1, members, u, null);
+                messagingTemplate.convertAndSendToUser(u.getEmpNo(), "/queue/invite", summary);
+            }
+
             String title = room.getType() == com.ang.Backend.common.enums.ChatRoomType.PRIVATE
                     ? sender.getName() + "님이 메시지를 보냈습니다."
                     : room.getName() + "에 알림이 있습니다.";

@@ -283,7 +283,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
 }
 
@@ -356,7 +356,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ff8c74, #ff6f61);
+  background: linear-gradient(135deg, #233067, #1a2550);
   color: #ffffff;
   font-weight: 900;
 }
@@ -433,7 +433,7 @@
 .chat-empty svg {
   width: 42px;
   height: 42px;
-  color: #ff8c74;
+  color: #233067;
 }
 
 .chat-room-skeleton {
@@ -665,7 +665,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
   font-style: normal;
   font-weight: 900;
@@ -860,10 +860,10 @@
   height: 38px;
   border: 0;
   border-radius: 14px;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(255, 140, 116, 0.24);
+  box-shadow: 0 8px 18px rgba(35, 48, 103, 0.24);
 }
 
 .chat-window-mode .chat-status {
@@ -1048,7 +1048,7 @@
 }
 
 .chat-member-item.selected {
-  box-shadow: inset 4px 0 0 #ff8c74;
+  box-shadow: inset 4px 0 0 var(--color-primary);
 }
 
 .chat-member-avatar {
@@ -1129,7 +1129,7 @@
   height: 44px;
   border: 0;
   border-radius: 14px;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
   font-weight: 900;
   cursor: pointer;

@@ -41,7 +41,7 @@
 .prompt-textarea:focus {
   border-color: var(--color-primary);
   background: white;
-  box-shadow: 0 0 0 3px rgba(255, 140, 116, 0.1);
+  box-shadow: 0 0 0 3px rgba(35, 48, 103, 0.12);
 }
 
 .prompt-textarea:disabled {
@@ -162,7 +162,7 @@
 
 .prompt-tab-pending {
   background-color: var(--color-surface);
-  border: 2px dashed rgba(255, 140, 116, 0.25);
+  border: 2px dashed rgba(35, 48, 103, 0.25);
   cursor: pointer;
   transition: var(--transition-soft);
   box-shadow: none;
@@ -264,7 +264,7 @@
 .btn-generate:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 6px -1px rgba(255, 140, 116, 0.2);
+  box-shadow: 0 4px 6px -1px rgba(35, 48, 103, 0.2);
 }
 
 .btn-generate--create:hover:not(:disabled) {

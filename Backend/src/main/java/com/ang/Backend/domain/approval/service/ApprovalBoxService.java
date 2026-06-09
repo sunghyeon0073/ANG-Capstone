@@ -13,7 +13,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -34,7 +33,16 @@ public class ApprovalBoxService {
     public PageResult<ApprovalDocDto.BoxResponse> getCompletedInbox(User user, int page, int size) {
         return PageResult.of(
                 docRepository.findCompletedInbox(user.getUserId(),
-                        List.of(ApprovalLineStatus.APPROVED, ApprovalLineStatus.REJECTED),
+                        ApprovalLineStatus.APPROVED,
+                        PageRequest.of(page, size, Sort.by("createdAt").descending()))
+                        .map(ApprovalDocDto.BoxResponse::from)
+        );
+    }
+
+    public PageResult<ApprovalDocDto.BoxResponse> getRejectedInbox(User user, int page, int size) {
+        return PageResult.of(
+                docRepository.findRejectedInbox(user.getUserId(),
+                        ApprovalLineStatus.REJECTED,
                         PageRequest.of(page, size, Sort.by("createdAt").descending()))
                         .map(ApprovalDocDto.BoxResponse::from)
         );
