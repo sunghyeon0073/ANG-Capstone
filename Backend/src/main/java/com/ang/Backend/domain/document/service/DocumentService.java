@@ -3,7 +3,9 @@ package com.ang.Backend.domain.document.service;
 import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
+import com.ang.Backend.domain.document.entity.FavoriteDocument;
 import com.ang.Backend.domain.document.repository.DocumentRepository;
+import com.ang.Backend.domain.document.repository.FavoriteDocumentRepository;
 import com.ang.Backend.domain.file.entity.FileItem;
 import com.ang.Backend.domain.file.repository.FileItemRepository;
 import com.ang.Backend.domain.file.service.FileService;
@@ -71,6 +73,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -88,6 +91,7 @@ public class DocumentService {
     private static final double DOCX_MIN_INFLATE_RATIO = 0.001;
 
     private final DocumentRepository documentRepository;
+    private final FavoriteDocumentRepository favoriteDocumentRepository;
     private final FileItemRepository fileItemRepository;
     private final FileService fileService;
     private final UserMembershipRepository userMembershipRepository;
@@ -145,24 +149,46 @@ public class DocumentService {
         DocumentEntity document = documentRepository.findById(docId)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
         
-        // Ownership check can be added here if needed
+        Optional<FavoriteDocument> favorite = favoriteDocumentRepository.findByUserAndDocument(user, document);
         
-        boolean newState = !Boolean.TRUE.equals(document.getIsFavorite());
-        document.setIsFavorite(newState);
-        documentRepository.save(document);
-        return newState;
+        if (favorite.isPresent()) {
+            favoriteDocumentRepository.delete(favorite.get());
+            return false;
+        } else {
+            favoriteDocumentRepository.save(FavoriteDocument.builder()
+                    .user(user)
+                    .document(document)
+                    .build());
+            return true;
+        }
     }
 
     public List<DocumentDto.Response> getFavoriteDocuments(User user) {
-        // Find personal favorite documents
-        List<DocumentEntity> favorites = documentRepository.findByOwnerAndIsFavoriteTrueAndDeletedAtIsNull(user);
+        // Find documents bookmarked by the user
+        List<FavoriteDocument> favorites = favoriteDocumentRepository.findByUser(user);
         
-        // Optionally add shared documents that are marked as favorite
-        // For now, let's keep it to owner's favorites
-        
-        return favorites.stream()
-                .map(DocumentDto.Response::fromEntity)
+        List<DocumentDto.Response> list = favorites.stream()
+                .filter(fd -> fd.getDocument().getDeletedAt() == null)
+                .map(fd -> DocumentDto.Response.fromEntitySummary(fd.getDocument()))
                 .collect(Collectors.toList());
+        
+        // Mark all as favorite since they are from the favorite list
+        list.forEach(res -> res.setFavorite(true));
+        setCanDeleteFlags(list, user);
+        
+        return list;
+    }
+
+    private void setFavoriteFlags(List<DocumentDto.Response> responses, User requester) {
+        if (responses == null || requester == null || responses.isEmpty()) return;
+        
+        List<Long> favoriteDocIds = favoriteDocumentRepository.findByUser(requester).stream()
+                .map(fd -> fd.getDocument().getDocId())
+                .collect(Collectors.toList());
+        
+        for (DocumentDto.Response res : responses) {
+            res.setFavorite(favoriteDocIds.contains(res.getDocId()));
+        }
     }
 
     @Transactional
@@ -196,9 +222,10 @@ public class DocumentService {
 
     public List<DocumentDto.Response> getAllDocuments(User requester) {
         List<DocumentDto.Response> list = documentRepository.findAllByDeletedAtIsNull().stream()
-                .map(DocumentDto.Response::fromEntity)
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, requester);
+        setFavoriteFlags(list, requester);
         return list;
     }
 
@@ -743,6 +770,7 @@ public class DocumentService {
 
             DocumentDto.Response res = DocumentDto.Response.fromEntity(documentRepository.save(doc));
             res.setCanDelete(true);
+            setFavoriteFlags(List.of(res), user);
             return res;
         });
     }
@@ -781,6 +809,7 @@ public class DocumentService {
 
             DocumentDto.Response res = DocumentDto.Response.fromEntity(documentRepository.save(doc));
             res.setCanDelete(true);
+            setFavoriteFlags(List.of(res), user);
             return res;
         });
     }
@@ -909,6 +938,7 @@ public class DocumentService {
 
             DocumentDto.Response res = DocumentDto.Response.fromEntity(documentRepository.save(doc));
             res.setCanDelete(true); // AI로 본인이 생성한 것이므로 삭제 가능
+            setFavoriteFlags(List.of(res), user);
             return res;
         });
     }
@@ -1072,9 +1102,10 @@ public class DocumentService {
     public List<DocumentDto.Response> getMyDocuments(User user) {
         List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNull(user).stream()
                 .filter(d -> d.getScope() == null)
-                .map(DocumentDto.Response::fromEntity)
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
+        setFavoriteFlags(list, user);
         return list;
     }
 
@@ -1153,9 +1184,10 @@ public class DocumentService {
         }
 
         List<DocumentDto.Response> list = documentRepository.searchByScopesAndDeletedAtIsNull(scopeIds, keyword).stream()
-                .map(DocumentDto.Response::fromEntity)
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
+        setFavoriteFlags(list, user);
         return list;
     }
 
@@ -1166,6 +1198,7 @@ public class DocumentService {
         
         if (requester != null) {
             setCanDeleteFlags(List.of(res), requester);
+            setFavoriteFlags(List.of(res), requester);
         }
         return res;
     }
@@ -1191,13 +1224,8 @@ public class DocumentService {
 
         LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
         doc.setDeletedAt(now);
-        if (doc.getFile() != null) {
-            doc.getFile().setDeletedAt(now);
-        }
-        if (doc.getPreviewFile() != null) {
-            doc.getPreviewFile().setDeletedAt(now);
-        }
-        // 물리 파일은 남겨둡니다. 30일 후 완전 삭제 시 제거됩니다.
+        // 물리 파일이나 파일 메타데이터(FileItem)의 deletedAt은 설정하지 않습니다.
+        // 파일은 여러 문서에서 공유될 수 있으므로, 문서가 완전 삭제될 때만 참조를 확인하여 삭제합니다.
     }
 
     @Transactional
@@ -1213,18 +1241,17 @@ public class DocumentService {
         FileItem file = doc.getFile();
         FileItem previewFile = doc.getPreviewFile();
 
-        // 1. 문서 엔티티를 먼저 삭제하고 DB에 즉시 반영하여 파일 참조를 제거합니다.
+        // 1. 문서 엔티티 삭제
         documentRepository.delete(doc);
         documentRepository.flush();
         
         // 2. 다른 문서에서 사용하지 않는 경우에만 물리 파일과 파일 정보를 삭제합니다.
-        if (file != null && !documentRepository.existsByFile(file)) {
+        if (file != null && !documentRepository.existsByFileOrPreviewFileExcluding(file, id)) {
             fileService.deletePhysicalFile(file);
         }
         
         if (previewFile != null && !previewFile.equals(file)) {
-            // Note: existsByFile checks if ANY document uses this FileItem as its 'file' field.
-            if (!documentRepository.existsByFile(previewFile)) {
+            if (!documentRepository.existsByFileOrPreviewFileExcluding(previewFile, id)) {
                 fileService.deletePhysicalFile(previewFile);
             }
         }
@@ -1257,14 +1284,23 @@ public class DocumentService {
         
         for (DocumentEntity doc : oldTrashDocuments) {
             try {
-                if (doc.getFile() != null) {
-                    fileService.deletePhysicalFile(doc.getFile());
-                }
-                if (doc.getPreviewFile() != null
-                        && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
-                    fileService.deletePhysicalFile(doc.getPreviewFile());
-                }
+                FileItem file = doc.getFile();
+                FileItem previewFile = doc.getPreviewFile();
+
+                // 1. 문서 엔티티 삭제
                 documentRepository.delete(doc);
+                documentRepository.flush();
+                
+                // 2. 참조가 없는 경우에만 물리 파일 삭제
+                if (file != null && !documentRepository.existsByFileOrPreviewFileExcluding(file, doc.getDocId())) {
+                    fileService.deletePhysicalFile(file);
+                }
+                
+                if (previewFile != null && !previewFile.equals(file)) {
+                    if (!documentRepository.existsByFileOrPreviewFileExcluding(previewFile, doc.getDocId())) {
+                        fileService.deletePhysicalFile(previewFile);
+                    }
+                }
                 log.info("Auto-deleted trash document: {}", doc.getDocId());
             } catch (Exception e) {
                 log.error("Failed to auto-delete document {}: {}", doc.getDocId(), e.getMessage());
@@ -1275,7 +1311,7 @@ public class DocumentService {
     public List<DocumentDto.Response> getTrashDocuments(User user) {
         // 본인의 휴지통 문서
         List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNotNull(user).stream()
-                .map(DocumentDto.Response::fromEntity)
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         
         // 만약 관리자라면 해당 부서의 삭제된 문서도 볼 수 있어야 함
@@ -1291,7 +1327,7 @@ public class DocumentService {
             
             if (!managedScopeIds.isEmpty()) {
                 List<DocumentDto.Response> deptTrash = documentRepository.searchByScopesAndDeletedAtIsNotNull(managedScopeIds, null).stream()
-                        .map(DocumentDto.Response::fromEntity)
+                        .map(DocumentDto.Response::fromEntitySummary)
                         .collect(Collectors.toList());
                 // 중복 제거 (본인이 올린 문서가 부서 문서일 수 있음)
                 for (DocumentDto.Response r : deptTrash) {
@@ -1303,6 +1339,7 @@ public class DocumentService {
         }
         
         setCanDeleteFlags(list, user);
+        setFavoriteFlags(list, user);
         return list;
     }
 

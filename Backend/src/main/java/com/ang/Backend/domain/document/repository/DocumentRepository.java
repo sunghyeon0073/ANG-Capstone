@@ -11,7 +11,6 @@ import java.util.List;
 public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> {
 
     List<DocumentEntity> findByOwnerAndDeletedAtIsNull(User owner);
-    List<DocumentEntity> findByOwnerAndIsFavoriteTrueAndDeletedAtIsNull(User owner);
     List<DocumentEntity> findByOwnerAndDeletedAtIsNotNull(User owner);
     
     List<DocumentEntity> findAllByDeletedAtIsNull();
@@ -31,5 +30,9 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> 
     List<DocumentEntity> findByDeletedAtBefore(@Param("cutoffDate") java.time.LocalDateTime cutoffDate);
 
     boolean existsByFile(FileItem file);
+
+    @Query("SELECT COUNT(d) > 0 FROM DocumentEntity d WHERE (d.file = :file OR d.previewFile = :file) AND d.docId <> :excludeDocId")
+    boolean existsByFileOrPreviewFileExcluding(@Param("file") FileItem file, @Param("excludeDocId") Long excludeDocId);
+
     void deleteByFile(FileItem file);
     }
