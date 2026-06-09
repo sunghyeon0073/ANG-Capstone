@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -228,6 +229,22 @@ public class ChatRoomService {
                 .orElseThrow(() -> new CustomException(ErrorCode.NOT_CHAT_MEMBER));
         member.setLastReadAt(LocalDateTime.now());
         notificationService.deleteByTarget(user, roomId, NotificationType.CHAT);
+    }
+
+    // PRIVATE 방에서 나갔던 멤버(발신자 제외)를 재참여시키고, 재참여된 User 목록 반환.
+    // GROUP 방은 나가면 영구 퇴장이므로 대상 아님 → 빈 리스트.
+    @Transactional
+    public List<User> rejoinLeftMembersOnMessage(ChatRoom room, User sender) {
+        if (room.getType() != ChatRoomType.PRIVATE) return List.of();
+        List<User> rejoined = new ArrayList<>();
+        for (ChatMember m : chatMemberRepository.findByRoom(room)) {
+            if (m.getLeftAt() != null && !m.getUser().getUserId().equals(sender.getUserId())) {
+                m.setLeftAt(null);
+                m.setJoinedAt(LocalDateTime.now());
+                rejoined.add(m.getUser());
+            }
+        }
+        return rejoined;
     }
 
     private void rejoinIfLeft(ChatRoom room, User user) {
