@@ -49,6 +49,7 @@ public class ApprovalDocDto {
         private String formData;
         private ApprovalStatus status;
         private String attachmentUrl;
+        private String attachmentName;
         private String finalPdfUrl;
         private String securityLevel;
         private String retentionPeriod;
@@ -69,6 +70,7 @@ public class ApprovalDocDto {
                     .formData(doc.getFormData())
                     .status(doc.getStatus())
                     .attachmentUrl(doc.getAttachmentUrl())
+                    .attachmentName(doc.getAttachmentName())
                     .finalPdfUrl(doc.getFinalPdfUrl())
                     .securityLevel(doc.getSecurityLevel())
                     .retentionPeriod(doc.getRetentionPeriod())

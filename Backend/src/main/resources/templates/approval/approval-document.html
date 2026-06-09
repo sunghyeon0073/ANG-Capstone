@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8"/>
     <style>
-        @font-face {
-            font-family: 'NanumGothic';
-            src: url('/fonts/NanumGothic.ttf');
-        }
+        /* NanumGothic 폰트는 ApprovalPdfService.renderPdf() 의 builder.useFont() 로 등록됨.
+           CSS @font-face(url) 은 PDF 렌더 시점에 base URL 이 없어 로드 실패하므로 사용하지 않는다. */
         * {
             font-family: 'NanumGothic', sans-serif;
             box-sizing: border-box;
@@ -16,20 +14,20 @@
             font-size: 12px;
             color: #000;
         }
-        /* 문서번호 헤더 */
+        /* 문서번호 헤더 (openhtmltopdf 는 flexbox 미지원 → float 사용) */
         .doc-number-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
             margin-bottom: 10px;
+            overflow: hidden;   /* float 클리어 */
         }
         .doc-number {
+            float: left;
             font-size: 11px;
             color: #333;
             font-weight: bold;
         }
-        /* 결재란 표 */
+        /* 결재란 표 (우측 상단) */
         .approval-table {
+            float: right;
             border-collapse: collapse;
             font-size: 11px;
         }
@@ -41,6 +39,12 @@
         }
         .approval-table th {
             background-color: #f0f0f0;
+        }
+        .row-label {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            white-space: nowrap;
+            min-width: 36px;
         }
         .signature-img {
             max-width: 50px;
@@ -142,24 +146,29 @@
         <table class="approval-table">
             <thead>
                 <tr>
+                    <th></th>
                     <th th:each="line : ${approvalLines}" th:text="${line.lineType.label}">결재</th>
                 </tr>
                 <tr>
+                    <td class="row-label">직급</td>
                     <td th:each="line : ${approvalLines}" th:text="${line.approver.position}">직위</td>
                 </tr>
                 <tr>
+                    <td class="row-label">성명</td>
                     <td th:each="line : ${approvalLines}" th:text="${line.approver.name}">성명</td>
                 </tr>
                 <tr>
+                    <td class="row-label">서명</td>
                     <td th:each="line : ${approvalLines}">
-                        <img th:if="${line.signatureSnapshot != null}"
-                             th:src="${line.signatureSnapshot}"
+                        <img th:if="${signatureDataUris.containsKey(line.id)}"
+                             th:src="${signatureDataUris.get(line.id)}"
                              class="signature-img"
                              alt="서명"/>
-                        <span th:if="${line.signatureSnapshot == null}">-</span>
+                        <span th:unless="${signatureDataUris.containsKey(line.id)}">-</span>
                     </td>
                 </tr>
                 <tr>
+                    <td class="row-label">결재일</td>
                     <td th:each="line : ${approvalLines}"
                         th:text="${line.processedAt != null ? #temporals.format(line.processedAt, 'MM/dd') : '-'}">날짜</td>
                 </tr>
@@ -175,7 +184,9 @@
         <table>
             <tr>
                 <td>기안자</td>
-                <td th:text="${doc.drafter.name + ' (' + doc.drafter.position + ')'}">홍길동 (팀장)</td>
+                <td th:text="${doc.drafter.position != null
+                        ? doc.drafter.name + ' (' + doc.drafter.position + ')'
+                        : doc.drafter.name}">홍길동 (팀장)</td>
             </tr>
             <tr>
                 <td>기안일</td>
