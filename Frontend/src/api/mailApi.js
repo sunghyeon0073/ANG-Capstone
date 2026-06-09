@@ -1,6 +1,16 @@
 import api from './axios';
 
-export const sendMail = (payload) => api.post('/mail', payload);
+export const sendMail = (payload) => {
+  const formData = new FormData();
+  formData.append(
+    'data',
+    new Blob([JSON.stringify(payload)], { type: 'application/json' })
+  );
+
+  return api.post('/mail', formData, {
+    headers: { 'Content-Type': undefined },
+  });
+};
 
 export const saveMailDraft = (payload) => api.post('/mail/draft', payload);
 
