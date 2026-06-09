@@ -334,6 +334,7 @@ public class ApprovalDocService {
 
         String url = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key;
         doc.setAttachmentUrl(url);
+        doc.setAttachmentName(originalFilename);
         return url;
     }
 
