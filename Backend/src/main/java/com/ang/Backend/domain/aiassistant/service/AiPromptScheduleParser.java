@@ -37,6 +37,13 @@ public class AiPromptScheduleParser {
         String normalized = prompt == null ? "" : prompt.trim();
         ScheduledActionChannel channel = parseChannel(normalized);
         LocalDateTime scheduledAt = parseScheduledAt(normalized);
+        boolean sendIntent = hasSendIntent(normalized);
+        if (channel == null && sendIntent) {
+            channel = ScheduledActionChannel.CHAT;
+        }
+        if (scheduledAt == null && sendIntent) {
+            scheduledAt = LocalDateTime.now();
+        }
         List<User> recipients = parseRecipients(normalized, requester);
         List<Long> fileIds = parseFileIds(normalized, requester);
         Long roomId = parseRoomId(normalized);
@@ -77,6 +84,10 @@ public class AiPromptScheduleParser {
         if (containsAny(prompt, "메일", "이메일", "mail")) return ScheduledActionChannel.MAIL;
         if (containsAny(prompt, "채팅", "메시지", "메세지", "쪽지", "chat")) return ScheduledActionChannel.CHAT;
         return null;
+    }
+
+    private boolean hasSendIntent(String prompt) {
+        return containsAny(prompt, "보내", "전송", "발송", "전달", "알려줘", "말해줘");
     }
 
     private LocalDateTime parseScheduledAt(String prompt) {
@@ -159,7 +170,7 @@ public class AiPromptScheduleParser {
         List<Pattern> patterns = List.of(
                 Pattern.compile("[\"'“”‘’](.+?)[\"'“”‘’]"),
                 Pattern.compile("(?:내용|본문|메시지|메세지)\\s*(?:은|는|:)?\\s*(.+?)(?:\\s*(?:라고|으로|로)\\s*)?(?:예약|보내|전송|발송|$)"),
-                Pattern.compile("(.+?)\\s*라고\\s*(?:예약|보내|전송|발송)")
+                Pattern.compile("(.+?)\\s*(?:라고|다고)\\s*(?:예약|보내|전송|발송|전달)")
         );
         for (Pattern pattern : patterns) {
             Matcher matcher = pattern.matcher(prompt);

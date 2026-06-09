@@ -26,6 +26,19 @@ const ANIMATION_FRAMES = {
   },
 }
 
+const MISSING_FIELD_LABELS = {
+  channel: '전송 방식',
+  scheduledAt: '보낼 시간',
+  message: '메시지 내용',
+  recipient: '받는 사람',
+  recipientOrChatRoom: '받는 사람 또는 채팅방',
+  title: '메일 제목',
+}
+
+const formatMissingFields = fields => (
+  fields?.map(field => MISSING_FIELD_LABELS[field] || field).join(', ')
+)
+
 export default function FloatingMascot({ mode = 'default' }) {
   const [collapsed, setCollapsed] = useState(false)
   const [bubbleOpen, setBubbleOpen] = useState(false)
@@ -96,7 +109,7 @@ export default function FloatingMascot({ mode = 'default' }) {
       const preview = await previewAiSchedule(prompt)
       setSchedulePreview(preview)
       setScheduleStatus(preview.missingFields?.length
-        ? `부족한 정보: ${preview.missingFields.join(', ')}`
+        ? `부족한 정보: ${formatMissingFields(preview.missingFields)}`
         : '예약 내용을 확인해 주세요.')
     } catch (error) {
       setScheduleStatus(error.response?.data?.message || '예약 내용을 해석하지 못했습니다.')
