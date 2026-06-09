@@ -24,6 +24,11 @@ public class ChatRoom {
     @Column(name = "type", nullable = false, length = 10)
     private ChatRoomType type;
 
+    // PRIVATE 방 멤버 조합 키 ('<minUserId>:<maxUserId>'). GROUP 방은 null.
+    // uk_private_pair 유니크 제약으로 동일 사용자 조합 중복 PRIVATE 방 생성 차단
+    @Column(name = "participant_key", length = 64)
+    private String participantKey;
+
     @Column(name = "name", length = 100)
     private String name;
 
