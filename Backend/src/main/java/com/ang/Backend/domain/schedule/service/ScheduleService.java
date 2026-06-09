@@ -29,6 +29,7 @@ public class ScheduleService {
     private final ScheduleRepository scheduleRepository;
     private final com.ang.Backend.domain.memo.repository.MemoRepository memoRepository;
     private final com.ang.Backend.domain.file.repository.FileItemRepository fileItemRepository;
+    private final com.ang.Backend.domain.scope.repository.UserMembershipRepository userMembershipRepository;
     private final JdbcTemplate jdbcTemplate;
 
     @PostConstruct
@@ -46,6 +47,13 @@ public class ScheduleService {
             log.info("Successfully added schedule_type column.");
         } catch (Exception e) {
             log.warn("schedule_type column might already exist. - {}", e.getMessage());
+        }
+
+        try {
+            jdbcTemplate.execute("ALTER TABLE schedules ADD COLUMN scope_id INT NULL");
+            log.info("Successfully added scope_id column.");
+        } catch (Exception e) {
+            log.warn("scope_id column might already exist. - {}", e.getMessage());
         }
 
         // 할 일(Todo) 및 반복 일정 관련 컬럼 추가
@@ -67,12 +75,35 @@ public class ScheduleService {
         }
     }
 
+    private Integer getDepartmentScopeId(User user) {
+        return userMembershipRepository.findByUser(user).stream()
+                .map(com.ang.Backend.domain.scope.entity.UserMembership::getScope)
+                .filter(s -> s.getScopeType() == com.ang.Backend.common.enums.ScopeType.DEPARTMENT || s.getScopeType() == com.ang.Backend.common.enums.ScopeType.TEAM)
+                .map(s -> {
+                    // 상위로 올라가며 DEPARTMENT 레벨의 ID를 찾음 (없으면 자신의 TEAM ID 사용)
+                    com.ang.Backend.domain.scope.entity.Scope current = s;
+                    while (current != null && current.getScopeType() != com.ang.Backend.common.enums.ScopeType.DEPARTMENT) {
+                        current = current.getParentScope();
+                    }
+                    return (current != null) ? current.getScopeId() : s.getScopeId();
+                })
+                .findFirst()
+                .orElse(null);
+    }
+
+    private com.ang.Backend.domain.scope.entity.Scope getScopeEntity(Integer scopeId) {
+        if (scopeId == null) return null;
+        return com.ang.Backend.domain.scope.entity.Scope.builder().scopeId(scopeId).build();
+    }
+
     public List<ScheduleDto.Response> getSchedules(User owner, LocalDate startDate, LocalDate endDate) {
+        Integer scopeId = getDepartmentScopeId(owner);
         List<Schedule> schedules;
         if (startDate != null && endDate != null) {
-            schedules = scheduleRepository.findByOwnerAndDateRangeOverlap(owner, startDate, endDate);
+            schedules = scheduleRepository.findByOwnerOrScopeAndDateRangeOverlap(owner, scopeId, startDate, endDate);
         } else {
-            schedules = scheduleRepository.findByOwnerOrderByStartDateAscStartTimeAsc(owner);
+            // 기본값으로 현재 달 정도만이라도 가져오거나 전체를 가져오되 부서 필터 포함
+            schedules = scheduleRepository.findByOwnerOrScopeAndDateRangeOverlap(owner, scopeId, LocalDate.now().minusMonths(6), LocalDate.now().plusMonths(6));
         }
 
         return schedules.stream()
@@ -83,10 +114,11 @@ public class ScheduleService {
     public List<ScheduleDto.AiRecommendationResponse> getAiRecommendations(User owner, LocalDate startDate, LocalDate endDate) {
         LocalDate rangeStart = startDate != null ? startDate : LocalDate.now().minusDays(7);
         LocalDate rangeEnd = endDate != null ? endDate : LocalDate.now().plusDays(30);
+        Integer scopeId = getDepartmentScopeId(owner);
 
         List<ScheduleDto.AiRecommendationResponse> recommendations = new ArrayList<>();
-        recommendations.addAll(buildLastYearRecommendations(owner, rangeStart, rangeEnd));
-        recommendations.addAll(buildPatternRecommendations(owner, rangeStart, rangeEnd));
+        recommendations.addAll(buildLastYearRecommendations(owner, scopeId, rangeStart, rangeEnd));
+        recommendations.addAll(buildPatternRecommendations(owner, scopeId, rangeStart, rangeEnd));
 
         // 각 추천 항목에 대해 연관 문서/메모 탐색
         recommendations.forEach(rec -> rec.getAssociatedItems().addAll(findAssociatedItems(owner, rec.getSourceTitle())));
@@ -99,10 +131,10 @@ public class ScheduleService {
                 .toList();
     }
 
-    private List<ScheduleDto.AiRecommendationResponse> buildPatternRecommendations(User owner, LocalDate rangeStart, LocalDate rangeEnd) {
-        // 최근 6개월간의 일정을 분석 (패턴 파악용)
+    private List<ScheduleDto.AiRecommendationResponse> buildPatternRecommendations(User owner, Integer scopeId, LocalDate rangeStart, LocalDate rangeEnd) {
+        // 최근 6개월간의 일정을 분석 (패턴 파악용, 부서 일정 포함)
         LocalDate analysisStart = LocalDate.now().minusMonths(6);
-        List<Schedule> pastSchedules = scheduleRepository.findByOwnerAndStartDateBetweenOrderByStartDateAscStartTimeAsc(owner, analysisStart, LocalDate.now());
+        List<Schedule> pastSchedules = scheduleRepository.findByOwnerOrScopeAndStartDateBetween(owner, scopeId, analysisStart, LocalDate.now());
 
         if (pastSchedules.isEmpty()) return List.of();
 
@@ -181,11 +213,11 @@ public class ScheduleService {
         return items;
     }
 
-    private List<ScheduleDto.AiRecommendationResponse> buildLastYearRecommendations(User owner, LocalDate rangeStart, LocalDate rangeEnd) {
+    private List<ScheduleDto.AiRecommendationResponse> buildLastYearRecommendations(User owner, Integer scopeId, LocalDate rangeStart, LocalDate rangeEnd) {
         LocalDate sourceStart = rangeStart.minusYears(1);
         LocalDate sourceEnd = rangeEnd.minusYears(1);
 
-        return scheduleRepository.findByOwnerAndStartDateBetweenOrderByStartDateAscStartTimeAsc(owner, sourceStart, sourceEnd)
+        return scheduleRepository.findByOwnerOrScopeAndStartDateBetween(owner, scopeId, sourceStart, sourceEnd)
                 .stream()
                 .map(schedule -> {
                     LocalDate recommendationDate = schedule.getStartDate().plusYears(1);
@@ -213,9 +245,14 @@ public class ScheduleService {
         }
 
         List<Schedule> createdSchedules = new ArrayList<>();
+        com.ang.Backend.domain.scope.entity.Scope scope = null;
+        if (request.getType() == ScheduleType.DEPARTMENT) {
+            scope = getScopeEntity(getDepartmentScopeId(owner));
+        }
 
         Schedule rootSchedule = Schedule.builder()
                 .owner(owner)
+                .scope(scope)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
                 .title(request.getTitle().trim())
@@ -248,6 +285,7 @@ public class ScheduleService {
 
                 Schedule repeatedSchedule = Schedule.builder()
                     .owner(owner)
+                    .scope(scope)
                     .startDate(currentStart)
                     .endDate(currentEnd)
                     .title(request.getTitle().trim())
@@ -284,7 +322,13 @@ public class ScheduleService {
             throw new CustomException(ErrorCode.INVALID_INPUT, "종료일은 시작일보다 앞설 수 없습니다.");
         }
 
-        Schedule schedule = getOwnedSchedule(scheduleId, owner);
+        Schedule schedule = getAuthorizedSchedule(scheduleId, owner);
+        
+        com.ang.Backend.domain.scope.entity.Scope scope = null;
+        if (request.getType() == ScheduleType.DEPARTMENT) {
+            scope = getScopeEntity(getDepartmentScopeId(owner));
+        }
+
         schedule.update(
                 request.getStartDate(),
                 request.getEndDate(),
@@ -297,27 +341,40 @@ public class ScheduleService {
                 request.getRepeatType(),
                 request.getRepeatEndDate()
         );
+        schedule.setScope(scope);
+        
         return ScheduleDto.Response.from(schedule);
     }
 
     @Transactional
     public ScheduleDto.Response toggleComplete(Long scheduleId, User owner) {
-        Schedule schedule = getOwnedSchedule(scheduleId, owner);
+        Schedule schedule = getAuthorizedSchedule(scheduleId, owner);
         schedule.toggleComplete();
         return ScheduleDto.Response.from(schedule);
     }
 
     @Transactional
     public void delete(Long scheduleId, User owner) {
-        Schedule schedule = getOwnedSchedule(scheduleId, owner);
+        Schedule schedule = getAuthorizedSchedule(scheduleId, owner);
         scheduleRepository.delete(schedule);
     }
 
-    private Schedule getOwnedSchedule(Long scheduleId, User owner) {
+    private Schedule getAuthorizedSchedule(Long scheduleId, User owner) {
         Schedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SCHEDULE_NOT_FOUND));
 
-        if (!schedule.getOwner().getUserId().equals(owner.getUserId())) {
+        // 본인 것이거나, 부서 일정인 경우 같은 부서원이면 허용
+        boolean isOwner = schedule.getOwner().getUserId().equals(owner.getUserId());
+        boolean isSameDept = false;
+        
+        if (schedule.getType() == ScheduleType.DEPARTMENT && schedule.getScope() != null) {
+            Integer userDeptId = getDepartmentScopeId(owner);
+            if (userDeptId != null && userDeptId.equals(schedule.getScope().getScopeId())) {
+                isSameDept = true;
+            }
+        }
+
+        if (!isOwner && !isSameDept) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 

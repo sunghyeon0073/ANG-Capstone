@@ -29,13 +29,17 @@ public class AiPromptScheduleParser {
     private static final Pattern TIME_PATTERN = Pattern.compile("(오전|오후|아침|저녁|밤)?\\s*(\\d{1,2})시(?:\\s*(\\d{1,2})분)?");
     private static final Pattern RELATIVE_HOUR_PATTERN = Pattern.compile("(\\d+)\\s*시간\\s*(?:뒤|후|있다가)");
     private static final Pattern RELATIVE_MIN_PATTERN = Pattern.compile("(\\d+)\\s*분\\s*(?:뒤|후|있다가)");
-    private static final Pattern TITLE_PATTERN = Pattern.compile("(?:제목|타이틀)\\s*(?:은|는|:)?\\s*([^\\n,]+)");
+    private static final Pattern TITLE_PATTERN = Pattern.compile("(?:제목|타이틀)\\s*(?:은|는|:)\\s*([^\\n,]+)");
+    private static final Pattern TITLE_BEFORE_NOUN = Pattern.compile(
+            "(.+?)\\s*(?:이라는|라는|인)\\s*(?:제목|타이틀)(?:이|가|을|를|에|으로|로)?");
     private static final Pattern FILE_ID_PATTERN = Pattern.compile("(?:fileId|file_id|파일)\\s*[:#]\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
     // parseMessage 전용 패턴들
     private static final Pattern MSG_QUOTED = Pattern.compile(
             "[\u201c\u201d\u2018\u2019\"'](.*?)[\u201c\u201d\u2018\u2019\"']");
     private static final Pattern MSG_CONTENT_KEYWORD = Pattern.compile(
             "(?:내용|본문|메시지|메세지)\\s*(?:은|는|:)?\\s*(.+?)(?:\\s*(?:라고|으로|로)\\s*)?(?:예약|보내|전송|발송|$)");
+    private static final Pattern MSG_BEFORE_CONTENT_NOUN = Pattern.compile(
+            "(.+?)\\s*(?:이라는|라는|인)\\s*(?:내용|본문|메시지|메세지)(?:이|가|을|를|으로|로)?");
     // 수신자 마커(에게/한테/께) + 선택적 채널 뒤의 메시지 내용을 추출
     private static final Pattern MSG_AFTER_RECIPIENT = Pattern.compile(
             "(?:에게는?|한테는?|께는?)(?:\\s*\\S+(?:으로|로))?\\s+(.+?)\\s*(?:이라고|라고)\\s*(?:예약|보내|전송|발송|알려)");
@@ -63,8 +67,8 @@ public class AiPromptScheduleParser {
         List<User> recipients = parseRecipients(normalized, requester);
         List<Long> fileIds = parseFileIds(normalized, requester);
         Long roomId = parseRoomId(normalized);
-        String title = parseTitle(normalized, channel);
         String message = parseMessage(normalized);
+        String title = parseTitle(normalized, channel, message);
 
         List<String> missing = new ArrayList<>();
         if (channel == null) missing.add("channel");
@@ -186,10 +190,23 @@ public class AiPromptScheduleParser {
         return matcher.find() ? Long.parseLong(matcher.group(1)) : null;
     }
 
-    private String parseTitle(String prompt, ScheduledActionChannel channel) {
+    private String parseTitle(String prompt, ScheduledActionChannel channel, String message) {
         Matcher matcher = TITLE_PATTERN.matcher(prompt);
         if (matcher.find()) return cleanEnding(matcher.group(1));
-        return channel == ScheduledActionChannel.MAIL ? "예약 메일" : null;
+        Matcher beforeMatcher = TITLE_BEFORE_NOUN.matcher(prompt);
+        if (beforeMatcher.find()) {
+            String raw = beforeMatcher.group(1).trim();
+            String stripped = MSG_STRUCTURAL_PREFIX.matcher(raw).replaceFirst("").trim();
+            if (stripped.isBlank()) stripped = raw;
+            String title = cleanMessage(stripped);
+            if (!title.isBlank()) return title;
+        }
+        if (channel != ScheduledActionChannel.MAIL) return null;
+        if (message != null && !message.isBlank()) {
+            String compact = message.length() > 24 ? message.substring(0, 24) + "..." : message;
+            return compact + " 메일";
+        }
+        return "예약 메일";
     }
 
     private String parseMessage(String prompt) {
@@ -199,25 +216,34 @@ public class AiPromptScheduleParser {
             String msg = cleanEnding(m1.group(1));
             if (!msg.isBlank()) return msg;
         }
-        // 2. "내용/본문" 키워드 뒤
+        // 2. "OOO라는 본문/내용"처럼 본문 명사 앞에 실제 메시지가 오는 표현
+        Matcher m0 = MSG_BEFORE_CONTENT_NOUN.matcher(prompt);
+        if (m0.find()) {
+            String raw = m0.group(1).trim();
+            String stripped = MSG_STRUCTURAL_PREFIX.matcher(raw).replaceFirst("").trim();
+            if (stripped.isBlank()) stripped = raw;
+            String msg = cleanMessage(stripped);
+            if (!msg.isBlank()) return msg;
+        }
+        // 3. "내용/본문" 키워드 뒤
         Matcher m2 = MSG_CONTENT_KEYWORD.matcher(prompt);
         if (m2.find()) {
             String msg = cleanEnding(m2.group(1));
             if (!msg.isBlank()) return msg;
         }
-        // 3. 수신자 마커(에게/한테/께) 이후 ~ 이라고/라고 보내 이전 (lazy — 마커 뒤부터 시작하므로 수신자/채널 정보 제외)
+        // 4. 수신자 마커(에게/한테/께) 이후 ~ 이라고/라고 보내 이전 (lazy — 마커 뒤부터 시작하므로 수신자/채널 정보 제외)
         Matcher m3 = MSG_AFTER_RECIPIENT.matcher(prompt);
         if (m3.find()) {
-            String msg = cleanEnding(m3.group(1));
+            String msg = cleanMessage(m3.group(1));
             if (!msg.isBlank()) return msg;
         }
-        // 4. "이라고/라고 보내" 앞 전체에서 구조적 prefix(수신자/채널) 제거
+        // 5. "이라고/라고 보내" 앞 전체에서 구조적 prefix(수신자/채널) 제거
         Matcher m4 = MSG_BEFORE_QUOTE_SEND.matcher(prompt);
         if (m4.find()) {
             String raw = m4.group(1).trim();
             String stripped = MSG_STRUCTURAL_PREFIX.matcher(raw).replaceFirst("").trim();
             if (stripped.isBlank()) stripped = raw;
-            String msg = cleanEnding(stripped);
+            String msg = cleanMessage(stripped);
             if (!msg.isBlank()) return msg;
         }
         return null;
@@ -236,6 +262,14 @@ public class AiPromptScheduleParser {
         return value.trim()
                 .replaceAll("\\s+", " ")
                 .replaceAll("[.。]$", "")
+                .trim();
+    }
+
+    private String cleanMessage(String value) {
+        return cleanEnding(value)
+                .replaceAll("^.*(?:제목|타이틀)\\s*(?:에|으로|로|,)?\\s*", "")
+                .replaceAll("^(?:메일|이메일|채팅|메시지|메세지)\\s*(?:으로|로|과|와|은|는|을|를)?\\s*", "")
+                .replaceAll("^(?:과|와)\\s+", "")
                 .trim();
     }
 

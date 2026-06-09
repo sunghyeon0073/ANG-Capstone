@@ -12,6 +12,8 @@ export const getDepartmentDocuments = (params) => {
 
 export const getDocument = (docId) => api.get(`/documents/${docId}`);
 
+export const updateDocument = (docId, payload) => api.put(`/documents/${docId}`, payload);
+
 export const deleteDocument = (docId) => api.delete(`/documents/${docId}`);
 
 export const getTrashDocuments = () => api.get('/documents/trash');
