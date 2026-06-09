@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FiDownload,
+  FiEdit2,
   FiFile,
+  FiLogOut,
   FiMessageCircle,
   FiPaperclip,
   FiPlus,
@@ -9,6 +11,7 @@ import {
   FiSearch,
   FiSend,
   FiUserPlus,
+  FiUsers,
   FiX,
 } from 'react-icons/fi'
 import {
@@ -17,10 +20,12 @@ import {
   downloadChatFile,
   getChatMemberCandidates,
   getChatMessages,
+  getChatRoomMembers,
   getChatRooms,
   inviteChatMembers,
   leaveChatRoom,
   markChatRoomAsRead,
+  updateChatRoomName,
   uploadChatFile,
 } from '../../api/chatApi'
 import '../../style/chat.css'
@@ -31,12 +36,6 @@ const getStoredUser = () => {
   } catch {
     return {}
   }
-}
-
-const createSockJsWebSocketPath = basePath => {
-  const serverId = String(Math.floor(Math.random() * 1000))
-  const sessionId = Math.random().toString(36).slice(2, 12)
-  return `${basePath}/${serverId}/${sessionId}/websocket`
 }
 
 const CHAT_SOCKET_ERROR_MESSAGE = '실시간 채팅 서버에 연결하지 못했습니다. 다른 기능은 정상적으로 사용할 수 있습니다.'
@@ -62,28 +61,6 @@ const getSockJsHttpBases = () => {
   return [getBackendWsBase().replace(/^ws/, 'http')]
 }
 
-const getSocketUrls = () => {
-  if (import.meta.env.VITE_CHAT_WS_URL) return [import.meta.env.VITE_CHAT_WS_URL]
-
-  if (import.meta.env.VITE_CHAT_HTTP_URL) {
-    return [createSockJsWebSocketPath(import.meta.env.VITE_CHAT_HTTP_URL.replace(/^http/, 'ws').replace(/\/$/, ''))]
-  }
-
-  const apiUrl = import.meta.env.VITE_API_URL
-  if (apiUrl?.startsWith('http')) {
-    const normalizedApiUrl = apiUrl.replace(/^http/, 'ws').replace(/\/$/, '')
-    return [createSockJsWebSocketPath(`${normalizedApiUrl}/ws`)]
-  }
-
-  return [createSockJsWebSocketPath(getBackendWsBase())]
-}
-
-const toWebSocketBase = httpBase => (
-  httpBase.startsWith('http')
-    ? httpBase.replace(/^http/, 'ws')
-    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}${httpBase}`
-)
-
 const formatChatTime = value => {
   if (!value) return ''
   const date = new Date(value)
@@ -97,27 +74,21 @@ const formatChatTime = value => {
   }).format(date)
 }
 
-const parseStompFrame = frame => {
-  const [headerText = '', body = ''] = frame.split('\n\n')
-  const [command = '', ...headerLines] = headerText.split('\n').filter(Boolean)
-  const headers = headerLines.reduce((acc, line) => {
-    const index = line.indexOf(':')
-    if (index > -1) acc[line.slice(0, index)] = line.slice(index + 1)
-    return acc
-  }, {})
-
-  return { command, headers, body }
-}
-
-const buildStompFrame = (command, headers = {}, body = '') => {
-  const headerLines = Object.entries(headers).map(([key, value]) => `${key}:${value}`)
-  return `${command}\n${headerLines.join('\n')}\n\n${body}\0`
-}
-
 const normalizeMessage = message => ({
   ...message,
   messageId: message.messageId ?? `${message.roomId || 'temp'}-${message.sentAt || Date.now()}-${message.content || message.fileName || ''}`,
 })
+
+const isSameMessage = (left, right) => {
+  if (left.messageId === right.messageId) return true
+
+  const leftTime = new Date(left.sentAt || 0).getTime()
+  const rightTime = new Date(right.sentAt || 0).getTime()
+  return left.senderEmpNo === right.senderEmpNo
+    && left.content === right.content
+    && left.fileUrl === right.fileUrl
+    && Math.abs(leftTime - rightTime) <= 1500
+}
 
 const normalizeRoomId = value => {
   const roomId = typeof value === 'object'
@@ -130,24 +101,6 @@ const normalizeRoomId = value => {
 const CHAT_AUTH_ERROR_MESSAGE = '채팅 인증이 만료되었거나 권한이 없습니다. 다시 로그인 후 확인해주세요.'
 const CHAT_SERVER_ERROR_MESSAGE = '채팅 서버에서 오류가 발생했습니다. 백엔드 채팅 API 응답을 확인해주세요.'
 
-const CHAT_MESSAGE_CACHE_KEY = 'ang_chat_local_messages'
-
-const readLocalMessageCache = () => {
-  try {
-    return JSON.parse(localStorage.getItem(CHAT_MESSAGE_CACHE_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
-
-const writeLocalMessageCache = cache => {
-  try {
-    localStorage.setItem(CHAT_MESSAGE_CACHE_KEY, JSON.stringify(cache))
-  } catch {
-    // localStorage can fail in private mode; chat should still keep in-memory messages.
-  }
-}
-
 const getChatRequestErrorMessage = error => {
   const status = error?.response?.status
   if (status === 401 || status === 403) return CHAT_AUTH_ERROR_MESSAGE
@@ -155,39 +108,64 @@ const getChatRequestErrorMessage = error => {
   return '채팅 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
 }
 
-const getCachedRoomMessages = roomId => {
-  const normalizedRoomId = normalizeRoomId(roomId)
-  if (!normalizedRoomId) return []
-  return readLocalMessageCache()[normalizedRoomId] || []
-}
-
-const cacheRoomMessage = (roomId, message) => {
-  const normalizedRoomId = normalizeRoomId(roomId)
-  if (!normalizedRoomId) return
-
-  const cache = readLocalMessageCache()
-  const current = cache[normalizedRoomId] || []
-  cache[normalizedRoomId] = [...current, message].slice(-100)
-  writeLocalMessageCache(cache)
-}
-
-const mergeMessages = (serverMessages, localMessages) => {
-  const map = new Map()
-  ;[...serverMessages, ...localMessages].forEach(message => {
+const mergeMessages = messages => {
+  const merged = []
+  messages.forEach(message => {
     const normalized = normalizeMessage(message)
-    map.set(normalized.messageId, normalized)
+    if (!merged.some(item => isSameMessage(item, normalized))) {
+      merged.push(normalized)
+    }
   })
-  return sortOldestFirst(Array.from(map.values()))
+  return sortOldestFirst(merged)
 }
 
 const sortOldestFirst = messages => [...messages]
   .sort((a, b) => new Date(a.sentAt || 0).getTime() - new Date(b.sentAt || 0).getTime())
   .map(normalizeMessage)
 
+const getRoomDisplayName = (room, currentEmpNo) => {
+  const activeMembers = Array.isArray(room.members) ? room.members : []
+  const visibleMembers = activeMembers.filter(member => member.empNo !== currentEmpNo)
+  const memberNames = visibleMembers
+    .map(member => member.name)
+    .filter(Boolean)
+
+  if (room.type === 'GROUP' && room.name?.trim()) return room.name.trim()
+  if (memberNames.length > 0) return memberNames.join(', ')
+  return room.name || '채팅방'
+}
+
+const getCompactRoomHeaderName = (room, members = [], currentEmpNo) => {
+  const roomName = room?.name?.trim()
+  const activeMembers = Array.isArray(members) && members.length > 0
+    ? members
+    : Array.isArray(room?.members)
+      ? room.members
+      : []
+  const memberNames = activeMembers
+    .filter(member => member.empNo !== currentEmpNo)
+    .map(member => member.name)
+    .filter(Boolean)
+  const commaNames = roomName?.includes(',')
+    ? roomName.split(',').map(name => name.trim()).filter(Boolean)
+    : []
+  const names = commaNames.length > 0 ? commaNames : memberNames
+
+  if (names.length > 2 && (!roomName || commaNames.length > 0)) {
+    return `${names.slice(0, 2).join(', ')} ...`
+  }
+
+  return roomName || names.join(', ') || '채팅방'
+}
+
 const normalizeChatRooms = (rooms, currentEmpNo) => {
   const roomMap = new Map()
 
   rooms.forEach(room => {
+    const normalizedRoom = {
+      ...room,
+      name: getRoomDisplayName(room, currentEmpNo),
+    }
     const otherMemberKey = room.type === 'PRIVATE'
       ? room.members
         ?.filter(member => member.empNo !== currentEmpNo)
@@ -201,13 +179,13 @@ const normalizeChatRooms = (rooms, currentEmpNo) => {
     const previous = roomMap.get(key)
 
     if (!previous) {
-      roomMap.set(key, room)
+      roomMap.set(key, normalizedRoom)
       return
     }
 
     const previousTime = new Date(previous.lastMessageAt || 0).getTime()
     const currentTime = new Date(room.lastMessageAt || 0).getTime()
-    if (currentTime >= previousTime) roomMap.set(key, room)
+    if (currentTime >= previousTime) roomMap.set(key, normalizedRoom)
   })
 
   return Array.from(roomMap.values())
@@ -216,7 +194,7 @@ const normalizeChatRooms = (rooms, currentEmpNo) => {
 const getInitialWindowPosition = () => {
   if (typeof window === 'undefined') return { x: 420, y: 82 }
   return {
-    x: Math.max(24, window.innerWidth - 894),
+    x: Math.max(24, window.innerWidth - 434),
     y: 82,
   }
 }
@@ -224,26 +202,38 @@ const getInitialWindowPosition = () => {
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 function ChatRoomWindow({
-  room,
+  room: originalRoom,
   index,
   messages,
+  members,
   currentEmpNo,
   isConnected,
   onClose,
   onLeave,
   onOpenInvite,
+  onRename,
+  onLoadOlder,
   onSend,
   onUploadFile,
   onDownloadFile,
+  hasOlderMessages,
+  isLoadingOlder,
+  isUploading,
 }) {
   const [content, setContent] = useState('')
+  const [showMembers, setShowMembers] = useState(false)
   const [position, setPosition] = useState(() => ({
-    x: Math.max(24, window.innerWidth - 430 - index * 28),
-    y: Math.max(24, window.innerHeight - 610 - index * 24),
+    x: Math.max(24, window.innerWidth - 400 - index * 28),
+    y: Math.max(24, window.innerHeight - 570 - index * 24),
   }))
   const popupRef = useRef(null)
   const fileInputRef = useRef(null)
   const messageEndRef = useRef(null)
+  const room = {
+    ...originalRoom,
+    originalName: originalRoom?.name,
+    name: getCompactRoomHeaderName(originalRoom, members, currentEmpNo),
+  }
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -328,11 +318,17 @@ function ChatRoomWindow({
           <span>{room.type === 'GROUP' ? `${room.members?.length || 0}명` : '1:1 채팅'}</span>
         </div>
         <div className="chat-popup-actions">
+          <button type="button" onClick={() => onRename(room)} title="채팅방 이름 변경">
+            <FiEdit2 />
+          </button>
+          <button type="button" onClick={() => setShowMembers(prev => !prev)} title="채팅방 멤버">
+            <FiUsers />
+          </button>
           <button type="button" onClick={() => onOpenInvite(room.roomId)} title="인원 추가">
             <FiUserPlus />
           </button>
           <button type="button" onClick={handleLeaveClick} title="채팅방 나가기">
-            나가기
+            <FiLogOut />
           </button>
           <button type="button" onClick={handleCloseClick} title="창 닫기">
             <FiX />
@@ -340,7 +336,31 @@ function ChatRoomWindow({
         </div>
       </header>
 
+      {showMembers && (
+        <div className="chat-popup-members">
+          <strong>채팅방 멤버 {members.length}명</strong>
+          <div>
+            {members.map(member => (
+              <span key={member.empNo || member.userId}>
+                <i>{member.name?.[0] || '?'}</i>
+                {member.name || member.empNo}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="chat-message-list">
+        {hasOlderMessages && (
+          <button
+            type="button"
+            className="chat-load-older"
+            onClick={() => onLoadOlder(room.roomId)}
+            disabled={isLoadingOlder}
+          >
+            {isLoadingOlder ? '불러오는 중...' : '이전 메시지 더보기'}
+          </button>
+        )}
         {messages.length === 0 ? (
           <div className="chat-empty-small">아직 대화가 없습니다.</div>
         ) : (
@@ -388,7 +408,13 @@ function ChatRoomWindow({
 
       <footer className="chat-input-area">
         <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
-        <button type="button" className="chat-icon-button" onClick={() => fileInputRef.current?.click()}>
+        <button
+          type="button"
+          className="chat-icon-button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!isConnected || isUploading}
+          title={isUploading ? '파일 업로드 중' : '파일 첨부'}
+        >
           <FiPaperclip />
         </button>
         <textarea
@@ -412,8 +438,14 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const currentEmpNo = currentUser?.empNo
 
   const [rooms, setRooms] = useState([])
-  const [messagesByRoom, setMessagesByRoom] = useState(() => readLocalMessageCache())
+  const [messagesByRoom, setMessagesByRoom] = useState({})
+  const [messagePageByRoom, setMessagePageByRoom] = useState({})
+  const [hasOlderMessagesByRoom, setHasOlderMessagesByRoom] = useState({})
+  const [loadingOlderRoomIds, setLoadingOlderRoomIds] = useState([])
+  const [uploadingRoomIds, setUploadingRoomIds] = useState([])
+  const [roomMembersByRoom, setRoomMembersByRoom] = useState({})
   const [openRoomIds, setOpenRoomIds] = useState([])
+  const [leavingRoomIds, setLeavingRoomIds] = useState([])
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inviteRoomId, setInviteRoomId] = useState(null)
   const [memberInput, setMemberInput] = useState('')
@@ -427,30 +459,24 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const [windowPosition, setWindowPosition] = useState(getInitialWindowPosition)
 
   const stompClientRef = useRef(null)
-  const socketRef = useRef(null)
-  const socketUrlIndexRef = useRef(0)
-  const socketReconnectTimerRef = useRef(null)
-  const socketManualCloseRef = useRef(false)
   const chatWindowRef = useRef(null)
-  const subscribedRoomsRef = useRef(new Set())
+  const subscribedRoomsRef = useRef(new Map())
   const openRoomIdsRef = useRef([])
-
-  const sendSockJsPayload = useCallback(payload => {
-    if (socketRef.current?.readyState !== WebSocket.OPEN) return false
-    socketRef.current.send(JSON.stringify([payload]))
-    return true
-  }, [])
-
-  const sendStompFrame = useCallback((command, headers, body) => (
-    sendSockJsPayload(buildStompFrame(command, headers, body))
-  ), [sendSockJsPayload])
 
   const loadRooms = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
       const data = await getChatRooms()
-      setRooms(normalizeChatRooms(data, currentEmpNo))
+      const normalizedRooms = normalizeChatRooms(data, currentEmpNo)
+      setRooms(normalizedRooms)
+      setRoomMembersByRoom(prev => {
+        const next = { ...prev }
+        normalizedRooms.forEach(room => {
+          if (Array.isArray(room.members)) next[normalizeRoomId(room.roomId)] = room.members
+        })
+        return next
+      })
     } catch (err) {
       console.error('채팅방 목록 조회 실패', err)
       setError(getChatRequestErrorMessage(err))
@@ -464,12 +490,13 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     if (!normalizedRoomId) return
 
     try {
-      const data = await getChatMessages(normalizedRoomId)
-      const cachedMessages = getCachedRoomMessages(normalizedRoomId)
+      const data = await getChatMessages(normalizedRoomId, 0, 30)
       setMessagesByRoom(prev => ({
         ...prev,
-        [normalizedRoomId]: mergeMessages(data, cachedMessages),
+        [normalizedRoomId]: mergeMessages(data),
       }))
+      setMessagePageByRoom(prev => ({ ...prev, [normalizedRoomId]: 0 }))
+      setHasOlderMessagesByRoom(prev => ({ ...prev, [normalizedRoomId]: data.length === 30 }))
       await markChatRoomAsRead(normalizedRoomId)
       loadRooms()
     } catch (err) {
@@ -478,28 +505,46 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     }
   }, [loadRooms])
 
-  const appendLocalMessage = useCallback((roomId, payload) => {
+  const loadOlderMessages = async roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
-    if (!normalizedRoomId) return
+    if (!normalizedRoomId || loadingOlderRoomIds.includes(normalizedRoomId)) return
 
-    const localMessage = normalizeMessage({
-      roomId: normalizedRoomId,
-      messageId: `local-${normalizedRoomId}-${Date.now()}`,
-      senderName: currentUser?.name || currentUser?.userName || '나',
-      senderEmpNo: currentEmpNo,
-      content: payload.content,
-      messageType: payload.fileUrl ? 'FILE' : 'TEXT',
-      fileUrl: payload.fileUrl,
-      fileName: payload.fileName,
-      sentAt: new Date().toISOString(),
-    })
+    const nextPage = (messagePageByRoom[normalizedRoomId] || 0) + 1
+    setLoadingOlderRoomIds(prev => [...prev, normalizedRoomId])
 
-    setMessagesByRoom(prev => {
-      const current = prev[normalizedRoomId] || []
-      return { ...prev, [normalizedRoomId]: [...current, localMessage] }
-    })
-    cacheRoomMessage(normalizedRoomId, localMessage)
-  }, [currentEmpNo, currentUser])
+    try {
+      const data = await getChatMessages(normalizedRoomId, nextPage, 30)
+      setMessagesByRoom(prev => ({
+        ...prev,
+        [normalizedRoomId]: mergeMessages([
+          ...(prev[normalizedRoomId] || []),
+          ...data,
+        ]),
+      }))
+      setMessagePageByRoom(prev => ({ ...prev, [normalizedRoomId]: nextPage }))
+      setHasOlderMessagesByRoom(prev => ({ ...prev, [normalizedRoomId]: data.length === 30 }))
+    } catch (err) {
+      console.error('이전 채팅 메시지 조회 실패', err)
+      setError(getChatRequestErrorMessage(err))
+    } finally {
+      setLoadingOlderRoomIds(prev => prev.filter(id => id !== normalizedRoomId))
+    }
+  }
+
+  const loadRoomMembers = useCallback(async roomId => {
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId) return []
+
+    try {
+      const members = await getChatRoomMembers(normalizedRoomId)
+      setRoomMembersByRoom(prev => ({ ...prev, [normalizedRoomId]: members }))
+      return members
+    } catch (err) {
+      console.error('채팅방 멤버 조회 실패', err)
+      setError(getChatRequestErrorMessage(err))
+      return roomMembersByRoom[normalizedRoomId] || []
+    }
+  }, [roomMembersByRoom])
 
   const subscribeRoom = useCallback(roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
@@ -508,14 +553,14 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     const client = stompClientRef.current
     if (!client?.connected) return
 
-    client.subscribe(`/topic/room.${normalizedRoomId}`, messageFrame => {
+    const subscription = client.subscribe(`/topic/room.${normalizedRoomId}`, messageFrame => {
       try {
         const payload = JSON.parse(messageFrame.body)
         const message = normalizeMessage({ ...payload, roomId: normalizedRoomId })
 
         setMessagesByRoom(prev => {
           const current = prev[normalizedRoomId] || []
-          if (current.some(item => item.messageId === message.messageId)) return prev
+          if (current.some(item => isSameMessage(item, message))) return prev
           return { ...prev, [normalizedRoomId]: [...current, message] }
         })
         markChatRoomAsRead(normalizedRoomId).catch(() => {})
@@ -526,143 +571,8 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       }
     }, { id: `room-${normalizedRoomId}` })
 
-    subscribedRoomsRef.current.add(normalizedRoomId)
+    subscribedRoomsRef.current.set(normalizedRoomId, subscription)
   }, [loadRooms])
-
-  const handleStompMessage = useCallback(frame => {
-    const subscription = frame.headers.subscription || ''
-    const roomIdFromSubscription = Number(subscription.replace('room-', ''))
-
-    try {
-      const payload = JSON.parse(frame.body)
-
-      if (!Number.isNaN(roomIdFromSubscription)) {
-        const message = normalizeMessage({ ...payload, roomId: roomIdFromSubscription })
-        setMessagesByRoom(prev => {
-          const current = prev[roomIdFromSubscription] || []
-          if (current.some(item => item.messageId === message.messageId)) return prev
-          return { ...prev, [roomIdFromSubscription]: [...current, message] }
-        })
-        markChatRoomAsRead(roomIdFromSubscription).catch(() => {})
-      }
-
-      loadRooms()
-    } catch (err) {
-      console.error('채팅 메시지 파싱 실패', err)
-      loadRooms()
-    }
-  }, [loadRooms])
-
-  const connectSocket = useCallback((urlIndex = socketUrlIndexRef.current) => {
-    if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return
-
-    const token = localStorage.getItem('token')
-    if (!token) {
-      setSocketStatus('disconnected')
-      return
-    }
-
-    const socketUrls = getSocketUrls()
-    const socketUrl = socketUrls[urlIndex] || socketUrls[0]
-    socketUrlIndexRef.current = urlIndex
-    socketManualCloseRef.current = false
-
-    let socket
-    try {
-      socket = new WebSocket(socketUrl)
-    } catch (err) {
-      console.error(`채팅 웹소켓 생성 실패: ${socketUrl}`, err)
-      setSocketStatus('error')
-      setError(CHAT_SOCKET_ERROR_MESSAGE)
-      return
-    }
-
-    socketRef.current = socket
-    setSocketStatus('connecting')
-
-    socket.onmessage = event => {
-      try {
-        const data = event.data
-        if (typeof data !== 'string') return
-
-      if (data === 'o') {
-        const headers = {
-          'accept-version': '1.2',
-          'heart-beat': '10000,10000',
-        }
-        if (token) headers.Authorization = `Bearer ${token}`
-        sendSockJsPayload(buildStompFrame('CONNECT', headers))
-        return
-      }
-
-      if (data === 'h') return
-
-      if (data.startsWith('c')) {
-        setSocketStatus('disconnected')
-        return
-      }
-
-      if (!data.startsWith('a')) return
-
-      const frames = JSON.parse(data.slice(1))
-      frames.forEach(rawFrame => {
-        const frame = parseStompFrame(rawFrame.replace(/\0$/, ''))
-
-        if (frame.command === 'CONNECTED') {
-          socketUrlIndexRef.current = urlIndex
-          setSocketStatus('connected')
-          sendStompFrame('SUBSCRIBE', { id: 'chat-invite', destination: '/user/queue/invite' })
-          openRoomIdsRef.current.forEach(subscribeRoom)
-          return
-        }
-
-        if (frame.command === 'MESSAGE') {
-          handleStompMessage(frame)
-          return
-        }
-
-        if (frame.command === 'ERROR') {
-          console.error('채팅 웹소켓 오류', frame.body)
-          setSocketStatus('error')
-          setError('실시간 채팅 연결에서 오류가 발생했습니다.')
-        }
-      })
-      } catch (err) {
-        console.error('채팅 웹소켓 메시지 처리 실패', err)
-        setSocketStatus('error')
-        setError(CHAT_SOCKET_ERROR_MESSAGE)
-      }
-    }
-
-    socket.onerror = event => {
-      if (!socketManualCloseRef.current) {
-        setSocketStatus('error')
-        setError(CHAT_SOCKET_ERROR_MESSAGE)
-      }
-      console.error(`채팅 웹소켓 연결 실패: ${socketUrl}`, event)
-    }
-
-    socket.onclose = () => {
-      if (socketRef.current === socket) socketRef.current = null
-      subscribedRoomsRef.current.clear()
-
-      if (!socketManualCloseRef.current && urlIndex < socketUrls.length - 1) {
-        socketUrlIndexRef.current = urlIndex + 1
-        socketReconnectTimerRef.current = window.setTimeout(() => {
-          connectSocket(urlIndex + 1)
-        }, 350)
-        return
-      }
-
-      if (socketManualCloseRef.current) {
-        setSocketStatus('disconnected')
-        return
-      }
-
-      setSocketStatus('error')
-      setError(CHAT_SOCKET_ERROR_MESSAGE)
-    }
-  }, [handleStompMessage, sendSockJsPayload, sendStompFrame, subscribeRoom])
 
   const connectStompSocket = useCallback(async () => {
     if (stompClientRef.current?.active) return
@@ -734,11 +644,6 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     connectStompSocket()
 
     return () => {
-      socketManualCloseRef.current = true
-      if (socketReconnectTimerRef.current) {
-        window.clearTimeout(socketReconnectTimerRef.current)
-      }
-      socketRef.current?.close()
       stompClientRef.current?.deactivate()
       stompClientRef.current = null
       subscribedRoomsRef.current.clear()
@@ -765,6 +670,7 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
 
     setOpenRoomIds(prev => (prev.includes(roomId) ? prev : [...prev, roomId]))
     subscribeRoom(roomId)
+    loadRoomMembers(roomId)
 
     if (!messagesByRoom[roomId]?.length) {
       await loadMessages(roomId)
@@ -779,12 +685,25 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     setOpenRoomIds(prev => prev.filter(id => id !== normalizedRoomId))
   }
 
-  const normalizeCandidate = candidate => ({
-    empNo: candidate.empNo || candidate.employeeNo || candidate.username || candidate.userEmpNo,
-    name: candidate.name || candidate.userName || candidate.employeeName || candidate.empNo || candidate.employeeNo,
-    department: candidate.department || candidate.dept || candidate.departmentName || '',
-    position: candidate.position || candidate.rank || candidate.roleName || '',
-  })
+  const normalizeCandidate = candidate => {
+    const primaryDepartment = candidate.departments?.[0] || {}
+    return {
+      empNo: candidate.empNo || candidate.employeeNo || candidate.username || candidate.userEmpNo,
+      name: candidate.name || candidate.userName || candidate.employeeName || candidate.empNo || candidate.employeeNo,
+      department: candidate.department
+        || candidate.dept
+        || candidate.departmentName
+        || primaryDepartment.departmentName
+        || primaryDepartment.name
+        || '',
+      position: candidate.position
+        || candidate.rank
+        || candidate.roleName
+        || primaryDepartment.position
+        || primaryDepartment.positionName
+        || '',
+    }
+  }
 
   const loadMemberCandidates = async () => {
     try {
@@ -818,14 +737,20 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     loadMemberCandidates()
   }
 
-  const openInviteMemberModal = roomId => {
-    setInviteRoomId(roomId)
+  const openInviteMemberModal = async roomId => {
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId) return
+
+    setInviteRoomId(normalizedRoomId)
     setMemberInput('')
     setMemberSearch('')
     setSelectedMemberEmpNos([])
     setModalRoomName('')
     setIsCreateModalOpen(true)
-    loadMemberCandidates()
+    await Promise.all([
+      loadMemberCandidates(),
+      loadRoomMembers(normalizedRoomId),
+    ])
   }
 
   const toggleMemberSelection = empNo => {
@@ -845,6 +770,8 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     return Array.from(new Set([...selectedMemberEmpNos, ...typedEmpNos]))
   }
 
+  const inviteRoom = rooms.find(room => normalizeRoomId(room.roomId) === normalizeRoomId(inviteRoomId))
+
   const submitMemberModal = async event => {
     event.preventDefault()
     const empNos = getInputEmpNos()
@@ -852,8 +779,9 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
 
     try {
       if (inviteRoomId) {
-        await inviteChatMembers(inviteRoomId, empNos)
+        await inviteChatMembers(inviteRoomId, empNos, modalRoomName)
         await loadRooms()
+        await loadRoomMembers(inviteRoomId)
         await loadMessages(inviteRoomId)
         closeMemberModal()
         return
@@ -867,7 +795,11 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
         return
       }
 
-      const roomName = modalRoomName.trim() || `${empNos.length + 1}명 채팅`
+      const selectedNames = empNos.map(empNo => (
+        memberCandidates.find(candidate => candidate.empNo === empNo)?.name || empNo
+      ))
+      const roomName = modalRoomName.trim()
+        || [currentUser?.name, ...selectedNames].filter(Boolean).join(', ')
       const roomId = await createGroupChatRoom({ name: roomName, memberEmpNos: empNos })
       await loadRooms()
       await openRoom({ roomId, name: roomName, type: 'GROUP', members: [] })
@@ -878,12 +810,39 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     }
   }
 
+  const renameRoom = async room => {
+    const roomId = normalizeRoomId(room.roomId)
+    if (!roomId) return
+
+    const name = window.prompt(
+      '채팅방 이름을 입력하세요. 비워두면 기본 이름으로 돌아갑니다.',
+      room.originalName || room.name || ''
+    )
+    if (name === null) return
+
+    try {
+      await updateChatRoomName(roomId, name)
+      const nextName = name.trim()
+      setRooms(prev => prev.map(item => (
+        normalizeRoomId(item.roomId) === roomId
+          ? { ...item, name: nextName || getRoomDisplayName({ ...item, name: '' }, currentEmpNo) }
+          : item
+      )))
+      await loadRooms()
+    } catch (err) {
+      console.error('채팅방 이름 변경 실패', err)
+      setError(getChatRequestErrorMessage(err))
+    }
+  }
+
   const sendMessage = (roomId, payload) => {
     const client = stompClientRef.current
     const sent = Boolean(client?.connected)
     const normalizedRoomId = normalizeRoomId(roomId)
+    const isActiveRoom = rooms.some(room => normalizeRoomId(room.roomId) === normalizedRoomId)
+    const isLeavingRoom = leavingRoomIds.includes(normalizedRoomId)
 
-    if (!normalizedRoomId) {
+    if (!normalizedRoomId || !isActiveRoom || isLeavingRoom) {
       setError('채팅방 정보를 확인하지 못했습니다. 채팅방을 다시 열어주세요.')
       return
     }
@@ -895,7 +854,6 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ roomId: normalizedRoomId, ...payload }),
         })
-        appendLocalMessage(normalizedRoomId, payload)
       } catch (err) {
         console.error('채팅 메시지 발송 실패', err)
         setError('메시지를 보내지 못했습니다. STOMP 전송 경로와 백엔드 메시지 수신 로그를 확인해주세요.')
@@ -906,9 +864,16 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   }
 
   const uploadFile = async (roomId, file) => {
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId || uploadingRoomIds.includes(normalizedRoomId)) return
+
+    setUploadingRoomIds(prev => [...prev, normalizedRoomId])
     try {
-      const uploaded = await uploadChatFile(roomId, file)
-      sendMessage(roomId, {
+      const uploaded = await uploadChatFile(normalizedRoomId, file)
+      if (!uploaded?.fileUrl) {
+        throw new Error('파일 업로드 응답에 fileUrl이 없습니다.')
+      }
+      sendMessage(normalizedRoomId, {
         content: uploaded.fileName || file.name,
         fileUrl: uploaded.fileUrl,
         fileName: uploaded.fileName || file.name,
@@ -916,10 +881,17 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     } catch (err) {
       console.error('채팅 파일 업로드 실패', err)
       setError(getChatRequestErrorMessage(err))
+    } finally {
+      setUploadingRoomIds(prev => prev.filter(id => id !== normalizedRoomId))
     }
   }
 
   const downloadFile = async (fileUrl, fileName) => {
+    if (!fileUrl) {
+      setError('다운로드할 파일 정보가 없습니다.')
+      return
+    }
+
     try {
       const response = await downloadChatFile(fileUrl)
       const blobUrl = window.URL.createObjectURL(response.data)
@@ -939,17 +911,51 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
   const leaveRoom = async roomId => {
     if (!window.confirm('채팅방에서 나가시겠습니까?')) return
 
+    const normalizedRoomId = normalizeRoomId(roomId)
+    if (!normalizedRoomId) return
+    setLeavingRoomIds(prev => (prev.includes(normalizedRoomId) ? prev : [...prev, normalizedRoomId]))
+
     try {
-      await leaveChatRoom(roomId)
-      closeRoom(roomId)
+      await leaveChatRoom(normalizedRoomId)
+      subscribedRoomsRef.current.get(normalizedRoomId)?.unsubscribe()
+      subscribedRoomsRef.current.delete(normalizedRoomId)
+      closeRoom(normalizedRoomId)
+      setRooms(prev => prev.filter(room => normalizeRoomId(room.roomId) !== normalizedRoomId))
+      setMessagesByRoom(prev => {
+        const next = { ...prev }
+        delete next[normalizedRoomId]
+        return next
+      })
+      setMessagePageByRoom(prev => {
+        const next = { ...prev }
+        delete next[normalizedRoomId]
+        return next
+      })
+      setHasOlderMessagesByRoom(prev => {
+        const next = { ...prev }
+        delete next[normalizedRoomId]
+        return next
+      })
+      setRoomMembersByRoom(prev => {
+        const next = { ...prev }
+        delete next[normalizedRoomId]
+        return next
+      })
       await loadRooms()
     } catch (err) {
       console.error('채팅방 나가기 실패', err)
       setError(getChatRequestErrorMessage(err))
+    } finally {
+      setLeavingRoomIds(prev => prev.filter(id => id !== normalizedRoomId))
     }
   }
 
+  const currentRoomMemberEmpNos = new Set(
+    (roomMembersByRoom[normalizeRoomId(inviteRoomId)] || []).map(member => member.empNo)
+  )
+
   const filteredMemberCandidates = memberCandidates.filter(candidate => {
+    if (inviteRoomId && currentRoomMemberEmpNos.has(candidate.empNo)) return false
     const keyword = memberSearch.trim().toLowerCase()
     if (!keyword) return true
 
@@ -958,6 +964,18 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
       || candidate.department?.toLowerCase().includes(keyword)
       || candidate.position?.toLowerCase().includes(keyword)
   })
+
+  const allVisibleMembersSelected = filteredMemberCandidates.length > 0
+    && filteredMemberCandidates.every(candidate => selectedMemberEmpNos.includes(candidate.empNo))
+
+  const toggleAllVisibleMembers = () => {
+    const visibleEmpNos = filteredMemberCandidates.map(candidate => candidate.empNo)
+    setSelectedMemberEmpNos(prev => (
+      allVisibleMembersSelected
+        ? prev.filter(empNo => !visibleEmpNos.includes(empNo))
+        : Array.from(new Set([...prev, ...visibleEmpNos]))
+    ))
+  }
 
   const selectedMemberCandidates = selectedMemberEmpNos
     .map(empNo => memberCandidates.find(candidate => candidate.empNo === empNo) || { empNo, name: empNo })
@@ -985,8 +1003,8 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
     const startY = event.clientY
     const startPosition = { ...windowPosition }
     const rect = chatWindowRef.current?.getBoundingClientRect()
-    const width = rect?.width || 860
-    const height = rect?.height || 720
+    const width = rect?.width || 400
+    const height = rect?.height || 630
 
     const handleMouseMove = moveEvent => {
       const nextX = startPosition.x + moveEvent.clientX - startX
@@ -1060,11 +1078,11 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
                 <FiX />
               </button>
             </div>
-            {!inviteRoomId && (
+            {(!inviteRoomId || inviteRoom?.type === 'PRIVATE') && (
               <input
                 value={modalRoomName}
                 onChange={event => setModalRoomName(event.target.value)}
-                placeholder="그룹 채팅방 이름 (선택)"
+                placeholder={inviteRoomId ? '전환할 그룹 채팅방 이름 (선택)' : '그룹 채팅방 이름 (선택)'}
               />
             )}
             <div className="chat-member-search">
@@ -1076,6 +1094,14 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
                 autoFocus
               />
             </div>
+            <button
+              type="button"
+              className="chat-member-select-all"
+              onClick={toggleAllVisibleMembers}
+              disabled={filteredMemberCandidates.length === 0}
+            >
+              {allVisibleMembersSelected ? '전체 선택 해제' : `전체 선택 (${filteredMemberCandidates.length}명)`}
+            </button>
             {selectedMemberCandidates.length > 0 && (
               <div className="chat-selected-members">
                 {selectedMemberCandidates.map(member => (
@@ -1189,14 +1215,20 @@ export default function Chat({ user, windowMode = false, onCloseChatWindow }) {
             room={room}
             index={index}
             messages={messagesByRoom[normalizeRoomId(room.roomId)] || []}
+            members={roomMembersByRoom[normalizeRoomId(room.roomId)] || room.members || []}
             currentEmpNo={currentEmpNo}
-            isConnected={socketStatus === 'connected'}
+            isConnected={socketStatus === 'connected' && !leavingRoomIds.includes(normalizeRoomId(room.roomId))}
             onClose={closeRoom}
             onLeave={leaveRoom}
             onOpenInvite={openInviteMemberModal}
+            onRename={renameRoom}
+            onLoadOlder={loadOlderMessages}
             onSend={sendMessage}
             onUploadFile={uploadFile}
             onDownloadFile={downloadFile}
+            hasOlderMessages={Boolean(hasOlderMessagesByRoom[normalizeRoomId(room.roomId)])}
+            isLoadingOlder={loadingOlderRoomIds.includes(normalizeRoomId(room.roomId))}
+            isUploading={uploadingRoomIds.includes(normalizeRoomId(room.roomId))}
           />
         ))}
       </div>
