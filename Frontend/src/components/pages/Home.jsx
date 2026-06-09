@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import HomeCalendar from './HomeCalendar'
 import Board from './Board'
-import { reserveScheduledSend } from '../../api/aiAssistantApi'
+import { reserveScheduledSend, getAiSchedules, cancelAiSchedule, updateAiSchedule } from '../../api/aiAssistantApi'
 import { searchUsers } from '../../api/userApi'
 import {
-  FiCheck, FiChevronLeft, FiChevronRight,
-  FiClock, FiLoader, FiMail, FiMessageSquare,
-  FiPaperclip, FiSearch, FiSend, FiUser, FiX
+  FiAlertCircle, FiCheck, FiChevronLeft, FiChevronRight,
+  FiClock, FiEdit2, FiLoader, FiMail, FiMessageSquare,
+  FiPaperclip, FiSearch, FiSend, FiTrash2, FiUser, FiX
 } from 'react-icons/fi'
 
 const STEPS = ['수신자', '제목', '본문', '전송 방식', '파일 첨부', '예약 시간']
+
+// ── shared sub-component ──────────────────────────────────────────────────────
 
 function RecipientSelector({ selected, onChange }) {
   const [query, setQuery] = useState('')
@@ -77,6 +79,255 @@ function RecipientSelector({ selected, onChange }) {
   )
 }
 
+// ── reserve list components ───────────────────────────────────────────────────
+
+function StatusBadge({ status }) {
+  const map = {
+    PENDING:    { label: '대기 중',   cls: 'is-pending' },
+    PROCESSING: { label: '처리 중',   cls: 'is-processing' },
+    SENT:       { label: '발송 완료', cls: 'is-sent' },
+    FAILED:     { label: '실패',      cls: 'is-failed' },
+    CANCELLED:  { label: '취소됨',    cls: 'is-cancelled' },
+  }
+  const s = map[status] || { label: status, cls: '' }
+  return <span className={`reserve-status-badge ${s.cls}`}>{s.label}</span>
+}
+
+function EditModal({ item, onClose, onSaved }) {
+  const [recipients, setRecipients] = useState(
+    (item.recipientEmpNos || []).map((empNo, i) => ({ empNo, name: (item.recipientNames || [])[i] || empNo }))
+  )
+  const [subject, setSubject]     = useState(item.title || '')
+  const [body, setBody]           = useState(item.message || '')
+  const [channel, setChannel]     = useState((item.channel || '').toUpperCase() === 'MAIL' ? 'mail' : 'chat')
+  const [scheduledAt, setScheduledAt] = useState(
+    item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(0, 16) : ''
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+
+  const handleSave = async () => {
+    if (!body.trim()) { setError('본문을 입력해주세요.'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const updated = await updateAiSchedule(item.id, {
+        recipientEmpNos: recipients.map(u => u.empNo),
+        recipientNames:  recipients.map(u => u.name),
+        subject: subject.trim() || null,
+        body:    body.trim(),
+        channel,
+        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString().replace('Z', '') : null,
+      })
+      onSaved(updated)
+    } catch (err) {
+      setError(err.response?.data?.message || '수정에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="reserve-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="reserve-modal">
+        <div className="reserve-modal-header">
+          <span className="reserve-modal-title">예약 수정</span>
+          <button type="button" className="reserve-modal-close" onClick={onClose}><FiX size={16} /></button>
+        </div>
+        <div className="reserve-modal-body">
+          <label className="home-reserve-label"><FiUser size={13} /> 수신자</label>
+          <RecipientSelector selected={recipients} onChange={setRecipients} />
+
+          <label className="home-reserve-label" style={{ marginTop: 4 }}>
+            <FiMail size={13} /> 제목
+            <span className="home-reserve-optional">선택</span>
+          </label>
+          <input className="home-reserve-input" value={subject} maxLength={200}
+            onChange={e => setSubject(e.target.value)} placeholder="메일 제목 (선택)" />
+
+          <label className="home-reserve-label"><FiMessageSquare size={13} /> 본문</label>
+          <textarea className="home-reserve-textarea" value={body} rows={4}
+            onChange={e => setBody(e.target.value)} placeholder="보낼 내용을 입력하세요" />
+
+          <label className="home-reserve-label"><FiSend size={13} /> 전송 방식</label>
+          <div className="home-reserve-channel-group" style={{ marginBottom: 2 }}>
+            <button type="button"
+              className={`home-reserve-channel-btn ${channel === 'chat' ? 'is-selected' : ''}`}
+              onClick={() => setChannel('chat')}>
+              <FiMessageSquare size={18} /><span>채팅</span>
+            </button>
+            <button type="button"
+              className={`home-reserve-channel-btn ${channel === 'mail' ? 'is-selected' : ''}`}
+              onClick={() => setChannel('mail')}>
+              <FiMail size={18} /><span>메일</span>
+            </button>
+          </div>
+
+          <label className="home-reserve-label">
+            <FiClock size={13} /> 예약 시간
+            <span className="home-reserve-optional">비우면 즉시</span>
+          </label>
+          <input type="datetime-local" className="home-reserve-input"
+            value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
+            min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} />
+
+          {error && <p className="home-reserve-error">{error}</p>}
+        </div>
+        <div className="reserve-modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>취소</button>
+          <button type="button" className="btn btn-primary" onClick={handleSave}
+            disabled={saving || !body.trim()}>
+            {saving
+              ? <><FiLoader size={13} className="mascot-spin" /> 저장 중...</>
+              : <><FiCheck size={13} /> 저장</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReserveList({ onSubPageChange }) {
+  const [items, setItems]       = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState('')
+  const [editItem, setEditItem] = useState(null)
+  const [cancelling, setCancelling] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await getAiSchedules()
+      setItems(Array.isArray(data) ? data : [])
+    } catch {
+      setError('목록을 불러오지 못했어요.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const handleCancel = async (id) => {
+    if (!window.confirm('이 예약을 취소하시겠어요?')) return
+    setCancelling(id)
+    try {
+      await cancelAiSchedule(id)
+      setItems(prev => prev.map(it => it.id === id ? { ...it, status: 'CANCELLED' } : it))
+    } catch (err) {
+      alert(err.response?.data?.message || '취소에 실패했습니다.')
+    } finally {
+      setCancelling(null)
+    }
+  }
+
+  const handleSaved = (updated) => {
+    setItems(prev => prev.map(it => it.id === updated.id ? updated : it))
+    setEditItem(null)
+  }
+
+  if (loading) {
+    return (
+      <div className="reserve-list-loading">
+        <FiLoader size={20} className="mascot-spin" /> 불러오는 중...
+      </div>
+    )
+  }
+
+  return (
+    <div className="reserve-list-page">
+      <div className="reserve-list-header">
+        <h2 className="reserve-list-title">예약 목록</h2>
+        <button type="button" className="btn btn-primary"
+          onClick={() => onSubPageChange?.('home-dashboard')}>
+          <FiSend size={13} /> 새 예약
+        </button>
+      </div>
+
+      {error && <p className="home-reserve-error">{error}</p>}
+
+      {items.length === 0 ? (
+        <div className="reserve-list-empty">
+          <FiClock size={36} />
+          <p>예약된 발송이 없어요</p>
+          <button type="button" className="btn btn-primary"
+            onClick={() => onSubPageChange?.('home-dashboard')}>
+            첫 예약 만들기
+          </button>
+        </div>
+      ) : (
+        <ul className="reserve-list">
+          {items.map(item => (
+            <li key={item.id} className={`reserve-card ${item.status === 'CANCELLED' ? 'is-cancelled' : ''}`}>
+              <div className="reserve-card-top">
+                <div className="reserve-card-channel">
+                  {(item.channel || '').toUpperCase() === 'MAIL'
+                    ? <><FiMail size={13} /> 메일</>
+                    : <><FiMessageSquare size={13} /> 채팅</>}
+                </div>
+                <StatusBadge status={item.status} />
+              </div>
+
+              <div className="reserve-card-recipients">
+                {(item.recipientNames || []).join(', ') || '수신자 없음'}
+              </div>
+
+              {item.title && (
+                <div className="reserve-card-subject">{item.title}</div>
+              )}
+
+              <div className="reserve-card-body">
+                {item.message && item.message.length > 120
+                  ? item.message.slice(0, 120) + '...'
+                  : item.message}
+              </div>
+
+              <div className="reserve-card-footer">
+                <div className="reserve-card-time">
+                  <FiClock size={11} />
+                  {item.scheduledAt
+                    ? new Date(item.scheduledAt).toLocaleString('ko-KR')
+                    : '즉시 발송'}
+                </div>
+
+                {item.status === 'PENDING' && (
+                  <div className="reserve-card-actions">
+                    <button type="button" className="reserve-action-btn is-edit"
+                      onClick={() => setEditItem(item)}>
+                      <FiEdit2 size={12} /> 수정
+                    </button>
+                    <button type="button" className="reserve-action-btn is-cancel"
+                      onClick={() => handleCancel(item.id)}
+                      disabled={cancelling === item.id}>
+                      {cancelling === item.id
+                        ? <FiLoader size={12} className="mascot-spin" />
+                        : <FiTrash2 size={12} />} 취소
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {item.status === 'FAILED' && item.errorMessage && (
+                <div className="reserve-card-error-msg">
+                  <FiAlertCircle size={12} />
+                  {item.errorMessage.slice(0, 100)}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {editItem && (
+        <EditModal item={editItem} onClose={() => setEditItem(null)} onSaved={handleSaved} />
+      )}
+    </div>
+  )
+}
+
+// ── main Home page ────────────────────────────────────────────────────────────
+
 export default function Home({ currentSubPage, user, onSubPageChange }) {
   const [step, setStep]             = useState(0)
   const [recipients, setRecipients] = useState([])
@@ -87,6 +338,10 @@ export default function Home({ currentSubPage, user, onSubPageChange }) {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone]             = useState(null)
   const [error, setError]           = useState('')
+
+  if (currentSubPage === 'home-reserve-list') {
+    return <ReserveList onSubPageChange={onSubPageChange} />
+  }
 
   if (currentSubPage === 'home-memo') return null
 
@@ -145,7 +400,8 @@ export default function Home({ currentSubPage, user, onSubPageChange }) {
             <p className="home-reserve-done-preview">{done.preview}</p>
             <div className="home-reserve-done-actions">
               <button type="button" className="btn btn-primary" onClick={reset}>새 예약</button>
-              <button type="button" className="btn btn-secondary" onClick={() => onSubPageChange?.('ai-schedule')}>예약 목록</button>
+              <button type="button" className="btn btn-secondary"
+                onClick={() => onSubPageChange?.('home-reserve-list')}>예약 목록</button>
             </div>
           </div>
         ) : (
@@ -208,19 +464,15 @@ export default function Home({ currentSubPage, user, onSubPageChange }) {
                 <div className="home-reserve-step-content">
                   <label className="home-reserve-label"><FiSend size={13} /> 전송 방식</label>
                   <div className="home-reserve-channel-group">
-                    <button
-                      type="button"
+                    <button type="button"
                       className={`home-reserve-channel-btn ${channel === 'chat' ? 'is-selected' : ''}`}
-                      onClick={() => setChannel('chat')}
-                    >
+                      onClick={() => setChannel('chat')}>
                       <FiMessageSquare size={22} />
                       <span>채팅</span>
                     </button>
-                    <button
-                      type="button"
+                    <button type="button"
                       className={`home-reserve-channel-btn ${channel === 'mail' ? 'is-selected' : ''}`}
-                      onClick={() => setChannel('mail')}
-                    >
+                      onClick={() => setChannel('mail')}>
                       <FiMail size={22} />
                       <span>메일</span>
                     </button>
@@ -267,31 +519,19 @@ export default function Home({ currentSubPage, user, onSubPageChange }) {
             </div>
 
             <div className="home-reserve-nav">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setStep(s => s - 1)}
-                disabled={step === 0}
-              >
+              <button type="button" className="btn btn-secondary"
+                onClick={() => setStep(s => s - 1)} disabled={step === 0}>
                 <FiChevronLeft size={14} /> 이전
               </button>
 
               {step < STEPS.length - 1 ? (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => setStep(s => s + 1)}
-                  disabled={!canNext()}
-                >
+                <button type="button" className="btn btn-primary"
+                  onClick={() => setStep(s => s + 1)} disabled={!canNext()}>
                   다음 <FiChevronRight size={14} />
                 </button>
               ) : (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleSubmit}
-                  disabled={submitting || !body.trim()}
-                >
+                <button type="button" className="btn btn-primary"
+                  onClick={handleSubmit} disabled={submitting || !body.trim()}>
                   {submitting
                     ? <><FiLoader size={14} className="mascot-spin" /> 등록 중...</>
                     : <><FiCheck size={14} /> 예약 확정</>}

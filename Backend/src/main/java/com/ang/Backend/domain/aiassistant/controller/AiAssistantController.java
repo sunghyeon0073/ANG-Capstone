@@ -64,6 +64,17 @@ public class AiAssistantController {
         return ResponseEntity.ok(ApiResponse.ok(aiScheduledActionService.getMySchedules(resolveUser(userDetails))));
     }
 
+    @PutMapping("/schedules/{id}")
+    public ResponseEntity<ApiResponse<AiAssistantDto.ScheduleResponse>> update(
+            @PathVariable Long id,
+            @RequestBody AiAssistantDto.UpdateRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        User user = resolveUser(userDetails);
+        AiAssistantDto.ScheduleResponse response = aiScheduledActionService.update(id, request, user);
+        return ResponseEntity.ok(ApiResponse.ok("예약이 수정되었습니다.", response));
+    }
+
     @PostMapping("/schedules/{id}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancel(
             @PathVariable Long id,

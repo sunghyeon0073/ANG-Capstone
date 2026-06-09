@@ -31,3 +31,8 @@ export const reserveScheduledSend = async (data) => {
   const response = await api.post('/ai-assistant/reserve', data)
   return unwrap(response)
 }
+
+export const updateAiSchedule = async (id, data) => {
+  const response = await api.put(`/ai-assistant/schedules/${id}`, data)
+  return unwrap(response)
+}

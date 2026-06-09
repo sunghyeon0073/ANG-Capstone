@@ -153,6 +153,39 @@ public class AiScheduledActionService {
         );
     }
 
+    @Transactional
+    public AiAssistantDto.ScheduleResponse update(Long id, AiAssistantDto.UpdateRequest req, User requester) {
+        ScheduledAction action = scheduledActionRepository.findById(id)
+                .orElseThrow(() -> new CustomException(ErrorCode.NOT_FOUND, "예약을 찾을 수 없습니다."));
+        if (!action.getRequester().getUserId().equals(requester.getUserId())) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+        if (action.getStatus() != ScheduledActionStatus.PENDING) {
+            throw new CustomException(ErrorCode.INVALID_INPUT, "대기 중인 예약만 수정할 수 있습니다.");
+        }
+        if (req.getRecipientEmpNos() != null && !req.getRecipientEmpNos().isEmpty()) {
+            action.setRecipientEmpNos(String.join(",", req.getRecipientEmpNos()));
+        }
+        if (req.getRecipientNames() != null) {
+            action.setRecipientNames(String.join(",", req.getRecipientNames()));
+        }
+        if (req.getSubject() != null) {
+            action.setTitle(req.getSubject().isBlank() ? null : req.getSubject().trim());
+        }
+        if (req.getBody() != null && !req.getBody().isBlank()) {
+            action.setMessage(req.getBody().trim());
+        }
+        if (req.getChannel() != null) {
+            action.setChannel("mail".equalsIgnoreCase(req.getChannel()) ? ScheduledActionChannel.MAIL : ScheduledActionChannel.CHAT);
+        }
+        if (req.getScheduledAt() != null) {
+            action.setScheduledAt(req.getScheduledAt());
+        }
+        List<String> empNos = req.getRecipientEmpNos() != null ? req.getRecipientEmpNos() : splitStrings(action.getRecipientEmpNos());
+        List<String> names = req.getRecipientNames() != null ? req.getRecipientNames() : splitStrings(action.getRecipientNames());
+        return AiAssistantDto.ScheduleResponse.from(action, empNos, names, splitLongs(action.getFileIds()));
+    }
+
     @Scheduled(fixedDelay = 30000)
     @Transactional
     public void dispatchDueActions() {

@@ -158,7 +158,7 @@ export default function Dashboard() {
         />
       )}
       {getMainCategory(currentPage) !== 'esignature' && (
-        <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} />
+        <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} onSubPageChange={handlePageChange} />
       )}
     </div>
   )
