@@ -1,7 +1,36 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
+import { getUserProfileImage } from '../../api/userApi'
 
 export default function TopNavBar({ user, onLogout, currentPage, onPageChange, onOpenChatWindow, isChatWindowOpen }) {
+  const [profileImageSrc, setProfileImageSrc] = useState('')
+
+  useEffect(() => {
+    if (!user?.id || !user.profileImageUrl) {
+      setProfileImageSrc('')
+      return undefined
+    }
+
+    let objectUrl = ''
+    let cancelled = false
+
+    getUserProfileImage(user.id)
+      .then((response) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(response.data)
+        setProfileImageSrc(objectUrl)
+      })
+      .catch((error) => {
+        console.error('상단 프로필 이미지 조회 실패', error)
+        setProfileImageSrc('')
+      })
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [user?.id, user?.profileImageUrl])
+
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [notificationCount] = useState(0)
 
@@ -29,8 +58,8 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
   }
 
   const renderAvatar = (className) => {
-    if (user?.profileImageUrl) {
-      return <img src={user.profileImageUrl} alt={`${user?.name || '사용자'} 프로필`} className={`${className} profile-image`} />
+    if (profileImageSrc) {
+      return <img src={profileImageSrc} alt={`${user?.name || '사용자'} 프로필`} className={`${className} profile-image`} />
     }
 
     return <div className={className}>{getInitials(user?.name)}</div>
