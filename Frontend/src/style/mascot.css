@@ -7,10 +7,8 @@
   right: 24px;
   bottom: 22px;
   z-index: 1200;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  width: 96px;
+  height: 118px;
   pointer-events: none;
 }
 
@@ -23,13 +21,22 @@
 }
 
 .floating-mascot-character {
-  position: relative;
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 96px;
   height: 118px;
   padding: 0;
   background: transparent;
   pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
   animation: mascot-float 3.2s ease-in-out infinite;
+}
+
+.floating-mascot-character:active,
+.floating-mascot-restore:active {
+  cursor: grabbing;
 }
 
 .floating-mascot-character img {
@@ -61,7 +68,9 @@
 }
 
 .floating-mascot-bubble {
-  position: relative;
+  position: absolute;
+  right: 38px;
+  bottom: 104px;
   width: min(280px, calc(100vw - 40px));
   padding: 14px 40px 14px 16px;
     border-radius: var(--radius-lg);
@@ -90,6 +99,102 @@
   word-break: keep-all;
 }
 
+.mascot-scheduler {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mascot-scheduler-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mascot-scheduler textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #111827;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  background: #ffffff;
+}
+
+.mascot-scheduler textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.mascot-scheduler-preview,
+.mascot-scheduler-status {
+  border-radius: 8px;
+  padding: 8px 9px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mascot-scheduler-preview {
+  color: #1f2937;
+  background: #eff6ff;
+}
+
+.mascot-scheduler-status {
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.mascot-scheduler-status.is-warning {
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.mascot-scheduler-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mascot-scheduler-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2563eb;
+  cursor: pointer;
+}
+
+.mascot-scheduler-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mascot-loading-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: mascot-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes mascot-pulse {
+  from { opacity: 0.3; transform: scale(0.7); }
+  to   { opacity: 1;   transform: scale(1.1); }
+}
+
 .floating-mascot-bubble-close {
   position: absolute;
   top: 8px;
@@ -105,6 +210,9 @@
 }
 
 .floating-mascot-controls {
+  position: absolute;
+  right: 32px;
+  top: -34px;
   height: 28px;
   pointer-events: auto;
 }
@@ -132,6 +240,8 @@
   width: 48px;
   height: 48px;
   font-size: 20px;
+  cursor: grab;
+  touch-action: none;
 }
 
 @keyframes mascot-float {
@@ -159,10 +269,22 @@
   .floating-mascot {
     right: 14px;
     bottom: 14px;
+    width: 76px;
+    height: 94px;
   }
 
   .floating-mascot-character {
     width: 76px;
     height: 94px;
+  }
+
+  .floating-mascot-bubble {
+    right: 24px;
+    bottom: 84px;
+  }
+
+  .floating-mascot-controls {
+    right: 24px;
+    top: -30px;
   }
 }

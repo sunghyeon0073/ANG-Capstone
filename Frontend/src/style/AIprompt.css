@@ -50,10 +50,59 @@
   cursor: not-allowed;
 }
 
+.ai-progress-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.ai-progress-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ai-progress-copy strong {
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ai-progress-copy span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-progress-track {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.ai-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #0f766e);
+  transition: width 0.35s ease;
+}
+
 .prompt-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   width: 100%;
 }
@@ -69,7 +118,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-right: 24px;
+  padding-right: 0;
 }
 
 /* ============================================================================
@@ -102,6 +151,12 @@
 .prompt-tab-added {
   background-color: var(--color-primary-soft);
   color: var(--color-primary);
+  box-shadow: var(--shadow-soft-sm);
+}
+
+.prompt-tab-docx-edit {
+  background-color: #e6fffb;
+  color: #0f766e;
   box-shadow: var(--shadow-soft-sm);
 }
 
@@ -171,6 +226,7 @@
 
 .btn-generate {
   padding: 10px 24px;
+  min-height: 40px;
   background-color: var(--color-primary);
   color: white;
   border: none;
@@ -179,6 +235,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .btn-generate--create {
@@ -189,6 +246,19 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.btn-generate--docx-edit {
+  background-color: #e6fffb;
+  color: #0f766e;
+  box-shadow: var(--shadow-soft-xs);
+}
+
+.btn-generate--docx-edit:hover:not(:disabled),
+.btn-generate--docx-edit.active {
+  background-color: #0f766e;
+  color: #fff;
+  box-shadow: 0 4px 6px -1px rgba(15, 118, 110, 0.22);
 }
 
 .btn-generate:hover:not(:disabled) {
