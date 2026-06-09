@@ -51,6 +51,19 @@ public class AiAssistantDto {
     }
 
     @Getter
+    @Setter
+    @NoArgsConstructor
+    public static class ReserveRequest {
+        private List<String> recipientEmpNos;
+        private List<String> recipientNames;
+        private String subject;
+        private String body;
+        private String channel;
+        private List<Long> fileIds;
+        private LocalDateTime scheduledAt;
+    }
+
+    @Getter
     @Builder
     public static class ScheduleResponse {
         private Long id;

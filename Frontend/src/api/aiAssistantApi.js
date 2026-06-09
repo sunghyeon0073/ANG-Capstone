@@ -26,3 +26,8 @@ export const askAiAssistant = async (prompt, confirm = false) => {
   const response = await api.post('/ai-assistant/ask', { prompt, confirm })
   return unwrap(response)
 }
+
+export const reserveScheduledSend = async (data) => {
+  const response = await api.post('/ai-assistant/reserve', data)
+  return unwrap(response)
+}

@@ -26,6 +26,16 @@ public class AiAssistantController {
     private final AiAssistantAskService aiAssistantAskService;
     private final UserRepository userRepository;
 
+    @PostMapping("/reserve")
+    public ResponseEntity<ApiResponse<AiAssistantDto.ScheduleResponse>> reserve(
+            @RequestBody AiAssistantDto.ReserveRequest request,
+            @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        User user = resolveUser(userDetails);
+        AiAssistantDto.ScheduleResponse response = aiScheduledActionService.reserve(request, user);
+        return ResponseEntity.ok(ApiResponse.ok("예약이 등록되었습니다.", response));
+    }
+
     @PostMapping("/ask")
     public ResponseEntity<ApiResponse<AiAssistantDto.AskResponse>> ask(
             @RequestBody AiAssistantDto.PromptRequest request,

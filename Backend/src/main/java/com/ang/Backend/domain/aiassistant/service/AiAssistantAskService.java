@@ -83,9 +83,11 @@ public class AiAssistantAskService {
     // ===== Intent Classification =====
 
     private IntentResult classify(String prompt) {
+        // keyword matching first (instant) — only call LLM when it returns unknown
+        IntentResult kw = classifyByKeyword(prompt);
+        if (!"unknown".equals(kw.intent())) return kw;
         IntentResult llm = classifyWithLLM(prompt);
-        IntentResult fallback = classifyByKeyword(prompt);
-        return normalizeIntentResult(prompt, llm, fallback);
+        return normalizeIntentResult(prompt, llm, kw);
     }
 
     private boolean isSendIntentFast(String p) {
@@ -434,12 +436,20 @@ public class AiAssistantAskService {
     @SuppressWarnings("unchecked")
     private String callSecretaryLLM(String userPrompt, String dataContext) {
         try {
-            String fullPrompt = "[사용자 질문]\n" + userPrompt + "\n\n[데이터]\n" + dataContext;
+            String fullPrompt = "업무 데이터를 보고 사용자 질문에 자연스러운 한국어로 답변하세요.\n\n"
+                    + "반드시 지킬 것:\n"
+                    + "- 데이터에 있는 실제 일정명·시간·발신자·제목을 직접 언급하세요\n"
+                    + "- '총 N개입니다'처럼 개수만 말하지 말고 구체적인 내용을 말해주세요\n"
+                    + "- 예시: '오전 10시 팀 회의, 오후 3시 고객 미팅이 잡혀 있어요'\n"
+                    + "- 해당하는 데이터가 없으면 솔직하게 없다고 말하세요\n\n"
+                    + "업무 데이터:\n" + dataContext + "\n\n"
+                    + "질문: " + userPrompt + "\n"
+                    + "답변:";
             Map<String, Object> body = Map.of(
                     "model", secretaryModel,
                     "prompt", fullPrompt,
                     "stream", false,
-                    "options", Map.of("temperature", 0.5, "num_predict", 256)
+                    "options", Map.of("temperature", 0.4, "num_predict", 300)
             );
             Map<String, Object> response = ollamaRestClient.post()
                     .uri("/api/generate")
