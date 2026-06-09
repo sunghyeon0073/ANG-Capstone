@@ -28,7 +28,7 @@ const truncateText = (text, max = 15) => {
   return text.length > max ? `${text.slice(0, max)}...` : text;
 };
 
-export default function Board({ me, currentSubPage = 'board' }) {
+export default function Board({ me, currentSubPage = 'board', maxItems }) {
   const [posts, setPosts] = useState(() => {
     const saved = localStorage.getItem('ang_posts');
     return saved ? JSON.parse(saved) : [];
@@ -41,7 +41,7 @@ export default function Board({ me, currentSubPage = 'board' }) {
   const [attachmentPreviews, setAttachmentPreviews] = useState({});
   const [toast, setToast] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = maxItems != null ? maxItems : 10;
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -267,20 +267,30 @@ export default function Board({ me, currentSubPage = 'board' }) {
           </div>
 
           {displayList.length > 0 ? (
-            pagedList.map((post) => (
-              <div key={post.id} onClick={() => handleOpenPost(post)} className="board-item">
-                <div className="board-item-pin">{post.pinned ? '📌' : '·'}</div>
-                <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }} title={post.title}>
-                  {truncateText(post.title, 15)}
-                  {post.attachments?.length > 0 && <span className="board-attachment-count">첨부 {post.attachments.length}</span>}
+            <>
+              {pagedList.map((post) => (
+                <div key={post.id} onClick={() => handleOpenPost(post)} className="board-item">
+                  <div className="board-item-pin">{post.pinned ? '📌' : '·'}</div>
+                  <div className="board-item-title" style={{ fontWeight: post.pinned ? 'bold' : 'normal' }} title={post.title}>
+                    {truncateText(post.title, 15)}
+                    {post.attachments?.length > 0 && <span className="board-attachment-count">첨부 {post.attachments.length}</span>}
+                  </div>
+                  <div className="board-item-author">{post.author}</div>
+                  <div className="board-item-date">{post.date}</div>
+                  <div className="board-item-views">{post.views || 0}</div>
                 </div>
-                <div className="board-item-author">{post.author}</div>
-                <div className="board-item-date">{post.date}</div>
-                <div className="board-item-views">{post.views || 0}</div>
-              </div>
-            ))
+              ))}
+              {maxItems != null && Array.from({ length: maxItems - pagedList.length }).map((_, i) => (
+                <div key={`empty-${i}`} className="board-item board-item--placeholder" />
+              ))}
+            </>
           ) : (
-            <div className="board-empty">해당 메뉴에 등록된 게시글이 없습니다.</div>
+            <>
+              <div className="board-empty">해당 메뉴에 등록된 게시글이 없습니다.</div>
+              {maxItems != null && Array.from({ length: maxItems - 1 }).map((_, i) => (
+                <div key={`empty-${i}`} className="board-item board-item--placeholder" />
+              ))}
+            </>
           )}
         </div>
 

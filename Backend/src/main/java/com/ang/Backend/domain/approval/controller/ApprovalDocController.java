@@ -10,6 +10,7 @@ import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -71,6 +72,19 @@ public class ApprovalDocController {
 
     // ─── 결재 액션 ────────────────────────────────────────────────────────────
 
+    @GetMapping("/{id}/attachment")
+    public ResponseEntity<byte[]> downloadAttachment(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = getUser(userDetails);
+        byte[] data = docService.downloadAttachment(id, user);
+        String contentType = docService.getAttachmentContentType(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, contentType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(data);
+    }
+
     @PostMapping(value = "/{id}/attachment", consumes = "multipart/form-data")
     public ApiResponse<Void> uploadAttachment(
             @PathVariable Long id,
@@ -108,7 +122,7 @@ public class ApprovalDocController {
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = getUser(userDetails);
         docService.delegate(id, req, user);
-        return ApiResponse.ok("대결 처리되었습니다.");
+        return ApiResponse.ok("대리결재 처리되었습니다.");
     }
 
 
