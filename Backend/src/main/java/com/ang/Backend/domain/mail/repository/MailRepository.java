@@ -26,4 +26,15 @@ public interface MailRepository extends JpaRepository<Mail, Long> {
     // 발신 즐겨찾기: 발신자이고 즐겨찾기이고 삭제 안 된 것
     List<Mail> findBySenderAndIsSenderFavoriteTrueAndSenderDeletedAtIsNull(User sender);
     Page<Mail> findBySenderAndIsSenderFavoriteTrueAndSenderDeletedAtIsNull(User sender, Pageable pageable);
+
+    // ANG 비서 검색: 발신 메일에서 제목 키워드 검색
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT m FROM Mail m WHERE m.sender = :user AND m.senderDeletedAt IS NULL AND m.status IN :statuses " +
+        "AND (:keyword IS NULL OR m.title LIKE %:keyword%) " +
+        "ORDER BY m.sentAt DESC")
+    List<Mail> searchSentByKeyword(
+        @org.springframework.data.repository.query.Param("user") User user,
+        @org.springframework.data.repository.query.Param("keyword") String keyword,
+        @org.springframework.data.repository.query.Param("statuses") java.util.List<com.ang.Backend.common.enums.MailStatus> statuses,
+        org.springframework.data.domain.Pageable pageable);
 }

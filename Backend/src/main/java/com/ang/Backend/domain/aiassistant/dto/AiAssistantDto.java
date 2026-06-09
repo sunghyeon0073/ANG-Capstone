@@ -20,6 +20,51 @@ public class AiAssistantDto {
 
     @Getter
     @Builder
+    public static class ResultItem {
+        private String type;
+        private String title;
+        private String summary;
+        private String date;
+        private Long targetId;
+        private String route;
+        private String sourceLabel;
+    }
+
+    @Getter
+    @Builder
+    public static class ActionItem {
+        private String label;
+        private String actionType;
+        private String payload;
+    }
+
+    @Getter
+    @Builder
+    public static class AskResponse {
+        private String answer;
+        private String intent;
+        private List<ResultItem> results;
+        private List<ActionItem> actions;
+        private List<String> missingFields;
+        private ScheduleResponse schedulePreview;
+        private boolean hasMore;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    public static class ReserveRequest {
+        private List<String> recipientEmpNos;
+        private List<String> recipientNames;
+        private String subject;
+        private String body;
+        private String channel;
+        private List<Long> fileIds;
+        private LocalDateTime scheduledAt;
+    }
+
+    @Getter
+    @Builder
     public static class ScheduleResponse {
         private Long id;
         private ScheduledActionChannel channel;

@@ -52,6 +52,11 @@ public class UserController {
                 .body(result.bytes());
     }
 
+    @DeleteMapping("/{id}/profile-image")
+    public ResponseEntity<ApiResponse<UserDto>> deleteProfileImage(@PathVariable Integer id) {
+        return ResponseEntity.ok(ApiResponse.ok(userService.deleteProfileImage(id)));
+    }
+
     @PostMapping(value = "/{id}/profile-image", consumes = "multipart/form-data")
     public ResponseEntity<ApiResponse<UserDto>> uploadProfileImage(
             @PathVariable Integer id,

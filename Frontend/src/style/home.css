@@ -132,6 +132,322 @@
 }
 
 /* ============================================================================
+   예약 발송 위저드
+   ============================================================================ */
+.home-reserve-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: var(--space-xl);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft-md);
+}
+.home-reserve-header { display: flex; align-items: flex-start; justify-content: space-between; }
+.home-reserve-title { font-size: 16px; font-weight: 700; color: var(--color-text); }
+.home-reserve-meta { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+
+.home-reserve-steps {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.home-reserve-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  position: relative;
+  min-width: 52px;
+}
+.home-reserve-step + .home-reserve-step::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  right: 50%;
+  left: -50%;
+  height: 2px;
+  background: var(--color-border-subtle);
+  z-index: 0;
+}
+.home-reserve-step.is-done + .home-reserve-step::before,
+.home-reserve-step.is-active + .home-reserve-step::before { background: var(--color-primary); }
+.home-reserve-step-dot {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  border: 2px solid var(--color-border-subtle);
+  position: relative; z-index: 1;
+  transition: all 0.2s;
+}
+.home-reserve-step.is-active .home-reserve-step-dot,
+.home-reserve-step.is-done .home-reserve-step-dot {
+  background: var(--color-primary); border-color: var(--color-primary); color: #fff;
+}
+.home-reserve-step-label { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
+.home-reserve-step.is-active .home-reserve-step-label { color: var(--color-primary); font-weight: 700; }
+
+.home-reserve-body { min-height: 160px; }
+.home-reserve-step-content { display: flex; flex-direction: column; gap: 10px; }
+.home-reserve-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--color-text);
+}
+.home-reserve-optional {
+  font-size: 11px; font-weight: 400; color: var(--color-text-muted);
+  background: var(--color-surface-muted); border-radius: 4px; padding: 1px 6px; margin-left: 4px;
+}
+.home-reserve-input {
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg);
+  font-size: 14px; color: var(--color-text); background: var(--color-surface-muted); box-sizing: border-box;
+}
+.home-reserve-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(255,140,116,0.12); }
+.home-reserve-textarea {
+  width: 100%; padding: 12px;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg);
+  font-size: 14px; color: var(--color-text); background: var(--color-surface-muted);
+  resize: vertical; font-family: inherit; box-sizing: border-box;
+}
+.home-reserve-textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(255,140,116,0.12); }
+.home-reserve-hint { font-size: 12px; color: var(--color-text-muted); margin: 0; }
+.home-reserve-error {
+  font-size: 13px; color: #dc2626; background: #fff5f5;
+  border-radius: 8px; padding: 8px 12px; border-left: 3px solid #dc2626; margin: 0;
+}
+.home-reserve-channel-group { display: flex; gap: 12px; }
+.home-reserve-channel-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 20px 12px; border: 2px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl); background: var(--color-surface-muted);
+  color: var(--color-text-muted); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.home-reserve-channel-btn.is-selected { border-color: var(--color-primary); color: var(--color-primary); background: rgba(255,140,116,0.06); }
+.home-reserve-channel-btn:hover:not(.is-selected) { border-color: var(--color-text-muted); color: var(--color-text); }
+.home-reserve-summary {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--color-surface-muted); border-radius: var(--radius-lg); padding: 12px 14px; font-size: 13px;
+}
+.home-reserve-summary p { margin: 0; color: var(--color-text); display: flex; gap: 8px; }
+.home-reserve-summary strong { color: var(--color-text-muted); min-width: 48px; font-weight: 600; }
+.home-reserve-nav {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 4px; border-top: 1px solid var(--color-border-subtle);
+}
+.home-reserve-done {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 16px; text-align: center;
+}
+.home-reserve-done-icon {
+  width: 52px; height: 52px; border-radius: 50%; background: #dcfce7;
+  color: #16a34a; display: flex; align-items: center; justify-content: center;
+}
+.home-reserve-done-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--color-text); }
+.home-reserve-done-preview { margin: 0; font-size: 13px; color: var(--color-text-muted); max-width: 400px; line-height: 1.5; }
+.home-reserve-done-actions { display: flex; gap: 10px; margin-top: 8px; }
+
+.reserve-recipient { display: flex; flex-direction: column; gap: 8px; position: relative; }
+.reserve-recipient-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.reserve-recipient-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px 3px 10px;
+  background: rgba(255,140,116,0.12); color: var(--color-primary);
+  border-radius: var(--radius-pill); font-size: 12px; font-weight: 600;
+}
+.reserve-recipient-tag button { display: flex; align-items: center; background: none; border: none; cursor: pointer; color: inherit; padding: 0; opacity: 0.7; }
+.reserve-recipient-tag button:hover { opacity: 1; }
+.reserve-recipient-search {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface-muted);
+}
+.reserve-recipient-icon { color: var(--color-text-muted); flex-shrink: 0; }
+.reserve-recipient-input { flex: 1; border: none; background: transparent; font-size: 14px; color: var(--color-text); outline: none; }
+.reserve-search-spinner { color: var(--color-primary); flex-shrink: 0; }
+.reserve-recipient-dropdown {
+  list-style: none; margin: 0; padding: 4px 0;
+  background: var(--color-surface); border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-soft-md); z-index: 20;
+}
+.reserve-recipient-dropdown li button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 14px;
+  background: none; border: none; cursor: pointer; text-align: left; font-size: 13px;
+}
+.reserve-recipient-dropdown li button:hover { background: var(--color-surface-muted); }
+.reserve-recipient-name { font-weight: 600; color: var(--color-text); }
+.reserve-recipient-emp { font-size: 11px; color: var(--color-text-muted); }
+
+/* ============================================================================
+   ANG 비서 결과 패널 (legacy)
+   ============================================================================ */
+.ang-secretary-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  animation: ang-secretary-in 0.2s ease;
+}
+
+@keyframes ang-secretary-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ang-secretary-answer {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.ang-secretary-error {
+  margin: 0;
+  font-size: 13px;
+  color: #dc2626;
+  padding: 8px 12px;
+  background: #fff5f5;
+  border-radius: 8px;
+  border-left: 3px solid #dc2626;
+}
+
+.ang-secretary-schedule-preview {
+  background: #eff6ff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1e3a5f;
+}
+
+.ang-secretary-preview-text {
+  margin: 0 0 4px;
+  font-weight: 500;
+}
+
+.ang-secretary-missing {
+  margin: 4px 0 0;
+  color: #b45309;
+  font-size: 12px;
+}
+
+.ang-secretary-results-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ang-secretary-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--color-surface-muted);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.ang-secretary-type-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.ang-secretary-result-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ang-secretary-result-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ang-secretary-result-summary {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ang-secretary-source-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.ang-secretary-has-more {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 4px 0;
+}
+
+.ang-secretary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ang-secretary-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ang-secretary-action-btn.is-primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.ang-secretary-action-btn.is-primary:hover {
+  background: var(--color-primary-dark, #e05b3a);
+}
+
+.ang-secretary-action-btn.is-secondary {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.ang-secretary-action-btn.is-secondary:hover {
+  background: var(--color-border-subtle);
+}
+
+.ang-spin {
+  animation: ang-spin 1s linear infinite;
+}
+
+@keyframes ang-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
    HOME MINI CALENDAR
    ============================================================================ */
 .home-mini-calendar {

@@ -32,4 +32,14 @@ public interface MailRecipientRepository extends JpaRepository<MailRecipient, Lo
     // 수신 즐겨찾기: 즐겨찾기이고 삭제 안 된 것
     List<MailRecipient> findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(User recipient);
     Page<MailRecipient> findByRecipientAndIsFavoriteTrueAndDeletedAtIsNull(User recipient, Pageable pageable);
+
+    // ANG 비서 검색: 수신 메일에서 제목 또는 발신자 이름 키워드 검색
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT mr FROM MailRecipient mr WHERE mr.recipient = :user AND mr.deletedAt IS NULL " +
+        "AND (:keyword IS NULL OR mr.mail.title LIKE %:keyword% OR mr.mail.sender.name LIKE %:keyword%) " +
+        "ORDER BY mr.mail.sentAt DESC")
+    List<MailRecipient> searchReceivedByKeyword(
+        @org.springframework.data.repository.query.Param("user") User user,
+        @org.springframework.data.repository.query.Param("keyword") String keyword,
+        Pageable pageable);
 }
