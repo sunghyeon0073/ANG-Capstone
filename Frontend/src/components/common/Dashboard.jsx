@@ -131,14 +131,14 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
       />
-      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature') ? 'full-width' : ''}`}>
-        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && (
+      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board') ? 'full-width' : ''}`}>
+        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && getMainCategory(currentPage) !== 'board' && (
           <Sidebar
             currentPage={currentPage}
             onPageChange={handlePageChange}
           />
         )}
-        <div className={`main-content${getMainCategory(currentPage) === 'esignature' ? ' main-content--fill' : ''}`}>
+        <div className={`main-content${(getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board') ? ' main-content--fill' : ''}`}>
           {renderPage()}
         </div>
       </div>

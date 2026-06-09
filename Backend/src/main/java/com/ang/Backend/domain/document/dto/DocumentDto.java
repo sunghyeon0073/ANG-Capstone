@@ -3,7 +3,6 @@ package com.ang.Backend.domain.document.dto;
 import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -46,7 +45,6 @@ public class DocumentDto {
     }
 
     @Getter @Builder
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class Response {
         private Long docId;
         private String title;
@@ -88,37 +86,12 @@ public class DocumentDto {
                     .scopeId(entity.getScope() != null ? entity.getScope().getScopeId() : null)
                     .createdAt(entity.getCreatedAt())
                     .deletedAt(entity.getDeletedAt())
-                    .isFavorite(false)
-                    .build();
-        }
-
-        public static Response fromEntitySummary(DocumentEntity entity) {
-            return Response.builder()
-                    .docId(entity.getDocId())
-                    .title(entity.getTitle())
-                    .status(entity.getStatus())
-                    .originalFileName(entity.getFile() != null ? entity.getFile().getOriginalFileName() : null)
-                    .fileId(entity.getFile() != null ? entity.getFile().getFileId() : null)
-                    .fileContentType(entity.getFile() != null ? entity.getFile().getContentType() : null)
-                    .fileSize(entity.getFile() != null ? entity.getFile().getFileSize() : null)
-                    .previewFileId(entity.getPreviewFile() != null ? entity.getPreviewFile().getFileId() : null)
-                    .previewFileContentType(entity.getPreviewFile() != null ? entity.getPreviewFile().getContentType() : null)
-                    .ownerName(entity.getOwner() != null ? entity.getOwner().getName() : "Unknown")
-                    .ownerId(entity.getOwner() != null ? entity.getOwner().getUserId() : null)
-                    .scopeName(entity.getScope() != null ? entity.getScope().getName() : "N/A")
-                    .scopeId(entity.getScope() != null ? entity.getScope().getScopeId() : null)
-                    .createdAt(entity.getCreatedAt())
-                    .deletedAt(entity.getDeletedAt())
-                    .isFavorite(false)
+                    .isFavorite(Boolean.TRUE.equals(entity.getIsFavorite()))
                     .build();
         }
 
         public void setCanDelete(boolean canDelete) {
             this.canDelete = canDelete;
-        }
-
-        public void setFavorite(boolean favorite) {
-            this.isFavorite = favorite;
         }
     }
 }

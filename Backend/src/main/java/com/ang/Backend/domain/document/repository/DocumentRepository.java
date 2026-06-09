@@ -11,6 +11,7 @@ import java.util.List;
 public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> {
 
     List<DocumentEntity> findByOwnerAndDeletedAtIsNull(User owner);
+    List<DocumentEntity> findByOwnerAndIsFavoriteTrueAndDeletedAtIsNull(User owner);
     List<DocumentEntity> findByOwnerAndDeletedAtIsNotNull(User owner);
     
     List<DocumentEntity> findAllByDeletedAtIsNull();

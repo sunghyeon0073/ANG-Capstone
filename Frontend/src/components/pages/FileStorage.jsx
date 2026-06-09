@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   FiFile, FiImage, FiFileText, FiGrid, FiList, FiSearch, 
   FiFilter, FiInfo, FiDownload, FiTrash2, FiStar, 
-  FiClock, FiUsers, FiFolder, FiChevronRight, FiChevronLeft, FiUploadCloud,
+  FiClock, FiUsers, FiFolder, FiChevronRight, FiUploadCloud,
   FiMoreVertical, FiShare2, FiRotateCcw
 } from 'react-icons/fi';
 import { 
@@ -299,8 +299,7 @@ export default function FileStorage() {
       fetchDocs();
       if (selectedDocId === docId) setSelectedDocId(null);
     } catch (error) {
-      const errorMsg = error.response?.data?.message || '삭제 중 오류가 발생했습니다.';
-      alert(`삭제 실패: ${errorMsg}`);
+      alert('삭제 실패');
     }
   };
 

@@ -15,6 +15,8 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/approvals/sign")
 @RequiredArgsConstructor
@@ -24,37 +26,36 @@ public class ApprovalSignController {
     private final UserRepository userRepository;
 
     @GetMapping
-    public ApiResponse<ApprovalSignDto.Response> getSign(
+    public ApiResponse<List<ApprovalSignDto.Response>> listSigns(
             @AuthenticationPrincipal UserDetails userDetails) {
-        User user = getUser(userDetails);
-        return ApiResponse.ok(signService.getSign(user));
+        return ApiResponse.ok(signService.listSigns(getUser(userDetails)));
     }
 
     @PostMapping(consumes = "multipart/form-data")
     public ApiResponse<ApprovalSignDto.Response> uploadSign(
             @RequestPart("file") MultipartFile file,
+            @RequestParam(value = "label", required = false) String label,
             @AuthenticationPrincipal UserDetails userDetails) {
-        User user = getUser(userDetails);
-        return ApiResponse.ok(signService.uploadSign(file, user));
+        return ApiResponse.ok(signService.uploadSign(file, label, getUser(userDetails)));
     }
 
-    @GetMapping("/image")
-    public ResponseEntity<byte[]> getSignImage(
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> deleteSign(
+            @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
-        User user = getUser(userDetails);
-        byte[] data = signService.downloadSign(user);
+        signService.deleteSign(id, getUser(userDetails));
+        return ApiResponse.ok("서명이 삭제되었습니다.");
+    }
+
+    @GetMapping("/{id}/image")
+    public ResponseEntity<byte[]> getSignImage(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        byte[] data = signService.downloadSign(id, getUser(userDetails));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "image/png")
-                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(data);
-    }
-
-    @DeleteMapping
-    public ApiResponse<Void> deleteSign(
-            @AuthenticationPrincipal UserDetails userDetails) {
-        User user = getUser(userDetails);
-        signService.deleteSign(user);
-        return ApiResponse.ok("서명이 삭제되었습니다.");
     }
 
     private User getUser(UserDetails userDetails) {
