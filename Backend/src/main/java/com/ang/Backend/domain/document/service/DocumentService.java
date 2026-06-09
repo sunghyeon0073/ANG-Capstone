@@ -549,35 +549,34 @@ public class DocumentService {
         }
 
         return """
-                You are editing an existing Korean DOCX document.
-                Do not rewrite the whole document.
-                Return JSON only. Do not include Markdown, code fences, explanations, or prose.
+                기존 한국어 DOCX 문서를 수정합니다. 문서 전체를 다시 쓰지 마세요.
+                다른 텍스트, 설명, 코드 블록 없이 아래 JSON 형식만 출력하세요.
 
-                Your job:
-                - Keep the original DOCX layout, tables, images, and styles.
-                - Produce only minimal block-scoped find/replace operations.
-                - The "blockId" value must be one of the listed block IDs.
-                - The "find" value must be exact text that exists inside that block only.
-                - Prefer short, unique "find" values instead of whole paragraphs.
-                - The "replace" value should contain only the replacement text for that exact "find" value.
-                - For insertion, choose a short nearby existing phrase as "find" and replace it with that phrase plus the inserted text.
-                - Do not add Markdown headings, bullets, or tables unless the user explicitly asks for those literal characters.
+                수정 규칙:
+                - 원본 DOCX의 레이아웃, 표, 이미지, 스타일을 유지합니다.
+                - 수정이 필요한 위치만 최소한의 find/replace 연산으로 표현합니다.
+                - "blockId"는 아래 블록 목록에 있는 ID 중 하나여야 합니다.
+                - "find"는 해당 블록 내에 실제로 존재하는 정확한 텍스트여야 합니다.
+                - "find"는 전체 문단보다 짧고 고유한 값을 우선 사용하세요.
+                - "replace"는 해당 find 값만 대체하는 텍스트여야 합니다.
+                - 텍스트 삽입 시 "find"를 근처 짧은 문구로 잡고 "replace"에 해당 문구 + 삽입 내용을 넣으세요.
+                - 사용자가 명시적으로 요청하지 않는 한 Markdown 헤딩, 목록, 표 기호를 넣지 마세요.
 
-                JSON schema:
+                JSON 스키마:
                 {
-                  "title": "short edited document title",
+                  "title": "수정된 문서 제목(짧게)",
                   "replacements": [
-                    {"blockId": "B001", "find": "exact text inside that block", "replace": "new text"}
+                    {"blockId": "B001", "find": "블록 내 정확한 텍스트", "replace": "새 텍스트"}
                   ]
                 }
 
-                [Original DOCX Title]
+                [원본 DOCX 제목]
                 %s
 
-                [Original DOCX Blocks]
+                [원본 DOCX 블록 목록]
                 %s
 
-                [User Edit Request]
+                [사용자 수정 요청]
                 %s
                 """.formatted(source.title(), content, prompt);
     }
@@ -614,11 +613,12 @@ public class DocumentService {
 
     private void collectDocxParagraphBlocks(List<XWPFParagraph> paragraphs, List<DocxTextBlock> blocks, int[] blockCounter) {
         for (XWPFParagraph paragraph : paragraphs) {
-            String blockId = nextDocxBlockId(blockCounter);
             String text = normalizeDocxBlockText(paragraph.getText());
-            if (!text.isBlank()) {
-                blocks.add(new DocxTextBlock(blockId, text));
+            if (text.isBlank()) {
+                continue; // 빈 단락은 건너뛰고 blockId도 소모하지 않음
             }
+            String blockId = nextDocxBlockId(blockCounter);
+            blocks.add(new DocxTextBlock(blockId, text));
         }
     }
 
@@ -1629,22 +1629,29 @@ public class DocumentService {
     private int applyDocxParagraphReplacements(List<XWPFParagraph> paragraphs, List<Map<String, String>> replacements, int[] blockCounter) {
         int applied = 0;
         for (XWPFParagraph paragraph : paragraphs) {
+            String paraText = normalizeDocxBlockText(paragraph.getText());
+            if (paraText.isBlank()) {
+                continue; // 추출 로직과 동일하게 빈 단락은 건너뜀
+            }
             String blockId = nextDocxBlockId(blockCounter);
-            List<Map<String, String>> blockReplacements = replacementsForBlock(replacements, blockId);
+            List<Map<String, String>> blockReplacements = replacementsForBlock(replacements, blockId, paraText);
             if (blockReplacements.isEmpty()) {
                 continue;
             }
-            applied += replaceDocxRunsInPlace(paragraph, blockReplacements);
-            applied += replaceDocxParagraphFallback(paragraph, blockReplacements);
+            int runApplied = replaceDocxRunsInPlace(paragraph, blockReplacements);
+            applied += runApplied > 0 ? runApplied : replaceDocxParagraphFallback(paragraph, blockReplacements);
         }
         return applied;
     }
 
-    private List<Map<String, String>> replacementsForBlock(List<Map<String, String>> replacements, String blockId) {
+    private List<Map<String, String>> replacementsForBlock(List<Map<String, String>> replacements, String blockId, String normalizedParaText) {
         return replacements.stream()
                 .filter(replacement -> {
-                    String replacementBlockId = replacement.getOrDefault("blockId", "").strip();
-                    return replacementBlockId.isBlank() || replacementBlockId.equals(blockId);
+                    String rid = replacement.getOrDefault("blockId", "").strip();
+                    String find = replacement.getOrDefault("find", "").strip();
+                    // blockId 일치, 또는 blockId 없음, 또는 find 텍스트가 이 단락에 포함된 경우 모두 허용
+                    if (rid.isBlank() || rid.equals(blockId)) return true;
+                    return !find.isBlank() && normalizedParaText.contains(find);
                 })
                 .toList();
     }
@@ -1659,43 +1666,82 @@ public class DocumentService {
     }
 
     private int replaceDocxRunsInPlace(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
+        List<XWPFRun> runs = paragraph.getRuns();
+        if (runs.isEmpty()) return 0;
+
+        // 모든 run의 텍스트를 이어붙여 전체 단락 텍스트와 각 run의 시작 위치를 구함
+        StringBuilder stitched = new StringBuilder();
+        int[] runStartPositions = new int[runs.size()];
+        for (int i = 0; i < runs.size(); i++) {
+            runStartPositions[i] = stitched.length();
+            String t = runs.get(i).getText(0);
+            if (t != null) stitched.append(t);
+        }
+
+        String fullText = stitched.toString();
         int applied = 0;
-        for (XWPFRun run : paragraph.getRuns()) {
-            String text = run.getText(0);
-            if (text == null || text.isEmpty()) {
-                continue;
+
+        for (Map<String, String> replacement : replacements) {
+            String find = replacement.getOrDefault("find", "").strip();
+            if (find.isBlank()) continue;
+            String replace = replacement.getOrDefault("replace", "");
+
+            int matchPos = fullText.indexOf(find);
+            if (matchPos < 0) continue;
+
+            int matchEnd = matchPos + find.length();
+            boolean firstRunUpdated = false;
+
+            for (int i = 0; i < runs.size(); i++) {
+                int runStart = runStartPositions[i];
+                String runText = runs.get(i).getText(0);
+                int runLen = runText != null ? runText.length() : 0;
+                int runEnd = runStart + runLen;
+
+                if (runEnd <= matchPos || runStart >= matchEnd) continue; // 범위 밖
+
+                if (!firstRunUpdated) {
+                    // 매칭 영역의 첫 번째 run: before + replace + after(잔여) 설정
+                    String before = fullText.substring(runStart, matchPos);
+                    String after = runEnd > matchEnd ? fullText.substring(matchEnd, runEnd) : "";
+                    setRunText(runs.get(i), before + replace + after);
+                    firstRunUpdated = true;
+                } else {
+                    // 매칭 영역에 걸친 이후 run: 매칭 범위 내 부분을 빈 문자열로
+                    if (runEnd <= matchEnd) {
+                        setRunText(runs.get(i), "");
+                    } else {
+                        setRunText(runs.get(i), fullText.substring(matchEnd, runEnd));
+                    }
+                }
             }
 
-            String replaced = text;
-            for (Map<String, String> replacement : replacements) {
-                String find = replacement.getOrDefault("find", "");
-                if (find.isBlank()) {
-                    continue;
+            if (firstRunUpdated) {
+                // 이후 replacement를 위해 stitched 텍스트 갱신
+                fullText = fullText.substring(0, matchPos) + replace + fullText.substring(matchEnd);
+                // runStartPositions 재계산 (delta 적용)
+                int delta = replace.length() - find.length();
+                for (int i = 0; i < runs.size(); i++) {
+                    if (runStartPositions[i] > matchPos) {
+                        runStartPositions[i] += delta;
+                    }
                 }
-                String replace = replacement.getOrDefault("replace", "");
-                if (replaced.contains(find)) {
-                    replaced = replaced.replace(find, replace);
-                    applied++;
-                }
-            }
-
-            if (!replaced.equals(text)) {
-                setRunText(run, replaced);
+                applied++;
             }
         }
         return applied;
     }
 
     private int replaceDocxParagraphFallback(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
-        String text = paragraph.getText();
-        if (text == null || text.isEmpty()) {
+        String normText = normalizeDocxBlockText(paragraph.getText());
+        if (normText.isEmpty()) {
             return 0;
         }
 
-        String replaced = text;
+        String replaced = normText;
         int applied = 0;
         for (Map<String, String> replacement : replacements) {
-            String find = replacement.getOrDefault("find", "");
+            String find = replacement.getOrDefault("find", "").strip();
             if (find.isBlank()) {
                 continue;
             }
@@ -1706,7 +1752,7 @@ public class DocumentService {
             }
         }
 
-        if (applied == 0 || replaced.equals(text)) {
+        if (applied == 0 || replaced.equals(normText)) {
             return 0;
         }
 
