@@ -46,6 +46,9 @@ public class ApprovalDoc {
     @Column(name = "attachment_url")
     private String attachmentUrl;
 
+    @Column(name = "attachment_name")
+    private String attachmentName;   // 원본 파일명 (예: 견적서.pdf)
+
     @Column(name = "security_level", nullable = false, length = 50)
     @Builder.Default
     private String securityLevel = "일반문서";
