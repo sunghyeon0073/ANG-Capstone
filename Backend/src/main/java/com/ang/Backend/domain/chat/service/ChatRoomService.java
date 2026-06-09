@@ -16,11 +16,16 @@ import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -36,26 +41,58 @@ public class ChatRoomService {
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
 
+    // REQUIRES_NEW 호출용 self 프록시 (동시 생성 레이스 시 외부 트랜잭션 오염 방지)
+    @Autowired @Lazy
+    private ChatRoomService self;
+
     // 1:1 채팅방 생성 (이미 있으면 기존 방 반환)
     @Transactional
     public Long createPrivateRoom(User me, ChatDto.CreatePrivateRoomRequest req) {
         User recipient = userRepository.findByEmpNo(req.getRecipientEmpNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        if (me.getUserId().equals(recipient.getUserId())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
 
-        return chatRoomRepository.findExistingPrivateRoom(me, recipient)
+        String key = privateKey(me, recipient);
+
+        return chatRoomRepository.findByParticipantKey(key)
                 .map(room -> {
                     rejoinIfLeft(room, me);
                     rejoinIfLeft(room, recipient);
                     return room.getId();
                 })
                 .orElseGet(() -> {
-                    ChatRoom room = chatRoomRepository.save(ChatRoom.builder()
-                            .type(ChatRoomType.PRIVATE)
-                            .build());
-                    addMember(room, me);
-                    addMember(room, recipient);
-                    return room.getId();
+                    try {
+                        return self.persistPrivateRoom(me, recipient, key);
+                    } catch (DataIntegrityViolationException e) {
+                        // 동시 요청 레이스: 다른 트랜잭션이 먼저 방을 생성/커밋함 → 기존 방 재사용
+                        ChatRoom room = chatRoomRepository.findByParticipantKey(key)
+                                .orElseThrow(() -> e);
+                        rejoinIfLeft(room, me);
+                        rejoinIfLeft(room, recipient);
+                        return room.getId();
+                    }
                 });
+    }
+
+    // 새 1:1 방을 별도 트랜잭션으로 생성 후 즉시 flush하여 유니크 위반을 이 경계에서 발생시킴
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Long persistPrivateRoom(User me, User recipient, String key) {
+        ChatRoom room = chatRoomRepository.save(ChatRoom.builder()
+                .type(ChatRoomType.PRIVATE)
+                .participantKey(key)
+                .build());
+        addMember(room, me);
+        addMember(room, recipient);
+        chatRoomRepository.flush();
+        return room.getId();
+    }
+
+    // PRIVATE 방 멤버 조합 키: '<minUserId>:<maxUserId>'
+    private String privateKey(User a, User b) {
+        int x = a.getUserId(), y = b.getUserId();
+        return Math.min(x, y) + ":" + Math.max(x, y);
     }
 
     // 그룹 채팅방 생성
@@ -104,6 +141,8 @@ public class ChatRoomService {
         boolean wasPrivate = room.getType() == ChatRoomType.PRIVATE;
         if (wasPrivate) {
             room.setType(ChatRoomType.GROUP);
+            // GROUP 전환 시 PRIVATE 조합 키 해제 (stale 유니크 키 제거 + 원래 두 사람의 새 1:1 방 생성 허용)
+            room.setParticipantKey(null);
         }
 
         for (String empNo : req.getEmpNos()) {
@@ -190,6 +229,22 @@ public class ChatRoomService {
                 .orElseThrow(() -> new CustomException(ErrorCode.NOT_CHAT_MEMBER));
         member.setLastReadAt(LocalDateTime.now());
         notificationService.deleteByTarget(user, roomId, NotificationType.CHAT);
+    }
+
+    // PRIVATE 방에서 나갔던 멤버(발신자 제외)를 재참여시키고, 재참여된 User 목록 반환.
+    // GROUP 방은 나가면 영구 퇴장이므로 대상 아님 → 빈 리스트.
+    @Transactional
+    public List<User> rejoinLeftMembersOnMessage(ChatRoom room, User sender) {
+        if (room.getType() != ChatRoomType.PRIVATE) return List.of();
+        List<User> rejoined = new ArrayList<>();
+        for (ChatMember m : chatMemberRepository.findByRoom(room)) {
+            if (m.getLeftAt() != null && !m.getUser().getUserId().equals(sender.getUserId())) {
+                m.setLeftAt(null);
+                m.setJoinedAt(LocalDateTime.now());
+                rejoined.add(m.getUser());
+            }
+        }
+        return rejoined;
     }
 
     private void rejoinIfLeft(ChatRoom room, User user) {

@@ -4,7 +4,8 @@ import {
   getMyDocuments,
   getDepartmentDocuments,
   deleteDocument,
-  downloadDocumentFile
+  downloadDocumentFile,
+  updateDocument
 } from '../../api/documentApi'
 // removed mock data imports - use backend APIs only
 import {
@@ -15,7 +16,7 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiChevronRight, FiEdit3, FiPlus } from 'react-icons/fi'
+import { FiCheck, FiChevronRight, FiEdit3, FiPlus, FiX } from 'react-icons/fi'
 import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
@@ -72,6 +73,9 @@ export default function DocumentWriter() {
   const [aiProgressStep, setAiProgressStep] = useState(0)
   const [docxEditInstructions, setDocxEditInstructions] = useState([])
   const [docxEditMode, setDocxEditMode] = useState(false)
+  const [titleEditMode, setTitleEditMode] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [isTitleSaving, setIsTitleSaving] = useState(false)
   const fileInputRef = useRef(null)
   const mountedRef = useRef(true)
   const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
@@ -254,6 +258,49 @@ export default function DocumentWriter() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [showFullView])
+
+  useEffect(() => {
+    setTitleEditMode(false)
+    setTitleDraft(selectedDoc?.title || '')
+  }, [selectedDoc?.docId, selectedDoc?.title])
+
+  const startTitleEdit = () => {
+    if (!selectedDoc) return
+    setTitleDraft(selectedDoc.title || '')
+    setTitleEditMode(true)
+  }
+
+  const cancelTitleEdit = () => {
+    setTitleDraft(selectedDoc?.title || '')
+    setTitleEditMode(false)
+  }
+
+  const saveTitleEdit = async () => {
+    if (!selectedDoc || isTitleSaving) return
+    const nextTitle = titleDraft.trim()
+    if (!nextTitle) {
+      alert('문서 제목을 입력해 주세요.')
+      return
+    }
+    if (nextTitle === selectedDoc.title) {
+      setTitleEditMode(false)
+      return
+    }
+
+    try {
+      setIsTitleSaving(true)
+      await updateDocument(selectedDoc.docId, { title: nextTitle })
+      const applyTitle = doc => doc.docId === selectedDoc.docId ? { ...doc, title: nextTitle } : doc
+      setSelectedDoc(prev => prev ? { ...prev, title: nextTitle } : prev)
+      setDocuments(prev => prev.map(applyTitle))
+      setAttachedDocs(prev => prev.map(applyTitle))
+      setTitleEditMode(false)
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || '문서 제목 수정에 실패했습니다.')
+    } finally {
+      setIsTitleSaving(false)
+    }
+  }
 
   const handleExport = async () => {
     if (!selectedDoc || !selectedDoc.fileId) return
@@ -635,7 +682,57 @@ export default function DocumentWriter() {
             <div className="selected-document">
               <div className="doc-viewer-header">
                 <div className="doc-viewer-header-left">
-                  <h2 className="selected-document-title">{selectedDoc.title}</h2>
+                  <div className={`document-title-editor ${titleEditMode ? 'is-editing' : ''}`}>
+                    {titleEditMode ? (
+                      <>
+                        <input
+                          className="document-title-input"
+                          value={titleDraft}
+                          onChange={(event) => setTitleDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') saveTitleEdit()
+                            if (event.key === 'Escape') cancelTitleEdit()
+                          }}
+                          autoFocus
+                          disabled={isTitleSaving}
+                          aria-label="문서 제목"
+                        />
+                        <button
+                          type="button"
+                          className="document-title-icon-button"
+                          onClick={saveTitleEdit}
+                          disabled={isTitleSaving}
+                          aria-label="제목 저장"
+                          title="제목 저장"
+                        >
+                          <FiCheck />
+                        </button>
+                        <button
+                          type="button"
+                          className="document-title-icon-button"
+                          onClick={cancelTitleEdit}
+                          disabled={isTitleSaving}
+                          aria-label="제목 수정 취소"
+                          title="제목 수정 취소"
+                        >
+                          <FiX />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <h2 className="selected-document-title">{selectedDoc.title}</h2>
+                        <button
+                          type="button"
+                          className="document-title-icon-button"
+                          onClick={startTitleEdit}
+                          aria-label="제목 수정"
+                          title="제목 수정"
+                        >
+                          <FiEdit3 />
+                        </button>
+                      </>
+                    )}
+                  </div>
                   <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
                     {getFileTypeLabel(selectedDoc)}
                   </span>

@@ -204,7 +204,7 @@
     border: none;
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-soft-lg);
-  z-index: 100;
+  z-index: 1000;
     overflow: hidden;
 }
 
