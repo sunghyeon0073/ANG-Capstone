@@ -41,6 +41,7 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState('home-dashboard')
   const [contactRequest, setContactRequest] = useState(null)
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
+  const [chatContactRequest, setChatContactRequest] = useState(null)
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -86,6 +87,14 @@ export default function Dashboard() {
     setCurrentPage('mail-compose')
   }
 
+  const openPrivateChat = (contact) => {
+    setChatContactRequest({
+      contact,
+      requestId: Date.now(),
+    })
+    setIsChatWindowOpen(true)
+  }
+
   const renderPage = () => {
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
@@ -99,6 +108,7 @@ export default function Dashboard() {
       contactRequest={contactRequest}
       onContactRequestHandled={() => setContactRequest(null)}
       onSendMail={openMailCompose}
+      onStartChat={openPrivateChat}
       onSubPageChange={handlePageChange}
     />
   }
@@ -132,6 +142,8 @@ export default function Dashboard() {
         <Chat
           user={user}
           windowMode
+          contactRequest={chatContactRequest}
+          onContactRequestHandled={() => setChatContactRequest(null)}
           onCloseChatWindow={() => setIsChatWindowOpen(false)}
         />
       )}
