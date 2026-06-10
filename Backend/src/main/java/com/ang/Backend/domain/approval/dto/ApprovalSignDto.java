@@ -25,4 +25,6 @@ public class ApprovalSignDto {
                     .build();
         }
     }
+
+    public record ImageData(byte[] data, String contentType) {}
 }

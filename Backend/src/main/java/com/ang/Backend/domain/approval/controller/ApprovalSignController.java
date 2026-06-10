@@ -51,11 +51,11 @@ public class ApprovalSignController {
     public ResponseEntity<byte[]> getSignImage(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
-        byte[] data = signService.downloadSign(id, getUser(userDetails));
+        ApprovalSignDto.ImageData image = signService.downloadSign(id, getUser(userDetails));
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, "image/png")
+                .header(HttpHeaders.CONTENT_TYPE, image.contentType())
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(data);
+                .body(image.data());
     }
 
     private User getUser(UserDetails userDetails) {
