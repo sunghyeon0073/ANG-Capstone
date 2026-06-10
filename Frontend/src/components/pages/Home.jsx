@@ -547,7 +547,7 @@ export default function Home({ currentSubPage, user, onSubPageChange }) {
           <HomeCalendar onNavigateToCalendar={() => onSubPageChange?.('calendar')} />
         </section>
         <section className="home-panel home-board-panel">
-          <Board currentSubPage="board-notice" />
+          <Board currentSubPage="board-notice" maxItems={5} onSubPageChange={onSubPageChange} />
         </section>
       </div>
     </div>

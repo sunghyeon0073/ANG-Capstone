@@ -36,6 +36,14 @@ export default function Login() {
 
   return (
     <div className="auth-container">
+      {/* 왼쪽 로고 영역 */}
+      <div className="auth-brand">
+        <div className="auth-brand-logo">ANG</div>
+        <p className="auth-brand-sub">스마트 업무 포털</p>
+      </div>
+
+      {/* 오른쪽 로그인 패널 */}
+      <div className="auth-panel">
       <div className="auth-box">
         <h1>로그인</h1>
         <form onSubmit={handleLogin}>
@@ -74,6 +82,7 @@ export default function Login() {
             회원가입
           </button>
         </div>
+      </div>
       </div>
     </div>
   )

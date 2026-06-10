@@ -90,31 +90,18 @@
   overflow: hidden;
 }
 
-.home-calendar-panel .calendar-page,
-.home-board-panel .board-page {
+.home-board-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-board-panel .board-dash-wrap {
+  flex: 1;
   background: transparent;
 }
 
-.home-board-panel .board-container {
-  height: auto;
-  min-height: 0;
-}
-
-.home-board-panel .board-list {
-  overflow: visible;
-}
-
-.home-board-panel .board-list-body {
-  height: 322px;
-  min-height: 322px;
-  max-height: 322px;
-  overflow: hidden;
-}
-
-
-.home-board-panel .board-item--placeholder {
+.home-board-panel .board-dash-placeholder {
   pointer-events: none;
-  border-bottom: 1px solid rgba(15, 35, 52, 0.04);
 }
 
 @media (max-width: 1280px) {

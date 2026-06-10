@@ -64,20 +64,21 @@ export const rejectApprovalDoc = (id, payload) => api.post(`/approvals/documents
 
 export const delegateApprovalDoc = (id, payload) => api.post(`/approvals/documents/${id}/delegate`, payload)
 
-export const getApprovalSign = () => api.get('/approvals/sign')
+export const listApprovalSigns = () => api.get('/approvals/sign')
 
-export const getApprovalSignImage = () =>
-  api.get('/approvals/sign/image', { responseType: 'arraybuffer' })
+export const getApprovalSignImage = (id) =>
+  api.get(`/approvals/sign/${id}/image`, { responseType: 'arraybuffer', params: { t: Date.now() } })
 
-export const uploadApprovalSign = (file) => {
+export const uploadApprovalSign = (file, label) => {
   const formData = new FormData()
   formData.append('file', file)
+  if (label) formData.append('label', label)
   return api.post('/approvals/sign', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
 
-export const deleteApprovalSign = () => api.delete('/approvals/sign')
+export const deleteApprovalSign = (id) => api.delete(`/approvals/sign/${id}`)
 
 export const getMyApprovalLines = () => api.get('/approvals/my-lines')
 
