@@ -49,6 +49,14 @@ const createDraftDocumentTab = () => ({
   doc: null,
 })
 
+const extractDocumentList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
 export default function DocumentWriter() {
   const [openDocumentTabs, setOpenDocumentTabs] = useState(() => [createDraftDocumentTab()])
   const [activeDocumentTabId, setActiveDocumentTabId] = useState(() => null)
@@ -388,7 +396,7 @@ export default function DocumentWriter() {
         const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
         response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam })
       }
-      setDocuments(response.data?.data || [])
+      setDocuments(extractDocumentList(response.data?.data))
       setError(null)
     } catch (err) {
       console.error('문서 목록 조회 실패:', err)

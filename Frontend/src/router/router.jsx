@@ -1,12 +1,18 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import Login from '../components/auth/Login'
 import SignUp from '../components/auth/SignUp'
 import Dashboard from '../components/common/Dashboard'
 
+const hasAuthSession = () => Boolean(localStorage.getItem('token') && localStorage.getItem('user'))
+
+function ProtectedRoute({ children }) {
+  return hasAuthSession() ? children : <Navigate to="/login" replace />
+}
+
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <Login />
+    element: hasAuthSession() ? <Navigate to="/dashboard" replace /> : <Login />
   },
   {
     path: '/login',
@@ -18,7 +24,11 @@ const router = createBrowserRouter([
   },
   {
     path: '/dashboard',
-    element: <Dashboard />
+    element: (
+      <ProtectedRoute>
+        <Dashboard />
+      </ProtectedRoute>
+    )
   }
 ])
 

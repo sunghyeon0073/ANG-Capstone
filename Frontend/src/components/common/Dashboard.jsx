@@ -45,18 +45,30 @@ export default function Dashboard() {
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
-    if (!savedUser) {
-      navigate('/login')
+    const token = localStorage.getItem('token')
+    if (!savedUser || !token) {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      navigate('/login', { replace: true })
       return
     }
-    setUser(JSON.parse(savedUser))
+    try {
+      setUser(JSON.parse(savedUser))
+    } catch {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      navigate('/login', { replace: true })
+    }
   }, [navigate])
 
   const handleLogout = () => {
     localStorage.removeItem('user')
     localStorage.removeItem('token')
+    localStorage.removeItem('refreshToken')
     alert('로그아웃되었습니다.')
-    navigate('/login')
+    navigate('/login', { replace: true })
   }
 
   const handlePageChange = (pageId) => {

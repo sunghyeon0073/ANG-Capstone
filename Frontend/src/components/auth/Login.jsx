@@ -8,7 +8,7 @@ export default function Login() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (localStorage.getItem('token')) {
+    if (localStorage.getItem('token') && localStorage.getItem('user')) {
       navigate('/dashboard', { replace: true })
     }
   }, [navigate])
