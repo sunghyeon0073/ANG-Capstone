@@ -670,7 +670,7 @@ function SignatureImg({ signId, alt, className }) {
     let blobUrl = null
     getApprovalSignImage(signId)
       .then((res) => {
-        const blob = new Blob([res.data], { type: 'image/png' })
+        const blob = new Blob([res.data], { type: res.headers['content-type'] || 'image/png' })
         blobUrl = URL.createObjectURL(blob)
         setSrc(blobUrl)
       })
