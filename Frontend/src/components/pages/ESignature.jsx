@@ -471,7 +471,7 @@ function HwpxViewer({ data }) {
   )
 }
 
-function ActionModal({ type, users, signatures, onConfirm, onClose }) {
+function ActionModal({ type, users, signatures, onConfirm, onClose, onGoToSignature }) {
   const [comment, setComment] = useState('')
   const [reason, setReason] = useState('')
   const [delegateSearch, setDelegateSearch] = useState('')
@@ -489,6 +489,7 @@ function ActionModal({ type, users, signatures, onConfirm, onClose }) {
   const handleSubmit = async () => {
     if (type === 'reject' && !reason.trim()) return
     if (type === 'delegate' && !delegateTarget) return
+    if (type === 'approve' && signatures && signatures.length > 0 && !selectedSignId) return
     setLoading(true)
     try {
       await onConfirm({
@@ -521,24 +522,36 @@ function ActionModal({ type, users, signatures, onConfirm, onClose }) {
         <div className="esig-modal-body">
           {type === 'approve' && (
             <>
-              {signatures && signatures.length > 0 && (
-                <div className="esig-field">
-                  <label>서명 선택 <span className="esig-modal-optional">(선택)</span></label>
+              <div className="esig-field">
+                <label>서명 선택 <span className="esig-modal-required">*</span></label>
+                {signatures && signatures.length > 0 ? (
                   <div className="esig-sign-picker">
                     {signatures.map((sig) => (
                       <button
                         key={sig.id}
                         type="button"
                         className={`esig-sign-picker-item ${selectedSignId === sig.id ? 'active' : ''}`}
-                        onClick={() => setSelectedSignId(selectedSignId === sig.id ? null : sig.id)}
+                        onClick={() => setSelectedSignId(sig.id)}
                       >
                         <SignatureImg signId={sig.id} alt={sig.label} />
                         <span>{sig.label || '서명'}</span>
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="esig-sign-empty-notice">
+                    <span>등록된 서명이 없습니다. </span>
+                    <button
+                      type="button"
+                      className="esig-sign-manage-link"
+                      onClick={() => { onClose(); onGoToSignature?.() }}
+                    >
+                      서명 관리 페이지로 이동
+                    </button>
+                    <span>해서 서명을 등록해 주세요.</span>
+                  </div>
+                )}
+              </div>
               <div className="esig-field">
                 <label>승인 의견 <span className="esig-modal-optional">(선택)</span></label>
                 <textarea
@@ -616,14 +629,34 @@ function ActionModal({ type, users, signatures, onConfirm, onClose }) {
 
         <div className="esig-modal-footer">
           <button className="esig-btn esig-btn-ghost" onClick={onClose} disabled={loading}>취소</button>
-          <button
-            className="esig-btn esig-btn-primary"
-            style={{ background: meta.color, borderColor: meta.color }}
-            onClick={handleSubmit}
-            disabled={loading || (type === 'reject' && !reason.trim()) || (type === 'delegate' && !delegateTarget)}
-          >
-            {loading ? '처리 중...' : meta.confirmLabel}
-          </button>
+          {(() => {
+            const isDisabled =
+              loading ||
+              (type === 'reject' && !reason.trim()) ||
+              (type === 'delegate' && !delegateTarget) ||
+              (type === 'approve' && signatures && signatures.length > 0 && !selectedSignId) ||
+              (type === 'approve' && (!signatures || signatures.length === 0))
+
+            const tooltip =
+              type === 'approve' && (!signatures || signatures.length === 0)
+                ? '서명을 먼저 등록해야 승인할 수 있습니다.'
+                : type === 'approve' && !selectedSignId
+                ? '서명을 선택해야 승인할 수 있습니다.'
+                : null
+
+            return (
+              <span className={tooltip ? 'esig-btn-tooltip-wrap' : undefined} data-tooltip={tooltip || undefined}>
+                <button
+                  className="esig-btn esig-btn-primary"
+                  style={{ background: meta.color, borderColor: meta.color }}
+                  onClick={handleSubmit}
+                  disabled={isDisabled}
+                >
+                  {loading ? '처리 중...' : meta.confirmLabel}
+                </button>
+              </span>
+            )
+          })()}
         </div>
       </div>
     </div>
@@ -1216,6 +1249,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
           signatures={signatures}
           onConfirm={handleActionConfirm}
           onClose={() => setActionModal(null)}
+          onGoToSignature={() => handleChangeFolder('esignature-signature')}
         />
       )}
       {/* Left Rail */}
