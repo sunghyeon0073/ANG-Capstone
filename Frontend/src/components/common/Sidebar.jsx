@@ -1,7 +1,8 @@
-import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield, FiImage } from 'react-icons/fi'
+import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield, FiImage, FiClock } from 'react-icons/fi'
 
 const iconMap = {
   'home-dashboard': FiHome,
+  'home-reserve-list': FiClock,
   'esignature-waiting': FiCheckSquare,
   'esignature-completed': FiCheckSquare,
   'esignature-rejected': FiCheckSquare,
@@ -27,7 +28,8 @@ const iconMap = {
 
 export const SIDEBAR_MENUS = {
   home: [
-    { id: 'home-dashboard', label: '대시보드' }
+    { id: 'home-dashboard', label: '대시보드' },
+    { id: 'home-reserve-list', label: '예약 목록' }
   ],
   esignature: [
     { id: 'esignature-waiting', label: '결재대기' },

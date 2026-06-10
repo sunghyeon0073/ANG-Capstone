@@ -21,3 +21,18 @@ export const cancelAiSchedule = async id => {
   const response = await api.post(`/ai-assistant/schedules/${id}/cancel`)
   return unwrap(response)
 }
+
+export const askAiAssistant = async (prompt, confirm = false) => {
+  const response = await api.post('/ai-assistant/ask', { prompt, confirm })
+  return unwrap(response)
+}
+
+export const reserveScheduledSend = async (data) => {
+  const response = await api.post('/ai-assistant/reserve', data)
+  return unwrap(response)
+}
+
+export const updateAiSchedule = async (id, data) => {
+  const response = await api.put(`/ai-assistant/schedules/${id}`, data)
+  return unwrap(response)
+}

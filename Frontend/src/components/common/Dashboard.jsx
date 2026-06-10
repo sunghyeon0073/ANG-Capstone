@@ -37,32 +37,38 @@ const getMainCategory = (page) => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [user] = useState(() => {
-    const savedUser = localStorage.getItem('user')
-    if (!savedUser) return null
-
-    try {
-      return JSON.parse(savedUser)
-    } catch {
-      return null
-    }
-  })
+  const [user, setUser] = useState(null)
   const [currentPage, setCurrentPage] = useState('home-dashboard')
   const [contactRequest, setContactRequest] = useState(null)
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
   const [chatContactRequest, setChatContactRequest] = useState(null)
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login')
+    const savedUser = localStorage.getItem('user')
+    const token = localStorage.getItem('token')
+    if (!savedUser || !token) {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      navigate('/login', { replace: true })
+      return
     }
-  }, [navigate, user])
+    try {
+      setUser(JSON.parse(savedUser))
+    } catch {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      navigate('/login', { replace: true })
+    }
+  }, [navigate])
 
   const handleLogout = () => {
     localStorage.removeItem('user')
     localStorage.removeItem('token')
+    localStorage.removeItem('refreshToken')
     alert('로그아웃되었습니다.')
-    navigate('/login')
+    navigate('/login', { replace: true })
   }
 
   const handlePageChange = (pageId) => {
@@ -137,14 +143,14 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
       />
-      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'esignature') ? 'full-width' : ''}`}>
-        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'esignature' && (
+      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board') ? 'full-width' : ''}`}>
+        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && getMainCategory(currentPage) !== 'board' && (
           <Sidebar
             currentPage={currentPage}
             onPageChange={handlePageChange}
           />
         )}
-        <div className={`main-content${getMainCategory(currentPage) === 'esignature' ? ' main-content--fill' : ''}`}>
+        <div className={`main-content${(getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board') ? ' main-content--fill' : ''}`}>
           {renderPage()}
         </div>
       </div>
@@ -158,7 +164,7 @@ export default function Dashboard() {
         />
       )}
       {getMainCategory(currentPage) !== 'esignature' && (
-        <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} />
+        <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} onSubPageChange={handlePageChange} />
       )}
     </div>
   )

@@ -1102,7 +1102,7 @@
 }
 
 .mail-recipient-chip button:hover {
-  background: rgba(255, 140, 116, 0.16);
+  background: rgba(35, 48, 103, 0.1);
 }
 
 .mail-compose-row .mail-recipient-input-shell .mail-recipient-input {

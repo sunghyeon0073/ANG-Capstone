@@ -25,6 +25,9 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.ByteArrayOutputStream;
 import java.util.Base64;
 import java.util.Comparator;
@@ -79,9 +82,20 @@ public class ApprovalPdfService {
                 }
             }
 
+            // formData JSON에서 content만 추출
+            String docContent = "";
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode node = mapper.readTree(doc.getFormData());
+                docContent = node.path("content").asText("");
+            } catch (Exception e) {
+                docContent = doc.getFormData() != null ? doc.getFormData() : "";
+            }
+
             // Thymeleaf 렌더링
             Context ctx = new Context();
             ctx.setVariable("doc", doc);
+            ctx.setVariable("docContent", docContent);
             ctx.setVariable("approvalLines", approvedLines);
             ctx.setVariable("commentLines", commentLines);
             ctx.setVariable("signatureDataUris", signatureDataUris);

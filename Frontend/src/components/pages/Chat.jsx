@@ -498,6 +498,9 @@ function ChatRoomWindow({
             const isMine = message.senderEmpNo === currentEmpNo
             const isSystem = message.messageType === 'SYSTEM'
             const isFile = message.messageType === 'FILE' || message.fileUrl
+            const senderPosition = members.find(
+              member => member.empNo === message.senderEmpNo
+            )?.position
 
             if (isSystem) {
               return (
@@ -509,7 +512,11 @@ function ChatRoomWindow({
 
             return (
               <div className={`chat-bubble-row ${isMine ? 'mine' : 'theirs'}`} key={message.messageId}>
-                {!isMine && <span className="chat-avatar">{message.senderName?.[0] || '?'}</span>}
+                {!isMine && (
+                  <span className={`chat-avatar ${getPositionAvatarClass(senderPosition)}`}>
+                    {message.senderName?.[0] || '?'}
+                  </span>
+                )}
                 <div className="chat-bubble-wrap">
                   {!isMine && <span className="chat-sender">{message.senderName || '알 수 없음'}</span>}
                   <div className={`chat-bubble ${isMine ? 'mine' : 'theirs'}`}>
@@ -632,6 +639,7 @@ export default function Chat({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [socketStatus, setSocketStatus] = useState('disconnected')
+  const [isWindowPositionLocked, setIsWindowPositionLocked] = useState(false)
   const [windowPosition, setWindowPosition] = useState(getInitialWindowPosition)
   const [windowSize, setWindowSize] = useState(() => ({
     width: Math.min(400, window.innerWidth - 32),
@@ -642,6 +650,7 @@ export default function Chat({
   const chatWindowRef = useRef(null)
   const subscribedRoomsRef = useRef(new Map())
   const openRoomIdsRef = useRef([])
+  const openInvitedRoomRef = useRef(null)
   const processedContactRequestRef = useRef(null)
 
   const loadRooms = useCallback(async () => {
@@ -790,8 +799,30 @@ export default function Chat({
           setSocketStatus('connected')
           setError('')
 
-          client.subscribe('/user/queue/invite', () => {
-            loadRooms()
+          client.subscribe('/user/queue/invite', messageFrame => {
+            try {
+              const payload = JSON.parse(messageFrame.body)
+              const invitedRoom = normalizeChatRooms([payload], currentEmpNo)[0]
+
+              if (!invitedRoom) {
+                loadRooms()
+                return
+              }
+
+              setRooms(prev => normalizeChatRooms([...prev, invitedRoom], currentEmpNo))
+              if (Array.isArray(invitedRoom.members)) {
+                setRoomMembersByRoom(prev => ({
+                  ...prev,
+                  [normalizeRoomId(invitedRoom.roomId)]: invitedRoom.members,
+                }))
+              }
+
+              openInvitedRoomRef.current?.(invitedRoom)
+              loadRooms()
+            } catch (err) {
+              console.error('채팅방 초대 이벤트 처리 실패', err)
+              loadRooms()
+            }
           }, { id: 'chat-invite' })
 
           openRoomIdsRef.current.forEach(subscribeRoom)
@@ -820,7 +851,7 @@ export default function Chat({
       setSocketStatus('error')
       setError(CHAT_SOCKET_ERROR_MESSAGE)
     }
-  }, [loadRooms, subscribeRoom])
+  }, [currentEmpNo, loadRooms, subscribeRoom])
 
   useEffect(() => {
     loadRooms()
@@ -861,6 +892,10 @@ export default function Chat({
       loadMessages(roomId).catch(() => {})
     }
   }, [loadMessages, loadRoomMembers, messagesByRoom, subscribeRoom])
+
+  useEffect(() => {
+    openInvitedRoomRef.current = openRoom
+  }, [openRoom])
 
   useEffect(() => {
     const requestId = contactRequest?.requestId
@@ -1241,7 +1276,12 @@ export default function Chat({
     .slice(-4)
 
   const startWindowDrag = useCallback(event => {
-    if (!windowMode || event.button !== 0 || event.target.closest('button')) return
+    if (
+      !windowMode
+      || isWindowPositionLocked
+      || event.button !== 0
+      || event.target.closest('button')
+    ) return
 
     event.preventDefault()
     const startX = event.clientX
@@ -1268,7 +1308,7 @@ export default function Chat({
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
-  }, [windowMode, windowPosition])
+  }, [isWindowPositionLocked, windowMode, windowPosition])
 
   const startWindowResize = useCallback((event, direction) => {
     if (!windowMode || event.button !== 0) return
@@ -1325,7 +1365,7 @@ export default function Chat({
   return (
     <div
       ref={chatWindowRef}
-      className={`${windowMode ? 'chat-window-mode' : 'page-content'} chat-page`}
+      className={`${windowMode ? 'chat-window-mode' : 'page-content'} ${isWindowPositionLocked ? 'position-locked' : ''} chat-page`}
       style={windowMode ? {
         left: windowPosition.x,
         top: windowPosition.y,
@@ -1341,6 +1381,14 @@ export default function Chat({
           </div>
           <strong>채팅</strong>
           <div className="chat-window-controls">
+            <button
+              type="button"
+              onClick={() => setIsWindowPositionLocked(prev => !prev)}
+              title={isWindowPositionLocked ? '채팅 창 고정 해제' : '채팅 창 위치 고정'}
+              className={isWindowPositionLocked ? 'active' : ''}
+            >
+              {isWindowPositionLocked ? <FiLock /> : <FiUnlock />}
+            </button>
             <button type="button" onClick={loadRooms} title="새로고침">
               <FiRefreshCw />
             </button>

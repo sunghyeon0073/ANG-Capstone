@@ -142,6 +142,15 @@
   background: #f0f4f7;
 }
 
+.chat-window-controls button.active {
+  background: #fff0ec;
+  color: #e85f4b;
+}
+
+.chat-window-mode.position-locked .chat-window-titlebar {
+  cursor: default;
+}
+
 .chat-window-mode .chat-shell {
   height: calc(100% - 54px);
   min-height: 0;
@@ -283,7 +292,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
 }
 
@@ -356,7 +365,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ff8c74, #ff6f61);
+  background: linear-gradient(135deg, #233067, #1a2550);
   color: #ffffff;
   font-weight: 900;
 }
@@ -433,7 +442,7 @@
 .chat-empty svg {
   width: 42px;
   height: 42px;
-  color: #ff8c74;
+  color: #233067;
 }
 
 .chat-room-skeleton {
@@ -665,7 +674,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
   font-style: normal;
   font-weight: 900;
@@ -860,10 +869,10 @@
   height: 38px;
   border: 0;
   border-radius: 14px;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(255, 140, 116, 0.24);
+  box-shadow: 0 8px 18px rgba(35, 48, 103, 0.24);
 }
 
 .chat-window-mode .chat-status {
@@ -1048,7 +1057,7 @@
 }
 
 .chat-member-item.selected {
-  box-shadow: inset 4px 0 0 #ff8c74;
+  box-shadow: inset 4px 0 0 var(--color-primary);
 }
 
 .chat-member-avatar {
@@ -1065,27 +1074,32 @@
 }
 
 .chat-member-avatar.position-director,
-.chat-room-avatar.position-director {
+.chat-room-avatar.position-director,
+.chat-avatar.position-director {
   background: linear-gradient(135deg, #ff8f76, #f05d4e);
 }
 
 .chat-member-avatar.position-center-head,
-.chat-room-avatar.position-center-head {
+.chat-room-avatar.position-center-head,
+.chat-avatar.position-center-head {
   background: linear-gradient(135deg, #a98bea, #7457c7);
 }
 
 .chat-member-avatar.position-team-head,
-.chat-room-avatar.position-team-head {
+.chat-room-avatar.position-team-head,
+.chat-avatar.position-team-head {
   background: linear-gradient(135deg, #69aef8, #397bd6);
 }
 
 .chat-member-avatar.position-staff,
-.chat-room-avatar.position-staff {
+.chat-room-avatar.position-staff,
+.chat-avatar.position-staff {
   background: linear-gradient(135deg, #46c5bd, #159a95);
 }
 
 .chat-member-avatar.position-default,
-.chat-room-avatar.position-default {
+.chat-room-avatar.position-default,
+.chat-avatar.position-default {
   background: linear-gradient(135deg, #aab6bf, #788894);
 }
 
@@ -1129,7 +1143,7 @@
   height: 44px;
   border: 0;
   border-radius: 14px;
-  background: #ff8c74;
+  background: #233067;
   color: #ffffff;
   font-weight: 900;
   cursor: pointer;

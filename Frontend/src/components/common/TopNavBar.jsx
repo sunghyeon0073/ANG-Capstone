@@ -1,12 +1,40 @@
-import { useState } from 'react'
-import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
+import { useEffect, useState } from 'react'
+import { FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
+import { getUserProfileImage } from '../../api/userApi'
 
 export default function TopNavBar({ user, onLogout, currentPage, onPageChange, onOpenChatWindow, isChatWindowOpen }) {
+  const [profileImageSrc, setProfileImageSrc] = useState('')
+
+  useEffect(() => {
+    if (!user?.id || !user.profileImageUrl) {
+      setProfileImageSrc('')
+      return undefined
+    }
+
+    let objectUrl = ''
+    let cancelled = false
+
+    getUserProfileImage(user.id)
+      .then((response) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(response.data)
+        setProfileImageSrc(objectUrl)
+      })
+      .catch((error) => {
+        console.error('상단 프로필 이미지 조회 실패', error)
+        setProfileImageSrc('')
+      })
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [user?.id, user?.profileImageUrl])
+
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [notificationCount] = useState(0)
 
   const menuItems = [
-    { id: 'home', label: '홈', icon: FiHome },
     { id: 'document', label: '문서작성', icon: FiFileText },
     { id: 'esignature', label: '전자결재', icon: FiCheckCircle },
     { id: 'calendar', label: '캘린더', icon: FiCalendar },
@@ -29,8 +57,8 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
   }
 
   const renderAvatar = (className) => {
-    if (user?.profileImageUrl) {
-      return <img src={user.profileImageUrl} alt={`${user?.name || '사용자'} 프로필`} className={`${className} profile-image`} />
+    if (profileImageSrc) {
+      return <img src={profileImageSrc} alt={`${user?.name || '사용자'} 프로필`} className={`${className} profile-image`} />
     }
 
     return <div className={className}>{getInitials(user?.name)}</div>
@@ -56,7 +84,7 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
   return (
     <div className="topnavbar">
       <div className="topnavbar-left">
-        <div className="topnavbar-logo">ANG</div>
+        <button className="topnavbar-logo" onClick={() => onPageChange('home')}>ANG</button>
       </div>
 
       <div className="topnavbar-center">
@@ -79,10 +107,6 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
       </div>
 
       <div className="topnavbar-right">
-        <div className="topnavbar-search">
-          <input type="text" placeholder="검색" />
-        </div>
-
         <button
           type="button"
           className={`topnavbar-chat-button ${(currentMainCategory === 'chat' || isChatWindowOpen) ? 'active' : ''}`}

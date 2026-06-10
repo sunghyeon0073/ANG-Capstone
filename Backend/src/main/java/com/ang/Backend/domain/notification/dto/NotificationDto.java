@@ -2,6 +2,7 @@ package com.ang.Backend.domain.notification.dto;
 
 import com.ang.Backend.common.enums.NotificationType;
 import com.ang.Backend.domain.notification.entity.Notification;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -17,6 +18,7 @@ public class NotificationDto {
         private String title;
         private String body;
         private Long targetId;
+        @JsonProperty("isRead")
         private boolean isRead;
         private LocalDateTime createdAt;
 
