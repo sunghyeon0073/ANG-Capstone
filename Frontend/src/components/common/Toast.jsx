@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
+import '../../style/toast.css'
 
 export default function Toast() {
   const [toasts, setToasts] = useState([])
+
+  const removeToast = (id) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id))
+  }
 
   useEffect(() => {
     const handler = (e) => {
@@ -10,12 +15,15 @@ export default function Toast() {
       const toast = {
         id,
         message: detail.message || '',
+        title: detail.title || '',
+        avatar: detail.avatar || '',
+        onClick: detail.onClick,
         type: detail.type || 'info',
         duration: detail.duration ?? 3000,
       }
-      setToasts((t) => [...t, toast])
+      setToasts((current) => [...current.slice(-2), toast])
       setTimeout(() => {
-        setToasts((t) => t.filter((x) => x.id !== id))
+        removeToast(id)
       }, toast.duration)
     }
 
@@ -26,21 +34,41 @@ export default function Toast() {
   if (!toasts.length) return null
 
   return (
-    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 2000 }}>
+    <div className="toast-stack">
       {toasts.map((t) => (
         <div
           key={t.id}
-          style={{
-            marginBottom: 10,
-            padding: '10px 14px',
-            borderRadius: 8,
-            background: t.type === 'error' ? '#ffd6d6' : '#fff6e6',
-            color: t.type === 'error' ? '#8b1e1e' : '#7a4b00',
-            boxShadow: '0 6px 18px rgba(15,35,52,0.12)',
-            minWidth: 220,
+          className={`app-toast ${t.type === 'chat' ? 'chat-toast' : `toast-${t.type}`}`}
+          onClick={() => {
+            t.onClick?.()
+            removeToast(t.id)
+          }}
+          role={t.onClick ? 'button' : 'status'}
+          tabIndex={t.onClick ? 0 : undefined}
+          onKeyDown={(event) => {
+            if (t.onClick && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault()
+              t.onClick()
+              removeToast(t.id)
+            }
           }}
         >
-          {t.message}
+          {t.type === 'chat' && <span className="chat-toast-avatar">{t.avatar || '채'}</span>}
+          <span className="toast-content">
+            {t.title && <strong>{t.title}</strong>}
+            <span>{t.message}</span>
+          </span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label="알림 닫기"
+            onClick={(event) => {
+              event.stopPropagation()
+              removeToast(t.id)
+            }}
+          >
+            ×
+          </button>
         </div>
       ))}
     </div>

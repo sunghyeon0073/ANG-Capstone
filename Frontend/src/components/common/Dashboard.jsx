@@ -154,15 +154,15 @@ export default function Dashboard() {
           {renderPage()}
         </div>
       </div>
-      {isChatWindowOpen && (
-        <Chat
-          user={user}
-          windowMode
-          contactRequest={chatContactRequest}
-          onContactRequestHandled={() => setChatContactRequest(null)}
-          onCloseChatWindow={() => setIsChatWindowOpen(false)}
-        />
-      )}
+      <Chat
+        user={user}
+        windowMode
+        isWindowOpen={isChatWindowOpen}
+        contactRequest={chatContactRequest}
+        onContactRequestHandled={() => setChatContactRequest(null)}
+        onOpenChatWindow={() => setIsChatWindowOpen(true)}
+        onCloseChatWindow={() => setIsChatWindowOpen(false)}
+      />
       {getMainCategory(currentPage) !== 'esignature' && (
         <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} onSubPageChange={handlePageChange} />
       )}

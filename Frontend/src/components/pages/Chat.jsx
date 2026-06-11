@@ -612,7 +612,9 @@ function ChatRoomWindow({
 export default function Chat({
   user,
   windowMode = false,
+  isWindowOpen = true,
   onCloseChatWindow,
+  onOpenChatWindow,
   contactRequest,
   onContactRequestHandled,
 }) {
@@ -650,6 +652,8 @@ export default function Chat({
   const chatWindowRef = useRef(null)
   const subscribedRoomsRef = useRef(new Map())
   const openRoomIdsRef = useRef([])
+  const roomsRef = useRef([])
+  const isWindowOpenRef = useRef(isWindowOpen)
   const openInvitedRoomRef = useRef(null)
   const processedContactRequestRef = useRef(null)
 
@@ -755,7 +759,44 @@ export default function Chat({
           if (current.some(item => isSameMessage(item, message))) return prev
           return { ...prev, [normalizedRoomId]: [...current, message] }
         })
-        markChatRoomAsRead(normalizedRoomId).catch(() => {})
+
+        const isRoomVisible = isWindowOpenRef.current
+          && openRoomIdsRef.current.includes(normalizedRoomId)
+        if (isRoomVisible) {
+          markChatRoomAsRead(normalizedRoomId).catch(() => {})
+        }
+
+        if (
+          message.senderEmpNo !== currentEmpNo
+          && message.messageType !== 'SYSTEM'
+          && !isRoomVisible
+        ) {
+          const room = roomsRef.current.find(
+            item => normalizeRoomId(item.roomId) === normalizedRoomId
+          ) || {
+            roomId: normalizedRoomId,
+            name: message.senderName || '채팅방',
+            members: [],
+          }
+          const notificationMessage = message.fileUrl
+            ? `${message.fileName || '파일'}을 보냈습니다.`
+            : message.content || '새 메시지가 도착했습니다.'
+
+          window.dispatchEvent(new CustomEvent('ang:toast', {
+            detail: {
+              type: 'chat',
+              title: room.name || message.senderName || '채팅',
+              message: notificationMessage,
+              avatar: message.senderName?.[0] || room.name?.[0] || '채',
+              duration: 5000,
+              onClick: () => {
+                onOpenChatWindow?.()
+                openInvitedRoomRef.current?.(room)
+              },
+            },
+          }))
+        }
+
         loadRooms()
       } catch (err) {
         console.error('채팅 메시지 수신 실패', err)
@@ -764,7 +805,7 @@ export default function Chat({
     }, { id: `room-${normalizedRoomId}` })
 
     subscribedRoomsRef.current.set(normalizedRoomId, subscription)
-  }, [loadRooms])
+  }, [currentEmpNo, loadRooms, onOpenChatWindow])
 
   const connectStompSocket = useCallback(async () => {
     if (stompClientRef.current?.active) return
@@ -825,7 +866,7 @@ export default function Chat({
             }
           }, { id: 'chat-invite' })
 
-          openRoomIdsRef.current.forEach(subscribeRoom)
+          roomsRef.current.forEach(room => subscribeRoom(room.roomId))
         },
         onStompError: frame => {
           console.error('채팅 STOMP 오류', frame.headers?.message, frame.body)
@@ -869,9 +910,17 @@ export default function Chat({
   }, [openRoomIds])
 
   useEffect(() => {
+    roomsRef.current = rooms
+  }, [rooms])
+
+  useEffect(() => {
+    isWindowOpenRef.current = isWindowOpen
+  }, [isWindowOpen])
+
+  useEffect(() => {
     if (socketStatus !== 'connected') return
-    openRoomIds.forEach(subscribeRoom)
-  }, [openRoomIds, socketStatus, subscribeRoom])
+    rooms.forEach(room => subscribeRoom(room.roomId))
+  }, [rooms, socketStatus, subscribeRoom])
 
   const filteredRooms = rooms
 
@@ -1372,6 +1421,7 @@ export default function Chat({
         right: 'auto',
         width: windowSize.width,
         height: windowSize.height,
+        display: isWindowOpen ? undefined : 'none',
       } : undefined}
     >
       {windowMode ? (
