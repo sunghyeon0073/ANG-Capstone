@@ -567,9 +567,10 @@ function ReserveList({ onSubPageChange }) {
     }
   }
 
-  const handleSaved = (updated) => {
+  const handleSaved = async (updated) => {
     setItems(prev => prev.map(it => it.id === updated.id ? updated : it))
     setEditItem(null)
+    await load()
   }
 
   if (loading) {

@@ -178,9 +178,7 @@ public class AiScheduledActionService {
         if (req.getChannel() != null) {
             action.setChannel("mail".equalsIgnoreCase(req.getChannel()) ? ScheduledActionChannel.MAIL : ScheduledActionChannel.CHAT);
         }
-        if (req.getScheduledAt() != null) {
-            action.setScheduledAt(req.getScheduledAt());
-        }
+        action.setScheduledAt(req.getScheduledAt() != null ? req.getScheduledAt() : LocalDateTime.now().plusSeconds(10));
         if (req.getFileIds() != null) {
             String fileIdsStr = req.getFileIds().isEmpty()
                     ? null
