@@ -145,8 +145,8 @@ export default function Dashboard() {
         isChatWindowOpen={isChatWindowOpen}
         chatUnreadCount={chatUnreadCount}
       />
-      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board' || getMainCategory(currentPage) === 'mail') ? 'full-width' : ''}`}>
-        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && getMainCategory(currentPage) !== 'board' && getMainCategory(currentPage) !== 'mail' && (
+      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board' || getMainCategory(currentPage) === 'mail' || getMainCategory(currentPage) === 'org') ? 'full-width' : ''}`}>
+        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && getMainCategory(currentPage) !== 'board' && getMainCategory(currentPage) !== 'mail' && getMainCategory(currentPage) !== 'org' && (
           <Sidebar
             currentPage={currentPage}
             onPageChange={handlePageChange}
