@@ -957,3 +957,11 @@
   min-height: 120px;
 }
 .board-dash-compose-textarea:focus { outline: none; background: #fff; box-shadow: var(--shadow-focus-glow); }
+
+/* board attachment extras */
+.board-file-item { cursor: pointer; }
+.board-file-download-icon { margin-left: auto; color: var(--color-text-muted); flex-shrink: 0; }
+.board-file-item:hover .board-file-download-icon { color: var(--color-primary); }
+
+.board-compose-saved-files { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.board-compose-file-label { font-size: 12px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 2px; }

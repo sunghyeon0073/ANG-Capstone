@@ -362,10 +362,38 @@
   max-width: 240px;
   min-width: 142px;
   gap: 8px;
-  padding: 0 14px;
+  padding: 0 10px 0 14px;
   border-radius: 10px 10px 0 0;
   font-size: 13px;
   font-weight: 700;
+  user-select: none;
+}
+
+.document-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.document-browser-tab:hover .document-tab-close,
+.document-browser-tab.active .document-tab-close {
+  opacity: 0.5;
+}
+
+.document-tab-close:hover {
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .document-browser-tab.active {

@@ -16,7 +16,7 @@ export const getMailKey = (mail) => `${mail.box}-${mail.id}`
 
 export const getStoredUserEmpNo = () => {
   try {
-    return JSON.parse(localStorage.getItem('user') || '{}')?.empNo
+    return JSON.parse(sessionStorage.getItem('user') || '{}')?.empNo
   } catch {
     return undefined
   }

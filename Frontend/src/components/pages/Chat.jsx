@@ -34,7 +34,7 @@ import '../../style/chat.css'
 
 const getStoredUser = () => {
   try {
-    return JSON.parse(localStorage.getItem('user') || '{}')
+    return JSON.parse(sessionStorage.getItem('user') || '{}')
   } catch {
     return {}
   }
@@ -769,7 +769,7 @@ export default function Chat({
   const connectStompSocket = useCallback(async () => {
     if (stompClientRef.current?.active) return
 
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem('token')
     if (!token) {
       setSocketStatus('disconnected')
       return

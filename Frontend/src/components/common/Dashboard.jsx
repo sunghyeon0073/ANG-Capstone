@@ -44,19 +44,31 @@ export default function Dashboard() {
   const [chatContactRequest, setChatContactRequest] = useState(null)
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user')
-    if (!savedUser) {
-      navigate('/login')
+    const savedUser = sessionStorage.getItem('user')
+    const token = sessionStorage.getItem('token')
+    if (!savedUser || !token) {
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+      sessionStorage.removeItem('refreshToken')
+      navigate('/login', { replace: true })
       return
     }
-    setUser(JSON.parse(savedUser))
+    try {
+      setUser(JSON.parse(savedUser))
+    } catch {
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+      sessionStorage.removeItem('refreshToken')
+      navigate('/login', { replace: true })
+    }
   }, [navigate])
 
   const handleLogout = () => {
-    localStorage.removeItem('user')
-    localStorage.removeItem('token')
+    sessionStorage.removeItem('user')
+    sessionStorage.removeItem('token')
+    sessionStorage.removeItem('refreshToken')
     alert('로그아웃되었습니다.')
-    navigate('/login')
+    navigate('/login', { replace: true })
   }
 
   const handlePageChange = (pageId) => {
@@ -131,14 +143,14 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
       />
-      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board') ? 'full-width' : ''}`}>
-        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && getMainCategory(currentPage) !== 'board' && (
+      <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board' || getMainCategory(currentPage) === 'mail') ? 'full-width' : ''}`}>
+        {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && getMainCategory(currentPage) !== 'board' && getMainCategory(currentPage) !== 'mail' && (
           <Sidebar
             currentPage={currentPage}
             onPageChange={handlePageChange}
           />
         )}
-        <div className={`main-content${(getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board') ? ' main-content--fill' : ''}`}>
+        <div className={`main-content${(getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board' || getMainCategory(currentPage) === 'mail') ? ' main-content--fill' : ''}`}>
           {renderPage()}
         </div>
       </div>

@@ -51,7 +51,7 @@ public class ApprovalSignService {
             throw new CustomException(ErrorCode.INVALID_FILE_TYPE);
         }
 
-        String key = "e-approval/signs/" + user.getUserId() + "/" + UUID.randomUUID() + ".png";
+        String key = "e-approval/signs/" + user.getUserId() + "/" + UUID.randomUUID() + "." + resolveExtension(contentType);
         try {
             s3Client.putObject(
                     PutObjectRequest.builder()
@@ -78,23 +78,42 @@ public class ApprovalSignService {
         userSignatureRepository.delete(sig);
     }
 
-    public byte[] downloadSign(Long signId, User user) {
+    public ApprovalSignDto.ImageData downloadSign(Long signId, User user) {
         UserSignature sig = userSignatureRepository.findByIdAndUser(signId, user)
                 .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_SIGN_NOT_FOUND));
         String url = sig.getImageUrl();
         String key = url.substring(url.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
-        return s3Client.getObject(
+        byte[] data = s3Client.getObject(
                 GetObjectRequest.builder().bucket(bucket).key(key).build(),
                 ResponseTransformer.toBytes()
         ).asByteArray();
+        return new ApprovalSignDto.ImageData(data, resolveContentType(key));
     }
 
     private void deleteFromS3(String url) {
+        String key = url.substring(url.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
         try {
-            String key = url.substring(url.indexOf(".amazonaws.com/") + ".amazonaws.com/".length());
             s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
         } catch (Exception e) {
-            log.warn("S3 서명 파일 삭제 실패: url={}, error={}", url, e.getMessage());
+            log.error("S3 서명 파일 삭제 실패: url={}, error={}", url, e.getMessage());
+            throw new CustomException(ErrorCode.FILE_DELETE_FAILED);
         }
+    }
+
+    private String resolveExtension(String contentType) {
+        return switch (contentType) {
+            case "image/jpeg", "image/jpg" -> "jpg";
+            case "image/png" -> "png";
+            default -> contentType.substring("image/".length());
+        };
+    }
+
+    private String resolveContentType(String key) {
+        String ext = key.substring(key.lastIndexOf('.') + 1).toLowerCase();
+        return switch (ext) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            default -> "image/" + ext;
+        };
     }
 }

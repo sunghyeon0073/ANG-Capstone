@@ -70,6 +70,7 @@ public class AiAssistantDto {
         private String subject;
         private String body;
         private String channel;
+        private List<Long> fileIds;
         private LocalDateTime scheduledAt;
     }
 

@@ -13,6 +13,7 @@ const iconMap = {
   'file-template': FiFileText,
   'file-important': FiStar,
   'file-trash': FiTrash2,
+  'board': FiList,
   'board-notice': FiBell,
   'board-general': FiEdit3,
   'mail-compose': FiMessageSquare,
@@ -45,6 +46,7 @@ export const SIDEBAR_MENUS = {
     { id: 'file-trash', label: '휴지통' }
   ],
   board: [
+    { id: 'board', label: '전체' },
     { id: 'board-notice', label: '공지사항' },
     { id: 'board-general', label: '자유게시판' }
   ],

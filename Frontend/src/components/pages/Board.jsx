@@ -1,12 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { FiEdit, FiFileText, FiFlag, FiPaperclip, FiSearch, FiStar, FiTrash2, FiX } from 'react-icons/fi'
-
-const fileToDataUrl = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader()
-  reader.onload = () => resolve(String(reader.result || ''))
-  reader.onerror = () => reject(new Error('파일을 읽지 못했습니다.'))
-  reader.readAsDataURL(file)
-})
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FiDownload, FiEdit, FiFileText, FiFlag, FiPaperclip, FiStar, FiTrash2, FiX } from 'react-icons/fi'
+import {
+  getBoardPosts,
+  createBoardPost,
+  updateBoardPost,
+  deleteBoardPost,
+  incrementBoardViews,
+  uploadBoardAttachment,
+  downloadBoardAttachment,
+  deleteBoardAttachment,
+} from '../../api/boardApi'
 
 const formatFileSize = (size) => {
   if (!size && size !== 0) return ''
@@ -32,15 +35,22 @@ const CATEGORIES = [
   { id: 'board-my',      label: '내가 쓴 글', icon: FiStar },
 ]
 
+const categoryToType = (catId) => {
+  if (catId === 'board-notice') return 'notice'
+  if (catId === 'board-general') return 'general'
+  if (catId === 'board-my') return 'my'
+  return null
+}
+
 export default function Board({ me, currentSubPage = 'board', onSubPageChange, maxItems, onNavigateToBoard }) {
-  const [posts, setPosts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('ang_posts') || '[]') } catch { return [] }
-  })
+  const [posts, setPosts] = useState([])
+  const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
   const [mode, setMode] = useState('list')
   const [selectedPost, setSelectedPost] = useState(null)
   const [formData, setFormData] = useState({ title: '', content: '', type: 'general', pinned: false })
-  const [attachments, setAttachments] = useState([])
+  const [attachments, setAttachments] = useState([])      // 새로 선택한 File 객체 목록
+  const [savedAttachments, setSavedAttachments] = useState([]) // 서버에 저장된 첨부 목록
   const [toast, setToast] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [internalCategory, setInternalCategory] = useState(currentSubPage)
@@ -49,8 +59,26 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
 
   const isDashboard = maxItems != null
 
-  useEffect(() => { localStorage.setItem('ang_posts', JSON.stringify(posts)) }, [posts])
-  useEffect(() => { setInternalCategory(currentSubPage) }, [currentSubPage])
+  const loadPosts = useCallback(async (catId) => {
+    setLoading(true)
+    try {
+      const type = categoryToType(catId ?? internalCategory)
+      const res = await getBoardPosts(type)
+      setPosts(res.data?.data ?? [])
+    } catch {
+      setPosts([])
+    } finally {
+      setLoading(false)
+    }
+  }, [internalCategory])
+
+  useEffect(() => {
+    setInternalCategory(currentSubPage)
+    loadPosts(currentSubPage)
+    setMode('list')
+    setSelectedPost(null)
+  }, [currentSubPage]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => { setCurrentPage(1) }, [internalCategory, q])
 
   const activeCategory = internalCategory
@@ -60,22 +88,13 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
     setTimeout(() => setToast(null), 2000)
   }
 
-  const getCategoryLabel = () => CATEGORIES.find(c => c.id === activeCategory)?.label || '전체'
-
   const displayList = useMemo(() => {
-    let filtered = [...posts]
-    if (activeCategory === 'board-notice') filtered = filtered.filter(p => p.type === 'notice')
-    else if (activeCategory === 'board-general') filtered = filtered.filter(p => p.type === 'general')
-    else if (activeCategory === 'board-my') {
-      const myId = me?.id || 'my_user_id'
-      filtered = filtered.filter(p => p.authorId === myId)
-    }
     const kw = q.trim().toLowerCase()
-    if (kw) filtered = filtered.filter(p =>
+    if (!kw) return posts
+    return posts.filter(p =>
       p.title?.toLowerCase().includes(kw) || p.content?.toLowerCase().includes(kw)
     )
-    return filtered.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.id - a.id)
-  }, [posts, activeCategory, q, me])
+  }, [posts, q])
 
   const totalPages = Math.max(1, Math.ceil(displayList.length / itemsPerPage))
   const pagedList = displayList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
@@ -87,61 +106,113 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
   const resetForm = () => {
     setFormData({ title: '', content: '', type: 'general', pinned: false })
     setAttachments([])
+    setSavedAttachments([])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleOpenCompose = () => { setSelectedPost(null); resetForm(); setMode('compose') }
 
-  const handleOpenPost = (post) => {
-    setPosts(prev => {
-      const updated = prev.map(item => item.id === post.id ? { ...item, views: (item.views || 0) + 1 } : item)
-      setSelectedPost(updated.find(item => item.id === post.id) || post)
-      return updated
-    })
+  const handleOpenPost = async (post) => {
+    try {
+      const res = await incrementBoardViews(post.id)
+      const updated = res.data?.data ?? post
+      setSelectedPost(updated)
+      setPosts(prev => prev.map(p => p.id === updated.id ? updated : p))
+    } catch {
+      setSelectedPost(post)
+    }
     setMode('detail')
   }
 
   const handleOpenEdit = () => {
     if (!selectedPost) return
     setFormData({ title: selectedPost.title, content: selectedPost.content, type: selectedPost.type, pinned: selectedPost.pinned || false })
-    setAttachments(selectedPost.attachments || [])
+    setAttachments([])
+    setSavedAttachments(selectedPost.attachments || [])
     setMode('compose')
   }
 
-  const handleAttachmentChange = async (e) => {
+  const handleAttachmentSelect = (e) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
-    const prepared = await Promise.all(files.map(async file => ({
-      id: `${Date.now()}-${Math.random()}`,
-      name: file.name, type: file.type, size: file.size,
-      isImage: file.type.startsWith('image/'),
-      url: await fileToDataUrl(file),
-    })))
-    setAttachments(prev => [...prev, ...prepared])
+    setAttachments(prev => [...prev, ...files])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleSave = () => {
-    if (!formData.title.trim() || !formData.content.trim()) { alert('제목과 내용을 모두 입력하세요.'); return }
-    const myId = me?.id || ''; const myName = me?.name || '익명'
-    if (selectedPost) {
-      setPosts(prev => prev.map(p => p.id === selectedPost.id ? { ...p, ...formData, attachments } : p))
-      setSelectedPost(prev => prev ? { ...prev, ...formData, attachments } : prev)
-      showMsg('수정되었습니다.')
-      setMode('detail')
-    } else {
-      setPosts(prev => [{ id: Date.now(), ...formData, attachments, author: myName, authorId: myId, date: new Date().toISOString(), views: 0 }, ...prev])
-      showMsg('등록되었습니다.')
-      setMode('list')
+  const handleDownload = async (att) => {
+    try {
+      const res = await downloadBoardAttachment(att.attachmentId)
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url; a.download = att.fileName; a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('파일 다운로드에 실패했습니다.')
     }
-    setSelectedPost(s => selectedPost ? s : null)
-    resetForm()
   }
 
-  const handleDelete = (postId) => {
+  const handleDeleteSavedAttachment = async (attachmentId) => {
+    try {
+      await deleteBoardAttachment(attachmentId)
+      setSavedAttachments(prev => prev.filter(a => a.attachmentId !== attachmentId))
+      setSelectedPost(prev => prev ? { ...prev, attachments: prev.attachments.filter(a => a.attachmentId !== attachmentId) } : prev)
+    } catch {
+      alert('첨부파일 삭제에 실패했습니다.')
+    }
+  }
+
+  const handleSave = async () => {
+    if (!formData.title.trim() || !formData.content.trim()) { alert('제목과 내용을 모두 입력하세요.'); return }
+    try {
+      let postId
+      if (selectedPost) {
+        const res = await updateBoardPost(selectedPost.id, formData)
+        postId = selectedPost.id
+        // 새 파일 업로드
+        for (const file of attachments) {
+          await uploadBoardAttachment(postId, file)
+        }
+        // 최신 데이터 다시 조회
+        const refreshed = await getBoardPosts(categoryToType(internalCategory))
+        const refreshedList = refreshed.data?.data ?? []
+        setPosts(refreshedList)
+        const updated = refreshedList.find(p => p.id === postId) || res.data?.data
+        setSelectedPost(updated)
+        showMsg('수정되었습니다.')
+        setMode('detail')
+      } else {
+        const res = await createBoardPost(formData)
+        const created = res.data?.data
+        postId = created?.id
+        // 새 파일 업로드
+        if (postId) {
+          for (const file of attachments) {
+            await uploadBoardAttachment(postId, file)
+          }
+          // 첨부 포함 최신 데이터 다시 조회
+          const refreshed = await getBoardPosts(categoryToType(internalCategory))
+          setPosts(refreshed.data?.data ?? [])
+        } else if (created) {
+          setPosts(prev => [created, ...prev])
+        }
+        showMsg('등록되었습니다.')
+        setMode('list')
+      }
+      resetForm()
+    } catch {
+      alert('저장에 실패했습니다.')
+    }
+  }
+
+  const handleDelete = async (postId) => {
     if (!window.confirm('삭제하시겠습니까?')) return
-    setPosts(prev => prev.filter(p => p.id !== postId))
-    setSelectedPost(null); setMode('list'); resetForm(); showMsg('삭제되었습니다.')
+    try {
+      await deleteBoardPost(postId)
+      setPosts(prev => prev.filter(p => p.id !== postId))
+      setSelectedPost(null); setMode('list'); resetForm(); showMsg('삭제되었습니다.')
+    } catch {
+      alert('삭제에 실패했습니다.')
+    }
   }
 
   const handleClose = () => { setMode('list'); setSelectedPost(null); resetForm() }
@@ -151,13 +222,15 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
     if (!isDashboard) onSubPageChange?.(catId)
     setMode('list')
     setSelectedPost(null)
+    loadPosts(catId)
   }
+
+  const isMyPost = (post) => post.authorId === me?.id
 
   // ── Dashboard mode (compact) ──────────────────────────────────────────────
   if (isDashboard) {
     return (
       <div className="board-dash-wrap">
-        {/* 헤더: 카테고리 탭 + 더보기 */}
         <div className="board-dash-header">
           <div className="board-dash-tabs">
             {CATEGORIES.map(cat => (
@@ -175,7 +248,6 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
           </button>
         </div>
 
-        {/* 컬럼 헤더 */}
         <div className="board-dash-col-header">
           <span className="board-dash-col board-dash-col--no">구분</span>
           <span className="board-dash-col board-dash-col--title">제목</span>
@@ -184,7 +256,6 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
           <span className="board-dash-col board-dash-col--views">조회</span>
         </div>
 
-        {/* 목록 */}
         <div className="board-dash-list">
           {Array.from({ length: maxItems }).map((_, i) => {
             const post = pagedList[i]
@@ -198,7 +269,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
                   <span className="board-dash-title-text">{post.title.length > 15 ? post.title.slice(0, 15) + '…' : post.title}</span>
                 </span>
                 <span className="board-dash-col board-dash-col--author">{post.author || '-'}</span>
-                <span className="board-dash-col board-dash-col--date">{formatDate(post.date)}</span>
+                <span className="board-dash-col board-dash-col--date">{formatDate(post.createdAt)}</span>
                 <span className="board-dash-col board-dash-col--views">{post.views || 0}</span>
               </div>
             )
@@ -224,7 +295,6 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
 
       <div className="board-main">
 
-        {/* ── 카테고리 탭 (list 모드에서만) ── */}
         {mode === 'list' && (
           <div className="board-tabs">
             {CATEGORIES.map(cat => (
@@ -240,7 +310,6 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
           </div>
         )}
 
-        {/* ── 툴바 (list 모드에서만) ── */}
         {mode === 'list' && (
           <div className="board-toolbar">
             <span className="board-toolbar-total">{displayList.length}건</span>
@@ -267,7 +336,6 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
           </div>
         )}
 
-        {/* ── 목록 ── */}
         {mode === 'list' && (
           <div className="board-table-wrap">
             <table className="board-table">
@@ -288,7 +356,9 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
                 </tr>
               </thead>
               <tbody>
-                {displayList.length === 0 ? (
+                {loading ? (
+                  <tr><td colSpan={5} className="board-empty-cell">불러오는 중...</td></tr>
+                ) : displayList.length === 0 ? (
                   <tr><td colSpan={5} className="board-empty-cell">게시글이 없습니다.</td></tr>
                 ) : pagedList.map((post, idx) => (
                   <tr
@@ -312,7 +382,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
                       )}
                     </td>
                     <td className="board-td-author">{post.author || '-'}</td>
-                    <td className="board-td-date">{formatDate(post.date)}</td>
+                    <td className="board-td-date">{formatDate(post.createdAt)}</td>
                     <td className="board-td-views">{post.views || 0}</td>
                   </tr>
                 ))}
@@ -321,15 +391,16 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
           </div>
         )}
 
-        {/* ── 상세 ── */}
         {mode === 'detail' && selectedPost && (
           <>
             <div className="board-subheader">
               <button className="board-back-btn" onClick={handleClose}>← 목록으로</button>
-              <div className="board-subheader-actions">
-                <button className="board-action-btn" onClick={handleOpenEdit}><FiEdit size={13} /> 수정</button>
-                <button className="board-action-btn board-action-btn--danger" onClick={() => handleDelete(selectedPost.id)}><FiTrash2 size={13} /> 삭제</button>
-              </div>
+              {isMyPost(selectedPost) && (
+                <div className="board-subheader-actions">
+                  <button className="board-action-btn" onClick={handleOpenEdit}><FiEdit size={13} /> 수정</button>
+                  <button className="board-action-btn board-action-btn--danger" onClick={() => handleDelete(selectedPost.id)}><FiTrash2 size={13} /> 삭제</button>
+                </div>
+              )}
             </div>
 
             <div className="board-detail">
@@ -342,7 +413,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
                 <div className="board-detail-meta">
                   <span className="board-meta-author">{selectedPost.author || '익명'}</span>
                   <span className="board-meta-sep">·</span>
-                  <span>{formatDate(selectedPost.date)}</span>
+                  <span>{formatDate(selectedPost.createdAt)}</span>
                   <span className="board-meta-sep">·</span>
                   <span>조회 {selectedPost.views || 0}</span>
                 </div>
@@ -355,16 +426,14 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
                   <p className="board-detail-files-label"><FiPaperclip size={13} /> 첨부파일 {selectedPost.attachments.length}개</p>
                   <div className="board-file-list">
                     {selectedPost.attachments.map(att => (
-                      <a key={att.id} className="board-file-item" href={att.url} download={att.name} target="_blank" rel="noreferrer">
-                        {att.isImage
-                          ? <img src={att.url} alt={att.name} className="board-file-thumb" />
-                          : <div className="board-file-icon"><FiFileText size={20} /></div>
-                        }
+                      <div key={att.attachmentId} className="board-file-item" onClick={() => handleDownload(att)}>
+                        <div className="board-file-icon"><FiFileText size={20} /></div>
                         <div className="board-file-info">
-                          <span className="board-file-name">{att.name}</span>
-                          <span className="board-file-size">{formatFileSize(att.size)}</span>
+                          <span className="board-file-name">{att.fileName}</span>
+                          <span className="board-file-size">{formatFileSize(att.fileSize)}</span>
                         </div>
-                      </a>
+                        <FiDownload size={14} className="board-file-download-icon" />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -373,7 +442,6 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
           </>
         )}
 
-        {/* ── 작성/수정 ── */}
         {mode === 'compose' && (
           <>
             <div className="board-subheader">
@@ -412,19 +480,41 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
                 onChange={e => setFormData({ ...formData, content: e.target.value })}
               />
 
+              {/* 기존 첨부파일 (수정 시) */}
+              {savedAttachments.length > 0 && (
+                <div className="board-compose-saved-files">
+                  <span className="board-compose-file-label">첨부된 파일</span>
+                  {savedAttachments.map(att => (
+                    <div key={att.attachmentId} className="board-compose-file-item">
+                      <FiFileText size={13} />
+                      <span>{att.fileName}</span>
+                      <span className="board-compose-file-size">{formatFileSize(att.fileSize)}</span>
+                      <button type="button" onClick={() => handleDeleteSavedAttachment(att.attachmentId)}><FiX size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="board-compose-attach">
                 <label className="board-compose-attach-btn">
                   <FiPaperclip size={13} /> 파일 첨부
-                  <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.hwp,.txt" multiple onChange={handleAttachmentChange} style={{ display: 'none' }} />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.hwp,.txt"
+                    multiple
+                    onChange={handleAttachmentSelect}
+                    style={{ display: 'none' }}
+                  />
                 </label>
                 {attachments.length > 0 && (
                   <div className="board-compose-file-list">
-                    {attachments.map(att => (
-                      <div key={att.id} className="board-compose-file-item">
+                    {attachments.map((file, idx) => (
+                      <div key={idx} className="board-compose-file-item">
                         <FiFileText size={13} />
-                        <span>{att.name}</span>
-                        <span className="board-compose-file-size">{formatFileSize(att.size)}</span>
-                        <button type="button" onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}><FiX size={12} /></button>
+                        <span>{file.name}</span>
+                        <span className="board-compose-file-size">{formatFileSize(file.size)}</span>
+                        <button type="button" onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}><FiX size={12} /></button>
                       </div>
                     ))}
                   </div>
