@@ -116,6 +116,16 @@ export default function FloatingMascot({ mode = 'default', onSubPageChange }) {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // 모든 애니메이션 프레임을 미리 캐시에 올려 src 전환 시 깨짐 방지
+  useEffect(() => {
+    Object.values(ANIMATION_FRAMES).forEach(({ count, path }) => {
+      for (let i = 1; i <= count; i++) {
+        const img = new Image()
+        img.src = path(i)
+      }
+    })
+  }, [])
+
   useEffect(() => { setFrame(1) }, [animation])
 
   useEffect(() => {

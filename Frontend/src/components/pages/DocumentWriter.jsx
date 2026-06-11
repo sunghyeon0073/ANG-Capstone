@@ -507,6 +507,30 @@ export default function DocumentWriter() {
     setShowDocumentPicker(!tab.doc)
   }
 
+  const handleCloseDocumentTab = (e, tabId) => {
+    e.stopPropagation()
+    setOpenDocumentTabs((currentTabs) => {
+      if (currentTabs.length === 1) {
+        // 마지막 탭은 닫지 않고 빈 탭으로 초기화
+        const fresh = createDraftDocumentTab()
+        setActiveDocumentTabId(fresh.id)
+        setSelectedDoc(null)
+        setShowDocumentPicker(false)
+        return [fresh]
+      }
+      const idx = currentTabs.findIndex((t) => t.id === tabId)
+      const next = currentTabs.filter((t) => t.id !== tabId)
+      // 닫힌 탭이 활성 탭이면 인접 탭으로 포커스 이동
+      if (tabId === activeDocumentTabId) {
+        const focusTab = next[Math.min(idx, next.length - 1)]
+        setActiveDocumentTabId(focusTab.id)
+        setSelectedDoc(focusTab.doc)
+        setShowDocumentPicker(!focusTab.doc)
+      }
+      return next
+    })
+  }
+
   const handleSelectDocument = (doc) => {
     const existingTab = openDocumentTabs.find((tab) => tab.doc?.docId === doc.docId)
     if (existingTab) {
@@ -622,16 +646,23 @@ export default function DocumentWriter() {
         <div className="document-editor-pane">
           <div className="document-browser-tabs">
             {openDocumentTabs.map((tab) => (
-              <button
+              <div
                 key={tab.id}
-                type="button"
                 className={`document-browser-tab ${tab.id === activeDocumentTabId ? 'active' : ''}`}
                 onClick={() => handleActivateDocumentTab(tab)}
                 title={tab.doc?.title || '문서 선택'}
               >
                 <FiFileText />
                 <span>{tab.doc?.title || 'Untitled'}</span>
-              </button>
+                <button
+                  type="button"
+                  className="document-tab-close"
+                  onClick={(e) => handleCloseDocumentTab(e, tab.id)}
+                  title="탭 닫기"
+                >
+                  <FiX size={12} />
+                </button>
+              </div>
             ))}
             <button
               type="button"

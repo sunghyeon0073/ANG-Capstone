@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../../api/authApi';
 
@@ -7,20 +7,14 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
 
-  useEffect(() => {
-    if (localStorage.getItem('token') && localStorage.getItem('user')) {
-      navigate('/dashboard', { replace: true })
-    }
-  }, [navigate])
-
   const handleLogin = async (e) => {
     e.preventDefault()
     try {
       const response = await login({ empNo: employeeId, password })
       const { data } = response.data
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('token', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
+      sessionStorage.setItem('user', JSON.stringify(data.user))
+      sessionStorage.setItem('token', data.accessToken)
+      sessionStorage.setItem('refreshToken', data.refreshToken)
       const username = data.user?.name || data.user?.empNo || '사용자'
       alert(`${username}님 환영합니다.`)
       navigate('/dashboard', { replace: true })

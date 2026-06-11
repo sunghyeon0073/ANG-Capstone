@@ -8,8 +8,75 @@ import {
   FiClock, FiEdit2, FiLoader, FiMail, FiMessageSquare,
   FiPaperclip, FiSearch, FiSend, FiTrash2, FiUser, FiX
 } from 'react-icons/fi'
+import {
+  getPendingInbox,
+  getCompletedInbox,
+  getRejectedInbox,
+  getProgressOutbox,
+} from '../../api/approvalApi'
 
 const STEPS = ['수신자', '제목', '본문', '전송 방식', '파일 첨부', '예약 시간']
+
+// ── 전자결재 요약 위젯 ────────────────────────────────────────────────────────
+function ApprovalSummary({ onSubPageChange }) {
+  const [counts, setCounts] = useState({ pending: null, completed: null, rejected: null, my: null })
+
+  useEffect(() => {
+    const extract = (res) => {
+      const d = res?.data?.data
+      if (!d) return 0
+      if (typeof d.totalElements === 'number') return d.totalElements
+      if (Array.isArray(d.content)) return d.content.length
+      if (Array.isArray(d)) return d.length
+      return 0
+    }
+    Promise.allSettled([
+      getPendingInbox({ size: 999 }),
+      getCompletedInbox({ size: 999 }),
+      getRejectedInbox({ size: 999 }),
+      getProgressOutbox({ size: 999 }),
+    ]).then(([pending, completed, rejected, my]) => {
+      setCounts({
+        pending:   pending.status   === 'fulfilled' ? extract(pending.value)   : 0,
+        completed: completed.status === 'fulfilled' ? extract(completed.value) : 0,
+        rejected:  rejected.status  === 'fulfilled' ? extract(rejected.value)  : 0,
+        my:        my.status        === 'fulfilled' ? extract(my.value)        : 0,
+      })
+    })
+  }, [])
+
+  const ITEMS = [
+    { label: '결재대기', key: 'pending',   page: 'esignature-waiting',   color: '#f59e0b' },
+    { label: '완료',     key: 'completed', page: 'esignature-completed', color: '#10b981' },
+    { label: '반려',     key: 'rejected',  page: 'esignature-rejected',  color: '#ef4444' },
+    { label: '내가요청', key: 'my',        page: 'esignature-my',        color: '#6366f1' },
+  ]
+
+  return (
+    <div className="home-approval-summary">
+      <div className="home-approval-header">
+        <span className="home-approval-title">전자결재</span>
+        <button className="home-approval-more" onClick={() => onSubPageChange?.('esignature-waiting')}>
+          더보기 →
+        </button>
+      </div>
+      <div className="home-approval-grid">
+        {ITEMS.map(({ label, key, page, color }) => (
+          <button
+            key={key}
+            className="home-approval-card"
+            onClick={() => onSubPageChange?.(page)}
+          >
+            <span className="home-approval-count" style={{ color }}>
+              {counts[key] === null ? '…' : counts[key]}
+            </span>
+            <span className="home-approval-label">{label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // ── shared sub-component ──────────────────────────────────────────────────────
 
@@ -547,7 +614,10 @@ export default function Home({ currentSubPage, user, onSubPageChange }) {
           <HomeCalendar onNavigateToCalendar={() => onSubPageChange?.('calendar')} />
         </section>
         <section className="home-panel home-board-panel">
-          <Board currentSubPage="board-notice" maxItems={5} onSubPageChange={onSubPageChange} />
+          <Board currentSubPage="board" maxItems={5} onSubPageChange={onSubPageChange} />
+        </section>
+        <section className="home-panel home-approval-panel">
+          <ApprovalSummary onSubPageChange={onSubPageChange} />
         </section>
       </div>
     </div>
