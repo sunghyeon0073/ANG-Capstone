@@ -1,7 +1,8 @@
-import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield, FiImage } from 'react-icons/fi'
+import { FiHome, FiBell, FiCheckSquare, FiCalendar, FiFileText, FiFolder, FiShare2, FiTrash2, FiInbox, FiSend, FiMessageSquare, FiList, FiUsers, FiEdit3, FiStar, FiShield, FiImage, FiClock } from 'react-icons/fi'
 
 const iconMap = {
   'home-dashboard': FiHome,
+  'home-reserve-list': FiClock,
   'esignature-waiting': FiCheckSquare,
   'esignature-completed': FiCheckSquare,
   'esignature-rejected': FiCheckSquare,
@@ -12,6 +13,7 @@ const iconMap = {
   'file-template': FiFileText,
   'file-important': FiStar,
   'file-trash': FiTrash2,
+  'board': FiList,
   'board-notice': FiBell,
   'board-general': FiEdit3,
   'mail-compose': FiMessageSquare,
@@ -27,7 +29,8 @@ const iconMap = {
 
 export const SIDEBAR_MENUS = {
   home: [
-    { id: 'home-dashboard', label: '대시보드' }
+    { id: 'home-dashboard', label: '대시보드' },
+    { id: 'home-reserve-list', label: '예약 목록' }
   ],
   esignature: [
     { id: 'esignature-waiting', label: '결재대기' },
@@ -43,6 +46,7 @@ export const SIDEBAR_MENUS = {
     { id: 'file-trash', label: '휴지통' }
   ],
   board: [
+    { id: 'board', label: '전체' },
     { id: 'board-notice', label: '공지사항' },
     { id: 'board-general', label: '자유게시판' }
   ],

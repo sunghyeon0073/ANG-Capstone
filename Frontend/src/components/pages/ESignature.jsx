@@ -14,22 +14,29 @@ import {
   FiPenTool,
   FiPlus,
   FiRefreshCw,
+  FiRotateCcw,
   FiSearch,
   FiSend,
   FiTrash2,
+  FiUpload,
   FiUserPlus,
   FiX,
+  FiZoomIn,
 } from 'react-icons/fi'
 import {
   approveApprovalDoc,
   getApprovalAttachment,
+  getApprovalAttachmentById,
+  getApprovalAttachments,
+  downloadApprovalPdf,
   createApprovalDoc,
   createMyApprovalLine,
   deleteApprovalSign,
   deleteMyApprovalLine,
   delegateApprovalDoc,
   getApprovalDoc,
-  getApprovalSign,
+  listApprovalSigns,
+  getApprovalSignImage,
   getApprovalTemplates,
   getCompletedInbox,
   getCompletedOutbox,
@@ -42,6 +49,7 @@ import {
   rejectApprovalDoc,
   updateApprovalDoc,
   uploadApprovalAttachment,
+  uploadApprovalAttachmentMulti,
   uploadApprovalSign,
 } from '../../api/approvalApi'
 import { getAllUsers } from '../../api/userApi'
@@ -102,6 +110,121 @@ const parseFormData = (formData) => {
 
 const PRIMARY = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#3a5cad'
 
+const lineTypeLabel = {
+  APPROVAL: '결재', AGREEMENT: '합의', REFERENCE: '참조', RECEIVER: '수신',
+}
+
+const buildDocumentHtml = (doc) => {
+  const parsed = parseFormData(doc.formData)
+  const lines = (doc.approvalLines || []).slice().sort((a, b) => (a.lineOrder ?? 0) - (b.lineOrder ?? 0))
+  const commentLines = lines.filter((l) => l.comment)
+  const attachmentName = doc.attachmentUrl ? doc.attachmentUrl.split('/').pop().split('?')[0] : null
+
+  const approvalCols = lines.map((l) => `<th>${lineTypeLabel[l.lineType] || l.lineType || ''}</th>`).join('')
+  const positionCols = lines.map((l) => `<td>${l.approverPosition || ''}</td>`).join('')
+  const nameCols = lines.map((l) => `<td>${l.approverName || ''}</td>`).join('')
+  const signCols = lines.map(() => `<td>-</td>`).join('')
+  const dateCols = lines.map((l) => {
+    if (!l.processedAt) return '<td>-</td>'
+    const d = new Date(l.processedAt)
+    return `<td>${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}</td>`
+  }).join('')
+
+  const opinionRows = commentLines.map((l) => {
+    const date = l.processedAt ? new Date(l.processedAt).toLocaleString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }) : '-'
+    return `<tr>
+      <td class="opinion-role">${lineTypeLabel[l.lineType] || l.lineType}/${l.approverName || ''}</td>
+      <td class="opinion-text">${l.comment || ''}</td>
+      <td class="opinion-date">${date}</td>
+    </tr>`
+  }).join('')
+
+  const drafterLabel = doc.drafterPosition
+    ? `${doc.drafterName || ''} (${doc.drafterPosition})`
+    : (doc.drafterName || '-')
+
+  const createdDate = doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' }) : '-'
+  const completedDate = doc.completedAt ? new Date(doc.completedAt).toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' }) : '-'
+  const completedDateTime = doc.completedAt ? new Date(doc.completedAt).toLocaleString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }) : null
+
+  const content = parsed.content || parsed.raw || ''
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { font-family: 'Malgun Gothic', sans-serif; box-sizing: border-box; }
+  body { margin: 40px; font-size: 12px; color: #000; background: #fff; }
+  .doc-number-header { margin-bottom: 10px; overflow: hidden; }
+  .doc-number { float: left; font-size: 11px; color: #333; font-weight: bold; }
+  .approval-table { float: right; border-collapse: collapse; font-size: 11px; }
+  .approval-table th, .approval-table td { border: 1px solid #333; padding: 4px 8px; text-align: center; min-width: 60px; }
+  .approval-table th { background-color: #f0f0f0; }
+  .row-label { background-color: #f0f0f0; font-weight: bold; white-space: nowrap; min-width: 36px; }
+  h1.doc-title { text-align: center; font-size: 20px; margin: 20px 0 10px 0; }
+  .doc-info { margin-bottom: 16px; border-bottom: 1px solid #ccc; padding-bottom: 8px; }
+  .doc-info table { width: 100%; border-collapse: collapse; }
+  .doc-info td { padding: 4px 8px; font-size: 12px; }
+  .doc-info td:first-child { font-weight: bold; width: 80px; color: #555; }
+  .form-content { border: 1px solid #ccc; padding: 16px; min-height: 300px; white-space: pre-wrap; line-height: 1.8; }
+  .opinion-history { margin-top: 20px; padding-top: 12px; border-top: 2px solid #333; }
+  .opinion-history .section-title { font-size: 13px; font-weight: bold; margin-bottom: 8px; }
+  .opinion-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .opinion-table td { border: 1px solid #ccc; padding: 5px 8px; vertical-align: top; }
+  .opinion-role { white-space: nowrap; font-weight: bold; width: 100px; color: #333; }
+  .opinion-text { width: auto; }
+  .opinion-date { white-space: nowrap; width: 120px; color: #555; text-align: right; }
+  .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #ddd; text-align: center; font-size: 10px; color: #666; line-height: 1.6; }
+</style>
+</head>
+<body>
+  <div class="doc-number-header">
+    <div class="doc-number">
+      <div>문서번호: APPR-${doc.id}</div>
+      ${completedDateTime ? `<div>결재완료: ${completedDateTime}</div>` : ''}
+    </div>
+    ${lines.length > 0 ? `
+    <table class="approval-table">
+      <thead>
+        <tr><th></th>${approvalCols}</tr>
+        <tr><td class="row-label">직급</td>${positionCols}</tr>
+        <tr><td class="row-label">성명</td>${nameCols}</tr>
+        <tr><td class="row-label">서명</td>${signCols}</tr>
+        <tr><td class="row-label">결재일</td>${dateCols}</tr>
+      </thead>
+    </table>` : ''}
+  </div>
+
+  <h1 class="doc-title">${doc.title || ''}</h1>
+
+  <div class="doc-info">
+    <table>
+      <tr><td>기안자</td><td>${drafterLabel}</td></tr>
+      <tr><td>기안일</td><td>${createdDate}</td></tr>
+      <tr><td>완료일</td><td>${completedDate}</td></tr>
+      ${doc.templateTitle ? `<tr><td>양식</td><td>${doc.templateTitle}</td></tr>` : ''}
+      <tr><td>보안등급</td><td>${doc.securityLevel || '-'} <span style="padding-left:24px;font-weight:bold;color:#555;">보존연한</span> ${doc.retentionPeriod || '-'}</td></tr>
+      ${attachmentName ? `<tr><td>첨부파일</td><td>${attachmentName}</td></tr>` : ''}
+    </table>
+  </div>
+
+  <div class="form-content">${content}</div>
+
+  ${opinionRows ? `
+  <div class="opinion-history">
+    <div class="section-title">결재 의견 이력</div>
+    <table class="opinion-table">${opinionRows}</table>
+  </div>` : ''}
+
+  <div class="footer">
+    이 문서는 전자결재 시스템에서 생성된 공식 결재 기록입니다.<br/>
+    문서번호 <strong>APPR-${doc.id}</strong> 으로 시스템에서 원본을 확인할 수 있습니다.
+  </div>
+</body>
+</html>`
+}
+
 const approvalStatusMeta = {
   DRAFT: { label: '임시저장', color: '#6B7280' },
   IN_PROGRESS: { label: '진행중', color: PRIMARY },
@@ -117,10 +240,6 @@ const lineStatusMeta = {
   APPROVED: { label: '승인', color: '#16a34a' },
   REJECTED: { label: '반려', color: '#dc2626' },
   DELEGATED: { label: '대리결재', color: '#7c3aed' },
-}
-
-const lineTypeLabel = {
-  APPROVAL: '결재', AGREEMENT: '합의', REFERENCE: '참조', RECEIVER: '수신',
 }
 
 const dedupeDocs = (docs) => {
@@ -185,12 +304,13 @@ function ExcelSheetViewer({ data }) {
   )
 }
 
-function AttachmentViewer({ docId, attachmentUrl }) {
+function AttachmentViewer({ docId, attachmentId, fileName, attachmentUrl }) {
   const [viewer, setViewer] = useState({ status: 'idle', type: null, url: null, data: null })
   const docxRef = useRef(null)
 
   useEffect(() => {
-    if (!docId || !attachmentUrl) {
+    const hasAttachment = attachmentId != null || attachmentUrl
+    if (!docId || !hasAttachment) {
       setViewer({ status: 'none', type: null, url: null, data: null })
       return
     }
@@ -198,11 +318,15 @@ function AttachmentViewer({ docId, attachmentUrl }) {
     let blobUrl = null
     setViewer({ status: 'loading', type: null, url: null, data: null })
 
-    getApprovalAttachment(docId)
+    const fetchFn = attachmentId != null
+      ? () => getApprovalAttachmentById(docId, attachmentId)
+      : () => getApprovalAttachment(docId)
+
+    fetchFn()
       .then(async (res) => {
         const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' })
         const ct = (res.headers['content-type'] || '').toLowerCase()
-        const urlLower = (attachmentUrl || '').toLowerCase()
+        const urlLower = (fileName || attachmentUrl || '').toLowerCase()
 
         let type = 'other'
         if (ct.includes('pdf') || urlLower.match(/\.pdf(\?|$)/)) type = 'pdf'
@@ -232,7 +356,7 @@ function AttachmentViewer({ docId, attachmentUrl }) {
       })
 
     return () => { if (blobUrl) URL.revokeObjectURL(blobUrl) }
-  }, [docId])
+  }, [docId, attachmentId, attachmentUrl])
 
   useEffect(() => {
     if (viewer.type !== 'word' || !viewer.data || !docxRef.current) return
@@ -347,11 +471,12 @@ function HwpxViewer({ data }) {
   )
 }
 
-function ActionModal({ type, users, onConfirm, onClose }) {
+function ActionModal({ type, users, signatures, onConfirm, onClose, onGoToSignature }) {
   const [comment, setComment] = useState('')
   const [reason, setReason] = useState('')
   const [delegateSearch, setDelegateSearch] = useState('')
   const [delegateTarget, setDelegateTarget] = useState(null)
+  const [selectedSignId, setSelectedSignId] = useState(null)
   const [loading, setLoading] = useState(false)
 
   const filtered = delegateSearch.trim()
@@ -364,6 +489,7 @@ function ActionModal({ type, users, onConfirm, onClose }) {
   const handleSubmit = async () => {
     if (type === 'reject' && !reason.trim()) return
     if (type === 'delegate' && !delegateTarget) return
+    if (type === 'approve' && signatures && signatures.length > 0 && !selectedSignId) return
     setLoading(true)
     try {
       await onConfirm({
@@ -371,6 +497,7 @@ function ActionModal({ type, users, onConfirm, onClose }) {
         reason: reason.trim(),
         delegateeId: delegateTarget?.id,
         delegateeName: delegateTarget?.name,
+        signatureId: selectedSignId,
       })
     } finally {
       setLoading(false)
@@ -394,17 +521,49 @@ function ActionModal({ type, users, onConfirm, onClose }) {
 
         <div className="esig-modal-body">
           {type === 'approve' && (
-            <div className="esig-field">
-              <label>승인 의견 <span className="esig-modal-optional">(선택)</span></label>
-              <textarea
-                className="esig-modal-textarea"
-                placeholder="승인 의견을 입력하세요."
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={4}
-                autoFocus
-              />
-            </div>
+            <>
+              <div className="esig-field">
+                <label>서명 선택 <span className="esig-modal-required">*</span></label>
+                {signatures && signatures.length > 0 ? (
+                  <div className="esig-sign-picker">
+                    {signatures.map((sig) => (
+                      <button
+                        key={sig.id}
+                        type="button"
+                        className={`esig-sign-picker-item ${selectedSignId === sig.id ? 'active' : ''}`}
+                        onClick={() => setSelectedSignId(sig.id)}
+                      >
+                        <SignatureImg signId={sig.id} alt={sig.label} />
+                        <span>{sig.label || '서명'}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="esig-sign-empty-notice">
+                    <span>등록된 서명이 없습니다. </span>
+                    <button
+                      type="button"
+                      className="esig-sign-manage-link"
+                      onClick={() => { onClose(); onGoToSignature?.() }}
+                    >
+                      서명 관리 페이지로 이동
+                    </button>
+                    <span>해서 서명을 등록해 주세요.</span>
+                  </div>
+                )}
+              </div>
+              <div className="esig-field">
+                <label>승인 의견 <span className="esig-modal-optional">(선택)</span></label>
+                <textarea
+                  className="esig-modal-textarea"
+                  placeholder="승인 의견을 입력하세요."
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  rows={4}
+                  autoFocus={!signatures || signatures.length === 0}
+                />
+              </div>
+            </>
           )}
 
           {type === 'reject' && (
@@ -470,14 +629,243 @@ function ActionModal({ type, users, onConfirm, onClose }) {
 
         <div className="esig-modal-footer">
           <button className="esig-btn esig-btn-ghost" onClick={onClose} disabled={loading}>취소</button>
-          <button
-            className="esig-btn esig-btn-primary"
-            style={{ background: meta.color, borderColor: meta.color }}
-            onClick={handleSubmit}
-            disabled={loading || (type === 'reject' && !reason.trim()) || (type === 'delegate' && !delegateTarget)}
-          >
-            {loading ? '처리 중...' : meta.confirmLabel}
-          </button>
+          {(() => {
+            const isDisabled =
+              loading ||
+              (type === 'reject' && !reason.trim()) ||
+              (type === 'delegate' && !delegateTarget) ||
+              (type === 'approve' && signatures && signatures.length > 0 && !selectedSignId) ||
+              (type === 'approve' && (!signatures || signatures.length === 0))
+
+            const tooltip =
+              type === 'approve' && (!signatures || signatures.length === 0)
+                ? '서명을 먼저 등록해야 승인할 수 있습니다.'
+                : type === 'approve' && !selectedSignId
+                ? '서명을 선택해야 승인할 수 있습니다.'
+                : null
+
+            return (
+              <span className={tooltip ? 'esig-btn-tooltip-wrap' : undefined} data-tooltip={tooltip || undefined}>
+                <button
+                  className="esig-btn esig-btn-primary"
+                  style={{ background: meta.color, borderColor: meta.color }}
+                  onClick={handleSubmit}
+                  disabled={isDisabled}
+                >
+                  {loading ? '처리 중...' : meta.confirmLabel}
+                </button>
+              </span>
+            )
+          })()}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SignatureImg({ signId, alt, className }) {
+  const [src, setSrc] = useState(null)
+
+  useEffect(() => {
+    let blobUrl = null
+    getApprovalSignImage(signId)
+      .then((res) => {
+        const blob = new Blob([res.data], { type: res.headers['content-type'] || 'image/png' })
+        blobUrl = URL.createObjectURL(blob)
+        setSrc(blobUrl)
+      })
+      .catch(() => setSrc(null))
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl) }
+  }, [signId])
+
+  if (!src) return <div className="esig-sign-img-loading" />
+  return <img src={src} alt={alt} className={className} />
+}
+
+function SignaturePage({ signatures, signatureFile, setSignatureFile, signatureLabel, setSignatureLabel, signSaving, onUpload, onDelete }) {
+  const canvasRef = useRef(null)
+  const [tab, setTab] = useState('upload')
+  const [drawing, setDrawing] = useState(false)
+  const [hasDrawing, setHasDrawing] = useState(false)
+  const [penColor, setPenColor] = useState('#000000')
+  const [penSize, setPenSize] = useState(3)
+  const [previewUrl, setPreviewUrl] = useState(null)
+
+  const getPos = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect()
+    const src = e.touches ? e.touches[0] : e
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top }
+  }
+
+  const startDraw = (e) => {
+    const canvas = canvasRef.current; if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    const { x, y } = getPos(e, canvas)
+    ctx.beginPath(); ctx.moveTo(x, y)
+    ctx.strokeStyle = penColor; ctx.lineWidth = penSize
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    setDrawing(true)
+    e.preventDefault()
+  }
+
+  const draw = (e) => {
+    if (!drawing) return
+    const canvas = canvasRef.current; if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    const { x, y } = getPos(e, canvas)
+    ctx.lineTo(x, y); ctx.stroke()
+    setHasDrawing(true)
+    e.preventDefault()
+  }
+
+  const endDraw = () => setDrawing(false)
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current; if (!canvas) return
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+    setHasDrawing(false)
+  }
+
+  const saveDrawing = () => {
+    const canvas = canvasRef.current; if (!canvas || !hasDrawing) return
+    const dataUrl = canvas.toDataURL('image/png')
+    setPreviewUrl(dataUrl)
+    fetch(dataUrl)
+      .then((r) => r.blob())
+      .then((blob) => {
+        setSignatureFile(new File([blob], 'signature-draw.png', { type: 'image/png' }))
+      })
+    setTab('upload')
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSignatureFile(file)
+    const reader = new FileReader()
+    reader.onload = (ev) => setPreviewUrl(ev.target.result)
+    reader.readAsDataURL(file)
+  }
+
+  const prettyCreatedAt = (dt) => {
+    if (!dt) return ''
+    const d = new Date(dt)
+    if (Number.isNaN(d.getTime())) return ''
+    return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  }
+
+  return (
+    <div className="esig-sign-fullpage">
+      <div className="esig-sign-layout">
+        {/* 왼쪽: 등록된 서명 목록 */}
+        <div className="esig-sign-left">
+          <div className="esig-sign-section-title"><FiPenTool size={14} /> 등록된 서명 ({signatures.length})</div>
+          {signatures.length === 0 ? (
+            <div className="esig-sign-empty-state">
+              <FiEdit3 size={36} />
+              <p>등록된 서명 없음</p>
+              <span>우측에서 서명을 등록하세요</span>
+            </div>
+          ) : (
+            <div className="esig-sign-list">
+              {signatures.map((sig) => (
+                <div key={sig.id} className="esig-sign-list-item">
+                  <div className="esig-sign-list-img-wrap">
+                    <SignatureImg signId={sig.id} alt={sig.label} className="esig-sign-list-img" />
+                  </div>
+                  <div className="esig-sign-list-info">
+                    <span className="esig-sign-list-label">{sig.label || '서명'}</span>
+                    <span className="esig-sign-list-date">{prettyCreatedAt(sig.createdAt)}</span>
+                  </div>
+                  <button className="esig-icon-btn esig-icon-btn-danger" onClick={() => onDelete(sig.id)} title="삭제">
+                    <FiTrash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 오른쪽: 새 서명 등록 */}
+        <div className="esig-sign-right">
+          <div className="esig-sign-tabs">
+            <button className={`esig-sign-tab ${tab === 'upload' ? 'active' : ''}`} onClick={() => setTab('upload')}>
+              <FiUpload size={14} /> 이미지 업로드
+            </button>
+            <button className={`esig-sign-tab ${tab === 'draw' ? 'active' : ''}`} onClick={() => setTab('draw')}>
+              <FiEdit3 size={14} /> 직접 서명
+            </button>
+          </div>
+
+          {tab === 'upload' ? (
+            <div className="esig-sign-upload-panel">
+              <p className="esig-sign-page-hint">PNG, JPG, SVG 등 이미지 파일을 업로드해주세요.<br/>투명 배경 PNG를 권장합니다.</p>
+              <label className="esig-sign-upload-zone">
+                <input type="file" accept="image/*" onChange={handleFileChange} />
+                <FiImage size={28} />
+                <span>{signatureFile ? signatureFile.name : '클릭하여 파일 선택'}</span>
+              </label>
+              {previewUrl && (
+                <div className="esig-sign-preview-wrap">
+                  <p className="esig-sign-page-label">미리보기</p>
+                  <img src={previewUrl} alt="미리보기" className="esig-sign-page-img" />
+                </div>
+              )}
+              <div className="esig-field" style={{ marginTop: 12 }}>
+                <label>서명 이름 <span className="esig-modal-optional">(선택)</span></label>
+                <input
+                  type="text"
+                  placeholder="예: 공식 서명, 도장 등"
+                  value={signatureLabel}
+                  onChange={(e) => setSignatureLabel(e.target.value)}
+                />
+              </div>
+              <button className="esig-btn esig-btn-primary" onClick={onUpload} disabled={signSaving || !signatureFile} style={{ marginTop: 12 }}>
+                <FiUpload size={13} /> {signSaving ? '등록 중...' : '서명 등록'}
+              </button>
+            </div>
+          ) : (
+            <div className="esig-sign-draw-panel">
+              <div className="esig-sign-draw-toolbar">
+                <label className="esig-sign-draw-tool">
+                  색상
+                  <input type="color" value={penColor} onChange={(e) => setPenColor(e.target.value)} />
+                </label>
+                <label className="esig-sign-draw-tool">
+                  굵기
+                  <input type="range" min={1} max={10} value={penSize} onChange={(e) => setPenSize(Number(e.target.value))} />
+                  <span>{penSize}px</span>
+                </label>
+                <button className="esig-btn esig-btn-ghost" onClick={clearCanvas}>
+                  <FiRotateCcw size={13} /> 지우기
+                </button>
+              </div>
+              <canvas
+                ref={canvasRef}
+                className="esig-sign-canvas"
+                width={480}
+                height={240}
+                onMouseDown={startDraw}
+                onMouseMove={draw}
+                onMouseUp={endDraw}
+                onMouseLeave={endDraw}
+                onTouchStart={startDraw}
+                onTouchMove={draw}
+                onTouchEnd={endDraw}
+              />
+              <div className="esig-sign-draw-actions">
+                <button className="esig-btn esig-btn-ghost" onClick={clearCanvas}>
+                  <FiRotateCcw size={13} /> 초기화
+                </button>
+                <button className="esig-btn esig-btn-primary" onClick={saveDrawing} disabled={!hasDrawing}>
+                  <FiCheck size={13} /> 이미지로 변환
+                </button>
+              </div>
+              <p className="esig-sign-page-hint" style={{ marginTop: 8 }}>
+                변환 후 '이미지 업로드' 탭에서 등록하세요.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -489,12 +877,15 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [activeListSearch, setActiveListSearch] = useState('')
+  const [listPage, setListPage] = useState(1)
+  const LIST_PAGE_SIZE = 10
   const [approvalBoxes, setApprovalBoxes] = useState({ waiting: [], completed: [], rejected: [], my: [] })
   const [templates, setTemplates] = useState([])
   const [myLines, setMyLines] = useState([])
   const [users, setUsers] = useState([])
-  const [signatureUrl, setSignatureUrl] = useState('')
+  const [signatures, setSignatures] = useState([])
   const [signatureFile, setSignatureFile] = useState(null)
+  const [signatureLabel, setSignatureLabel] = useState('')
   const [selectedApprovalId, setSelectedApprovalId] = useState(null)
   const [selectedApproval, setSelectedApproval] = useState(null)
   const [mode, setMode] = useState('view')
@@ -502,6 +893,8 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [approvalLines, setApprovalLines] = useState([])
   const [attachmentFile, setAttachmentFile] = useState(null)
+  const [attachmentFiles, setAttachmentFiles] = useState([])
+  const [selectedAttachmentId, setSelectedAttachmentId] = useState(null)
   const [userSearch, setUserSearch] = useState('')
   const [saveState, setSaveState] = useState('idle')
   const [linePresetSaving, setLinePresetSaving] = useState(false)
@@ -529,6 +922,11 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       normalizeText(doc.id).includes(keyword)
     )
   }, [approvalBoxes, activeListSearch, currentSubPage])
+
+  const listTotalPages = Math.max(1, Math.ceil(activeDocuments.length / LIST_PAGE_SIZE))
+  const pagedDocuments = activeDocuments.slice((listPage - 1) * LIST_PAGE_SIZE, listPage * LIST_PAGE_SIZE)
+
+  useEffect(() => { setListPage(1) }, [currentSubPage, activeListSearch])
 
   const usersFiltered = useMemo(() => {
     const keyword = userSearch.trim().toLowerCase()
@@ -562,7 +960,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
     try {
       const [templatesRes, usersRes, myLinesRes, signRes, waitingRes, completedRes, rejectedInboxRes, rejectedOutboxRes, draftRes, progressRes, completedOutboxRes] =
         await Promise.allSettled([
-          getApprovalTemplates(), getAllUsers(), getMyApprovalLines(), getApprovalSign(),
+          getApprovalTemplates(), getAllUsers(), getMyApprovalLines(), listApprovalSigns(),
           getPendingInbox({ page: 0, size: 30 }), getCompletedInbox({ page: 0, size: 30 }),
           getRejectedInbox({ page: 0, size: 30 }), getRejectedOutbox({ page: 0, size: 30 }),
           getDraftOutbox({ page: 0, size: 30 }), getProgressOutbox({ page: 0, size: 30 }),
@@ -583,7 +981,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       setTemplates(extractList(templatesRes))
       setUsers(extractList(usersRes))
       setMyLines(extractList(myLinesRes))
-      setSignatureUrl(signRes.status === 'fulfilled' ? unwrap(signRes.value, null)?.signatureImageUrl || '' : '')
+      setSignatures(signRes.status === 'fulfilled' ? (unwrap(signRes.value, []) || []) : [])
       setApprovalBoxes({
         waiting: extractPage(waitingRes),
         completed: extractPage(completedRes),
@@ -615,6 +1013,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
     setSelectedTemplateId('')
     setApprovalLines([])
     setAttachmentFile(null)
+    setAttachmentFiles([])
     setActiveListSearch('')
     onSubPageChange?.('esignature-waiting')
   }
@@ -631,6 +1030,9 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       setSelectedApproval(detail)
       setSelectedApprovalId(docId)
       setMode('view')
+      // auto-select first attachment if available
+      const firstAtt = (detail.attachments || [])[0]
+      setSelectedAttachmentId(firstAtt ? firstAtt.id : null)
     } catch (e) {
       console.error(e)
       setError('문서 상세를 불러오지 못했습니다.')
@@ -679,6 +1081,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       approverPosition: line.approverPosition, lineOrder: line.lineOrder, lineType: line.lineType || 'APPROVAL',
     })))
     setAttachmentFile(null)
+    setAttachmentFiles([])
     setMode('compose')
   }
 
@@ -748,7 +1151,9 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       if (docId) { await updateApprovalDoc(docId, payload) }
       else { const created = await createApprovalDoc(payload); docId = unwrap(created)?.id }
       if (!docId) throw new Error('문서 ID를 확인할 수 없습니다.')
-      if (attachmentFile) await uploadApprovalAttachment(docId, attachmentFile)
+      for (const file of attachmentFiles) {
+        await uploadApprovalAttachmentMulti(docId, file)
+      }
       if (submitNow) await updateApprovalDoc(docId, { ...payload, submitNow: true })
       const detail = await loadApprovalDetail(docId)
       setSelectedApproval(detail)
@@ -756,6 +1161,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       setMode('view')
       setForm((c) => ({ ...c, docId }))
       setAttachmentFile(null)
+      setAttachmentFiles([])
       await refreshAll()
       alert(submitNow ? '결재가 상신되었습니다.' : '임시저장되었습니다.')
     } catch (e) {
@@ -794,14 +1200,20 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   const handleSignUpload = async () => {
     if (!signatureFile) { alert('업로드할 서명 이미지를 선택해주세요.'); return }
     setSignSaving(true)
-    try { await uploadApprovalSign(signatureFile); setSignatureFile(null); await refreshAll(); alert('서명이 등록되었습니다.') }
+    try {
+      await uploadApprovalSign(signatureFile, signatureLabel.trim() || null)
+      setSignatureFile(null)
+      setSignatureLabel('')
+      await refreshAll()
+      alert('서명이 등록되었습니다.')
+    }
     catch (e) { console.error(e); alert(e.response?.data?.message || '서명 업로드에 실패했습니다.') }
     finally { setSignSaving(false) }
   }
 
-  const handleSignDelete = async () => {
-    if (!window.confirm('등록된 서명을 삭제할까요?')) return
-    try { await deleteApprovalSign(); await refreshAll(); alert('서명이 삭제되었습니다.') }
+  const handleSignDelete = async (id) => {
+    if (!window.confirm('이 서명을 삭제할까요?')) return
+    try { await deleteApprovalSign(id); await refreshAll() }
     catch (e) { console.error(e); alert(e.response?.data?.message || '서명 삭제에 실패했습니다.') }
   }
 
@@ -828,22 +1240,16 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
     return 'other'
   }
 
-  if (loading) {
-    return (
-      <div className="esig">
-        <div className="esig-loader">전자결재를 불러오는 중...</div>
-      </div>
-    )
-  }
-
   return (
     <div className="esig">
       {actionModal && (
         <ActionModal
           type={actionModal}
           users={users}
+          signatures={signatures}
           onConfirm={handleActionConfirm}
           onClose={() => setActionModal(null)}
+          onGoToSignature={() => handleChangeFolder('esignature-signature')}
         />
       )}
       {/* Left Rail */}
@@ -885,7 +1291,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
           >
             <FiPenTool size={14} />
             <span className="esig-nav-label">서명 관리</span>
-            {signatureUrl && <span className="esig-nav-dot" />}
+            {signatures.length > 0 && <span className="esig-nav-dot" />}
           </button>
         </nav>
       </aside>
@@ -895,57 +1301,16 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
         {error && <div className="esig-error">{error}</div>}
 
         {mode === 'signature' ? (
-          <>
-            <div className="esig-header">
-              <div className="esig-header-left">
-                <FiPenTool size={18} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
-                <h1 className="esig-page-title">서명 관리</h1>
-              </div>
-            </div>
-
-            <div className="esig-sign-page">
-              <div className="esig-sign-page-card">
-                <div className="esig-sign-page-preview">
-                  <p className="esig-sign-page-label">등록된 서명</p>
-                  {signatureUrl
-                    ? <img src={signatureUrl} alt="등록된 서명" className="esig-sign-page-img" />
-                    : (
-                      <div className="esig-sign-page-empty">
-                        <FiEdit3 size={32} />
-                        <p>등록된 서명이 없습니다.</p>
-                        <span>서명 이미지를 업로드하면 결재 시 사용됩니다.</span>
-                      </div>
-                    )}
-                </div>
-
-                <div className="esig-sign-page-actions">
-                  <p className="esig-sign-page-label">서명 이미지 업로드</p>
-                  <p className="esig-sign-page-hint">PNG, JPG, SVG 등 이미지 파일을 업로드해주세요. 투명 배경 PNG를 권장합니다.</p>
-
-                  <label className="esig-sign-upload-zone">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => setSignatureFile(e.target.files?.[0] || null)}
-                    />
-                    <FiImage size={24} />
-                    <span>{signatureFile ? signatureFile.name : '클릭하여 파일 선택'}</span>
-                  </label>
-
-                  <div className="esig-sign-page-btns">
-                    <button className="esig-btn esig-btn-primary" onClick={handleSignUpload} disabled={signSaving || !signatureFile}>
-                      {signSaving ? '업로드 중...' : '서명 등록'}
-                    </button>
-                    {signatureUrl && (
-                      <button className="esig-btn esig-btn-ghost esig-btn-ghost--danger" onClick={handleSignDelete}>
-                        서명 삭제
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
+          <SignaturePage
+            signatures={signatures}
+            signatureFile={signatureFile}
+            setSignatureFile={setSignatureFile}
+            signatureLabel={signatureLabel}
+            setSignatureLabel={setSignatureLabel}
+            signSaving={signSaving}
+            onUpload={handleSignUpload}
+            onDelete={handleSignDelete}
+          />
         ) : mode === 'compose' ? (
           <>
             <div className="esig-header">
@@ -1025,25 +1390,45 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                   <h2 className="esig-section-title">문서 내용</h2>
                   <div className="esig-field-stack">
                     <div className="esig-field">
-                      <label>기안 사유</label>
-                      <textarea value={form.purpose} onChange={(e) => setForm((c) => ({ ...c, purpose: e.target.value }))} placeholder="결재가 필요한 이유를 입력하세요" />
-                    </div>
-                    <div className="esig-field">
-                      <label>요약</label>
-                      <textarea value={form.summary} onChange={(e) => setForm((c) => ({ ...c, summary: e.target.value }))} placeholder="문서 요약" />
-                    </div>
-                    <div className="esig-field">
                       <label>상세 내용</label>
                       <textarea className="esig-textarea-lg" value={form.content} onChange={(e) => setForm((c) => ({ ...c, content: e.target.value }))} placeholder="결재 문서 본문을 입력하세요" />
                     </div>
                     <div className="esig-field">
-                      <label>추가 메모</label>
-                      <textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="비고" />
-                    </div>
-                    <div className="esig-field">
                       <label>첨부파일</label>
-                      <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.hwp,.hwpx,.txt,image/*" onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)} />
-                      {attachmentFile && <span className="esig-file-name">{attachmentFile.name}</span>}
+                      <label className="esig-file-add-btn">
+                        <FiPlus size={13} /> 파일 추가
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.hwp,.hwpx,.txt,image/*"
+                          multiple
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || [])
+                            setAttachmentFiles((prev) => {
+                              const names = new Set(prev.map((f) => f.name))
+                              return [...prev, ...files.filter((f) => !names.has(f.name))]
+                            })
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      {attachmentFiles.length > 0 && (
+                        <ul className="esig-file-list">
+                          {attachmentFiles.map((file, idx) => (
+                            <li key={idx} className="esig-file-list-item">
+                              <FiFileText size={13} />
+                              <span className="esig-file-list-name">{file.name}</span>
+                              <button
+                                className="esig-icon-btn"
+                                type="button"
+                                onClick={() => setAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                <FiX size={12} />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -1235,90 +1620,115 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                   </div>
                 </div>
 
-                {/* 문서 내용 */}
+                {/* 문서 템플릿 */}
                 <div className="esig-doc-sheet">
                   <div className="esig-doc-sheet-header">
                     <strong>{selectedApproval.templateTitle || '기안서'}</strong>
-                    <span>보존 {selectedApproval.retentionPeriod} · {selectedApproval.securityLevel}</span>
-                  </div>
-                  {(() => {
-                    const parsed = parseFormData(selectedApproval.formData)
-                    const blocks = [
-                      { label: '기안 사유', body: parsed.purpose },
-                      { label: '본문', body: parsed.content },
-                      { label: '메모', body: parsed.notes },
-                    ].filter((b) => b.body)
-                    return blocks.length > 0
-                      ? blocks.map((b) => (
-                        <div key={b.label} className="esig-doc-block">
-                          <div className="esig-doc-block-label">{b.label}</div>
-                          <div className="esig-doc-block-body">{b.body}</div>
-                        </div>
-                      ))
-                      : (
-                        <div className="esig-doc-block">
-                          <div className="esig-doc-block-body esig-doc-block-body--empty">상세 문서 내용이 없습니다.</div>
-                        </div>
-                      )
-                  })()}
-                </div>
-
-                {/* 기안 정보 */}
-                <div className="esig-card">
-                  <div className="esig-card-head">
-                    <span className="esig-card-head-title">기안 정보</span>
-                  </div>
-                  <div className="esig-card-body">
-                    <div className="esig-info-grid">
-                      {[
-                        ['보안등급', selectedApproval.securityLevel],
-                        ['보존연한', selectedApproval.retentionPeriod],
-                        ['완료일', prettyDateTime(selectedApproval.completedAt)],
-                        ['기안번호', `#${selectedApproval.id}`],
-                      ].map(([label, value]) => (
-                        <div key={label} className="esig-info-item">
-                          <span className="esig-info-label">{label}</span>
-                          <span className="esig-info-value">{value || '-'}</span>
-                        </div>
-                      ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>보존 {selectedApproval.retentionPeriod} · {selectedApproval.securityLevel}</span>
+                      {selectedApproval.finalPdfUrl && (
+                        <button
+                          className="esig-btn esig-btn-ghost"
+                          style={{ padding: '4px 10px', fontSize: '12px' }}
+                          onClick={async () => {
+                            try {
+                              const res = await downloadApprovalPdf(selectedApproval.id)
+                              const blob = new Blob([res.data], { type: 'application/pdf' })
+                              const url = URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = `APPR-${selectedApproval.id}.pdf`
+                              a.click()
+                              URL.revokeObjectURL(url)
+                            } catch {
+                              alert('PDF 다운로드에 실패했습니다. 결재 완료 후 다운로드 가능합니다.')
+                            }
+                          }}
+                        >
+                          <FiDownload size={13} /> PDF
+                        </button>
+                      )}
                     </div>
                   </div>
+                  <iframe
+                    className="esig-doc-iframe"
+                    srcDoc={buildDocumentHtml(selectedApproval)}
+                    title="결재문서"
+                    sandbox="allow-same-origin"
+                    onLoad={(e) => {
+                      const doc = e.target.contentDocument
+                      if (doc) e.target.style.height = doc.documentElement.scrollHeight + 'px'
+                    }}
+                  />
+
+                  {/* 첨부파일 목록 */}
+                  {(selectedApproval.attachments || []).length > 0 && (
+                    <div className="esig-attach-list">
+                      <div className="esig-attach-list-title">
+                        <FiFileText size={13} /> 첨부파일 ({selectedApproval.attachments.length})
+                      </div>
+                      <div className="esig-attach-items">
+                        {selectedApproval.attachments.map((att) => (
+                          <button
+                            key={att.id}
+                            className={`esig-attach-item ${selectedAttachmentId === att.id ? 'active' : ''}`}
+                            onClick={() => setSelectedAttachmentId(att.id)}
+                            title={att.fileName}
+                          >
+                            <FiFileText size={13} />
+                            <span className="esig-attach-item-name">{att.fileName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="esig-detail-side">
-                <div className="esig-viewer-header">
-                  <h2 className="esig-section-title">첨부파일</h2>
-                  {selectedApproval.attachmentUrl && (
-                    <button
-                      className="esig-btn esig-btn-ghost"
-                      style={{ padding: '6px 12px', fontSize: '12px' }}
-                      onClick={async () => {
-                        try {
-                          const res = await getApprovalAttachment(selectedApproval.id)
-                          const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' })
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          const raw = selectedApproval.attachmentUrl
-                          a.download = raw.split('/').pop().split('?')[0] || '첨부파일'
-                          a.click()
-                          URL.revokeObjectURL(url)
-                        } catch {
-                          alert('파일 다운로드에 실패했습니다.')
-                        }
-                      }}
-                    >
-                      <FiDownload size={13} /> 다운로드
-                    </button>
-                  )}
-                </div>
-                <div className="esig-viewer-body">
-                  <AttachmentViewer
-                    docId={selectedApproval.id}
-                    attachmentUrl={selectedApproval.attachmentUrl}
-                  />
-                </div>
+                {(() => {
+                  const attachments = selectedApproval.attachments || []
+                  const currentAtt = attachments.find((a) => a.id === selectedAttachmentId) || attachments[0] || null
+                  return (
+                    <>
+                      <div className="esig-viewer-header">
+                        <h2 className="esig-section-title">
+                          {currentAtt ? currentAtt.fileName : '첨부파일'}
+                        </h2>
+                        {currentAtt && (
+                          <button
+                            className="esig-btn esig-btn-ghost"
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                            onClick={async () => {
+                              try {
+                                const res = await getApprovalAttachmentById(selectedApproval.id, currentAtt.id)
+                                const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' })
+                                const url = URL.createObjectURL(blob)
+                                const a = document.createElement('a')
+                                a.href = url
+                                a.download = currentAtt.fileName || '첨부파일'
+                                a.click()
+                                URL.revokeObjectURL(url)
+                              } catch {
+                                alert('파일 다운로드에 실패했습니다.')
+                              }
+                            }}
+                          >
+                            <FiDownload size={13} /> 다운로드
+                          </button>
+                        )}
+                      </div>
+                      <div className="esig-viewer-body">
+                        <AttachmentViewer
+                          docId={selectedApproval.id}
+                          attachmentId={currentAtt?.id ?? null}
+                          fileName={currentAtt?.fileName ?? null}
+                          attachmentUrl={null}
+                        />
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           </>
@@ -1341,59 +1751,77 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                   {activeListSearch && <button onClick={() => setActiveListSearch('')}><FiX size={12} /></button>}
                 </div>
                 <span className="esig-count-badge">{activeDocuments.length}건</span>
-                <button className="esig-btn esig-btn-ghost" onClick={refreshAll} disabled={refreshing}>
-                  <FiRefreshCw size={14} />
-                  {refreshing ? '새로고침 중' : '새로고침'}
-                </button>
+                <div className="esig-pagination">
+                  <button className="esig-page-btn" onClick={() => setListPage((p) => Math.max(1, p - 1))} disabled={listPage === 1}>‹</button>
+                  <span className="esig-page-info">{listPage} / {listTotalPages}</span>
+                  <button className="esig-page-btn" onClick={() => setListPage((p) => Math.min(listTotalPages, p + 1))} disabled={listPage === listTotalPages}>›</button>
+                </div>
               </div>
             </div>
 
             <div className="esig-table-wrap">
-              {activeDocuments.length === 0
+              {loading ? (
+                <table className="esig-table">
+                  <thead><tr><th>상태</th><th>제목</th><th>작성자</th><th>기안번호</th><th>작성일</th></tr></thead>
+                  <tbody>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={i} className="esig-skeleton-row">
+                        <td><div className="esig-skeleton" style={{ width: 56, height: 22, borderRadius: 12 }} /></td>
+                        <td><div className="esig-skeleton" style={{ width: '60%', height: 16 }} /></td>
+                        <td><div className="esig-skeleton" style={{ width: 60, height: 16 }} /></td>
+                        <td><div className="esig-skeleton" style={{ width: 40, height: 16 }} /></td>
+                        <td><div className="esig-skeleton" style={{ width: 80, height: 16 }} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : activeDocuments.length === 0
                 ? (
                   <div className="esig-empty">
                     <FiFileText size={40} />
                     <p>결재 문서가 없습니다.</p>
                   </div>
                 ) : (
-                  <table className="esig-table">
-                    <thead>
-                      <tr>
-                        <th>상태</th>
-                        <th>제목</th>
-                        <th>작성자</th>
-                        <th>기안번호</th>
-                        <th>작성일</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeDocuments.map((doc) => {
-                        const meta = approvalStatusMeta[doc.status] || approvalStatusMeta.DRAFT
-                        return (
-                          <tr
-                            key={doc.id}
-                            onClick={() => openApproval(doc.id)}
-                            className={selectedApprovalId === doc.id ? 'active' : ''}
-                            role="button"
-                            tabIndex={0}
-                          >
-                            <td>
-                              <span className="esig-status-chip" style={{ background: meta.color }}>{meta.label}</span>
-                            </td>
-                            <td>
-                              <div className="esig-table-title">
-                                <strong>{doc.title}</strong>
-                                {doc.templateTitle && <span>{doc.templateTitle}</span>}
-                              </div>
-                            </td>
-                            <td>{doc.drafterName || '-'}</td>
-                            <td className="esig-table-id">#{doc.id}</td>
-                            <td>{prettyDate(doc.createdAt)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                  <>
+                    <table className="esig-table">
+                      <thead>
+                        <tr>
+                          <th>상태</th>
+                          <th>제목</th>
+                          <th>작성자</th>
+                          <th>기안번호</th>
+                          <th>작성일</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedDocuments.map((doc) => {
+                          const meta = approvalStatusMeta[doc.status] || approvalStatusMeta.DRAFT
+                          return (
+                            <tr
+                              key={doc.id}
+                              onClick={() => openApproval(doc.id)}
+                              className={selectedApprovalId === doc.id ? 'active' : ''}
+                              role="button"
+                              tabIndex={0}
+                            >
+                              <td>
+                                <span className="esig-status-chip" style={{ background: meta.color }}>{meta.label}</span>
+                              </td>
+                              <td>
+                                <div className="esig-table-title">
+                                  <strong>{doc.title}</strong>
+                                  {doc.templateTitle && <span>{doc.templateTitle}</span>}
+                                </div>
+                              </td>
+                              <td>{doc.drafterName || '-'}</td>
+                              <td className="esig-table-id">#{doc.id}</td>
+                              <td>{prettyDate(doc.createdAt)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </>
                 )}
             </div>
           </>

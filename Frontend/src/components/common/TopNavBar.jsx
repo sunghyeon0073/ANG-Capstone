@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FiHome, FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMapPin, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
+import { FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
 import { getUserProfileImage } from '../../api/userApi'
 
 export default function TopNavBar({ user, onLogout, currentPage, onPageChange, onOpenChatWindow, isChatWindowOpen }) {
@@ -35,7 +35,6 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
   const [notificationCount] = useState(0)
 
   const menuItems = [
-    { id: 'home', label: '홈', icon: FiHome },
     { id: 'document', label: '문서작성', icon: FiFileText },
     { id: 'esignature', label: '전자결재', icon: FiCheckCircle },
     { id: 'calendar', label: '캘린더', icon: FiCalendar },
@@ -85,7 +84,7 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
   return (
     <div className="topnavbar">
       <div className="topnavbar-left">
-        <div className="topnavbar-logo">ANG</div>
+        <button className="topnavbar-logo" onClick={() => onPageChange('home')}>ANG</button>
       </div>
 
       <div className="topnavbar-center">
@@ -108,10 +107,6 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
       </div>
 
       <div className="topnavbar-right">
-        <div className="topnavbar-search">
-          <input type="text" placeholder="검색" />
-        </div>
-
         <button
           type="button"
           className={`topnavbar-chat-button ${(currentMainCategory === 'chat' || isChatWindowOpen) ? 'active' : ''}`}

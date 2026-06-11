@@ -63,6 +63,16 @@ public class AiAssistantDto {
         private LocalDateTime scheduledAt;
     }
 
+    @Getter @Setter @NoArgsConstructor
+    public static class UpdateRequest {
+        private List<String> recipientEmpNos;
+        private List<String> recipientNames;
+        private String subject;
+        private String body;
+        private String channel;
+        private LocalDateTime scheduledAt;
+    }
+
     @Getter
     @Builder
     public static class ScheduleResponse {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../../api/authApi';
 
@@ -7,20 +7,14 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
 
-  useEffect(() => {
-    if (localStorage.getItem('token')) {
-      navigate('/dashboard', { replace: true })
-    }
-  }, [navigate])
-
   const handleLogin = async (e) => {
     e.preventDefault()
     try {
       const response = await login({ empNo: employeeId, password })
       const { data } = response.data
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('token', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
+      sessionStorage.setItem('user', JSON.stringify(data.user))
+      sessionStorage.setItem('token', data.accessToken)
+      sessionStorage.setItem('refreshToken', data.refreshToken)
       const username = data.user?.name || data.user?.empNo || '사용자'
       alert(`${username}님 환영합니다.`)
       navigate('/dashboard', { replace: true })
@@ -36,6 +30,14 @@ export default function Login() {
 
   return (
     <div className="auth-container">
+      {/* 왼쪽 로고 영역 */}
+      <div className="auth-brand">
+        <div className="auth-brand-logo">ANG</div>
+        <p className="auth-brand-sub">스마트 업무 포털</p>
+      </div>
+
+      {/* 오른쪽 로그인 패널 */}
+      <div className="auth-panel">
       <div className="auth-box">
         <h1>로그인</h1>
         <form onSubmit={handleLogin}>
@@ -74,6 +76,7 @@ export default function Login() {
             회원가입
           </button>
         </div>
+      </div>
       </div>
     </div>
   )

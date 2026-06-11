@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FiEdit, FiInbox, FiSend, FiStar, FiFolder, FiTrash2 } from 'react-icons/fi'
 import {
   deleteInboxMail,
   deleteSentMail,
@@ -911,9 +912,43 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     }
   }
 
+  const MAIL_NAV = [
+    { id: 'mail-compose',   label: '메일 작성',  icon: FiEdit },
+    { id: 'mail-inbox',     label: '받은메일함', icon: FiInbox },
+    { id: 'mail-sent',      label: '보낸메일함', icon: FiSend },
+    { id: 'mail-important', label: '중요',       icon: FiStar },
+    { id: 'mail-drafts',    label: '임시보관함', icon: FiFolder },
+    { id: 'mail-trash',     label: '휴지통',     icon: FiTrash2 },
+  ]
+
+  const handleNavClick = (id) => {
+    onSubPageChange?.(id)
+  }
+
   // 화면 렌더링: 작성 화면과 목록/상세 화면을 현재 메일함 상태에 맞춰 나눠 보여줍니다.
   return (
-    <div className={`mail-page ${isComposePage ? 'mail-compose-page' : ''}`}>
+    <div className="mail-workspace">
+      {/* 내부 사이드바 */}
+      <aside className="mail-rail">
+        <div className="mail-rail-header">
+          <span className="mail-rail-title">메일</span>
+        </div>
+        <nav className="mail-nav">
+          {MAIL_NAV.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              className={`mail-nav-item ${activeBox === id ? 'active' : ''}`}
+              onClick={() => handleNavClick(id)}
+            >
+              <Icon size={15} />
+              <span className="mail-nav-label">{label}</span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      {/* 본문 영역 */}
+      <div className={`mail-page ${isComposePage ? 'mail-compose-page' : ''}`}>
       {errorMessage && <div className="mail-error">{errorMessage}</div>}
       {attachmentMessage && <div className="mail-error">{attachmentMessage}</div>}
 
@@ -1004,6 +1039,7 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
         </div>
       )}
 
+      </div>
     </div>
   )
 }
