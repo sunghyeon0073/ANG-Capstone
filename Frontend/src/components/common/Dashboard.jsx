@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [contactRequest, setContactRequest] = useState(null)
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
   const [chatContactRequest, setChatContactRequest] = useState(null)
+  const [chatUnreadCount, setChatUnreadCount] = useState(0)
 
   useEffect(() => {
     const savedUser = sessionStorage.getItem('user')
@@ -142,6 +143,7 @@ export default function Dashboard() {
         onPageChange={handlePageChange}
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
+        chatUnreadCount={chatUnreadCount}
       />
       <div className={`dashboard-content ${(currentPage === 'mypage' || currentPage === 'calendar' || getMainCategory(currentPage) === 'document' || getMainCategory(currentPage) === 'file' || getMainCategory(currentPage) === 'esignature' || getMainCategory(currentPage) === 'board' || getMainCategory(currentPage) === 'mail') ? 'full-width' : ''}`}>
         {currentPage !== 'mypage' && currentPage !== 'calendar' && getMainCategory(currentPage) !== 'document' && getMainCategory(currentPage) !== 'file' && getMainCategory(currentPage) !== 'esignature' && getMainCategory(currentPage) !== 'board' && getMainCategory(currentPage) !== 'mail' && (
@@ -162,6 +164,7 @@ export default function Dashboard() {
         onContactRequestHandled={() => setChatContactRequest(null)}
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         onCloseChatWindow={() => setIsChatWindowOpen(false)}
+        onUnreadCountChange={setChatUnreadCount}
       />
       {getMainCategory(currentPage) !== 'esignature' && (
         <FloatingMascot mode={getMainCategory(currentPage) === 'document' ? 'ai' : 'default'} onSubPageChange={handlePageChange} />

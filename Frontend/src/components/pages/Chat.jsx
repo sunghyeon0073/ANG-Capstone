@@ -617,8 +617,9 @@ export default function Chat({
   onOpenChatWindow,
   contactRequest,
   onContactRequestHandled,
+  onUnreadCountChange,
 }) {
-  const storedUser = useMemo(getStoredUser, [])
+  const storedUser = useMemo(() => getStoredUser(), [])
   const currentUser = user || storedUser
   const currentEmpNo = currentUser?.empNo
 
@@ -648,6 +649,15 @@ export default function Chat({
     height: Math.min(630, window.innerHeight - 48),
   }))
 
+  const totalUnreadCount = useMemo(
+    () => rooms.reduce((total, room) => total + Math.max(0, Number(room.unreadCount) || 0), 0),
+    [rooms]
+  )
+
+  useEffect(() => {
+    onUnreadCountChange?.(totalUnreadCount)
+  }, [onUnreadCountChange, totalUnreadCount])
+
   const stompClientRef = useRef(null)
   const chatWindowRef = useRef(null)
   const subscribedRoomsRef = useRef(new Map())
@@ -657,8 +667,8 @@ export default function Chat({
   const openInvitedRoomRef = useRef(null)
   const processedContactRequestRef = useRef(null)
 
-  const loadRooms = useCallback(async () => {
-    setLoading(true)
+  const loadRooms = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) setLoading(true)
     setError('')
     try {
       const data = await getChatRooms()
@@ -677,7 +687,7 @@ export default function Chat({
       setError(getChatRequestErrorMessage(err))
       return []
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }, [currentEmpNo])
 
@@ -895,13 +905,21 @@ export default function Chat({
   }, [currentEmpNo, loadRooms, subscribeRoom])
 
   useEffect(() => {
-    loadRooms()
-    connectStompSocket()
+    const subscriptions = subscribedRoomsRef.current
+
+    const initializeChat = async () => {
+      await Promise.all([
+        loadRooms({ showLoading: true }),
+        connectStompSocket(),
+      ])
+    }
+
+    initializeChat()
 
     return () => {
       stompClientRef.current?.deactivate()
       stompClientRef.current = null
-      subscribedRoomsRef.current.clear()
+      subscriptions.clear()
     }
   }, [connectStompSocket, loadRooms])
 
@@ -954,19 +972,19 @@ export default function Chat({
     if (!requestId || processedContactRequestRef.current === requestId) return
     processedContactRequestRef.current = requestId
 
-    if (!recipientEmpNo) {
-      setError('채팅 상대의 사번을 확인할 수 없습니다.')
-      onContactRequestHandled?.()
-      return
-    }
-
-    if (recipientEmpNo === currentEmpNo) {
-      setError('본인과의 1:1 채팅은 시작할 수 없습니다.')
-      onContactRequestHandled?.()
-      return
-    }
-
     const startPrivateChat = async () => {
+      if (!recipientEmpNo) {
+        setError('채팅 상대의 사번을 확인할 수 없습니다.')
+        onContactRequestHandled?.()
+        return
+      }
+
+      if (recipientEmpNo === currentEmpNo) {
+        setError('본인과의 1:1 채팅은 시작할 수 없습니다.')
+        onContactRequestHandled?.()
+        return
+      }
+
       try {
         const currentRooms = await loadRooms()
         const existingRoom = currentRooms.find(room => (
@@ -1010,7 +1028,7 @@ export default function Chat({
     setOpenRoomIds(prev => prev.filter(id => id !== normalizedRoomId))
   }
 
-  const normalizeCandidate = candidate => {
+  const normalizeCandidate = useCallback(candidate => {
     const primaryDepartment = candidate.departments?.[0] || {}
     return {
       empNo: candidate.empNo || candidate.employeeNo || candidate.username || candidate.userEmpNo,
@@ -1028,9 +1046,9 @@ export default function Chat({
         || primaryDepartment.positionName
         || '',
     }
-  }
+  }, [])
 
-  const loadMemberCandidates = async ({ silent = false } = {}) => {
+  const loadMemberCandidates = useCallback(async ({ silent = false } = {}) => {
     try {
       const data = await getChatMemberCandidates()
       const candidates = data
@@ -1041,11 +1059,15 @@ export default function Chat({
       console.error('채팅 인원 목록 조회 실패', err)
       if (!silent) setError(getChatRequestErrorMessage(err))
     }
-  }
+  }, [currentEmpNo, normalizeCandidate])
 
   useEffect(() => {
-    loadMemberCandidates({ silent: true })
-  }, [currentEmpNo])
+    const initializeMemberCandidates = async () => {
+      await loadMemberCandidates({ silent: true })
+    }
+
+    initializeMemberCandidates()
+  }, [loadMemberCandidates])
 
   const closeMemberModal = () => {
     setIsCreateModalOpen(false)

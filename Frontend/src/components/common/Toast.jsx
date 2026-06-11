@@ -1,14 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import '../../style/toast.css'
 
 export default function Toast() {
   const [toasts, setToasts] = useState([])
+  const timeoutIdsRef = useRef(new Map())
 
-  const removeToast = (id) => {
+  const removeToast = useCallback((id) => {
+    const timeoutId = timeoutIdsRef.current.get(id)
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutIdsRef.current.delete(id)
+    }
     setToasts((current) => current.filter((toast) => toast.id !== id))
-  }
+  }, [])
 
   useEffect(() => {
+    const timeoutIds = timeoutIdsRef.current
+
     const handler = (e) => {
       const detail = e.detail || {}
       const id = Date.now() + Math.random()
@@ -22,14 +30,19 @@ export default function Toast() {
         duration: detail.duration ?? 3000,
       }
       setToasts((current) => [...current.slice(-2), toast])
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         removeToast(id)
       }, toast.duration)
+      timeoutIds.set(id, timeoutId)
     }
 
     window.addEventListener('ang:toast', handler)
-    return () => window.removeEventListener('ang:toast', handler)
-  }, [])
+    return () => {
+      window.removeEventListener('ang:toast', handler)
+      timeoutIds.forEach(clearTimeout)
+      timeoutIds.clear()
+    }
+  }, [removeToast])
 
   if (!toasts.length) return null
 

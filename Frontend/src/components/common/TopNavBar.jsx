@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react'
 import { FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
 import { getUserProfileImage } from '../../api/userApi'
 
-export default function TopNavBar({ user, onLogout, currentPage, onPageChange, onOpenChatWindow, isChatWindowOpen }) {
+export default function TopNavBar({
+  user,
+  onLogout,
+  currentPage,
+  onPageChange,
+  onOpenChatWindow,
+  isChatWindowOpen,
+  chatUnreadCount = 0,
+}) {
   const [profileImageSrc, setProfileImageSrc] = useState('')
 
   useEffect(() => {
@@ -114,6 +122,11 @@ export default function TopNavBar({ user, onLogout, currentPage, onPageChange, o
         >
           <FiMessageCircle className="notification-icon" />
           <span>채팅</span>
+          {chatUnreadCount > 0 && (
+            <span className="chat-unread-badge">
+              {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+            </span>
+          )}
         </button>
 
         <button className="topnavbar-notification">
