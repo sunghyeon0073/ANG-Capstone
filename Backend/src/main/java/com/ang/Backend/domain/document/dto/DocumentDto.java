@@ -66,6 +66,7 @@ public class DocumentDto {
         private boolean canDelete;
         @JsonProperty("isFavorite")
         private boolean isFavorite;
+        private List<ChangeItem> changes;
 
         public static Response fromEntity(DocumentEntity entity) {
             return Response.builder()
@@ -117,6 +118,17 @@ public class DocumentDto {
         public void setFavorite(boolean favorite) {
             this.isFavorite = favorite;
         }
+
+        public void setChanges(List<ChangeItem> changes) {
+            this.changes = changes;
+        }
+    }
+
+    @Getter @Builder
+    public static class ChangeItem {
+        private String blockId;
+        private String find;
+        private String replace;
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
