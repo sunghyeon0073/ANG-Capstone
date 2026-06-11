@@ -3,6 +3,7 @@ import HomeCalendar from './HomeCalendar'
 import Board from './Board'
 import { reserveScheduledSend, getAiSchedules, cancelAiSchedule, updateAiSchedule } from '../../api/aiAssistantApi'
 import { searchUsers } from '../../api/userApi'
+import { getMyDocuments } from '../../api/documentApi'
 import {
   FiAlertCircle, FiCheck, FiChevronLeft, FiChevronRight,
   FiClock, FiEdit2, FiLoader, FiMail, FiMessageSquare,
@@ -27,6 +28,17 @@ const STATUS_META = {
 }
 
 const STATUS_FILTERS = ['ALL', 'PENDING', 'SENT', 'FAILED', 'CANCELLED']
+
+const unwrapApiData = response => response?.data?.data ?? response?.data ?? response
+
+const extractDocumentList = response => {
+  const data = unwrapApiData(response)
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.content)) return data.content
+  return []
+}
+
+const getDocumentFileId = doc => doc?.fileId ?? doc?.file?.id ?? doc?.fileItemId ?? null
 
 const toDateTimeLocalValue = (value) => {
   if (!value) return ''
@@ -182,6 +194,195 @@ function StatusBadge({ status }) {
   return <span className={`reserve-status-badge ${meta.tone}`}>{meta.label}</span>
 }
 
+function DocumentAttachmentPicker({ selectedDocs, onChange, selectedFileIds = [], onSelectedFileIdsChange }) {
+  const [open, setOpen] = useState(false)
+  const [documents, setDocuments] = useState([])
+  const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const selectedIdSet = useMemo(
+    () => new Set(selectedDocs.map(doc => getDocumentFileId(doc)).filter(Boolean)),
+    [selectedDocs]
+  )
+
+  const selectedFileIdSet = useMemo(
+    () => new Set(selectedFileIds.filter(Boolean)),
+    [selectedFileIds]
+  )
+  const selectedCount = selectedDocs.length + selectedFileIdSet.size
+
+  const loadDocuments = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await getMyDocuments({ keyword: query.trim() || undefined, size: 80, page: 0 })
+      setDocuments(extractDocumentList(res))
+    } catch {
+      setError('문서 목록을 불러오지 못했습니다.')
+      setDocuments([])
+    } finally {
+      setLoading(false)
+    }
+  }, [query])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const timer = setTimeout(loadDocuments, 180)
+    return () => clearTimeout(timer)
+  }, [loadDocuments, open])
+
+  const toggleDocument = (doc) => {
+    const fileId = getDocumentFileId(doc)
+    if (!fileId) return
+    if (selectedIdSet.has(fileId)) {
+      onChange(selectedDocs.filter(item => getDocumentFileId(item) !== fileId))
+      return
+    }
+    if (selectedFileIdSet.has(fileId)) {
+      onSelectedFileIdsChange?.(selectedFileIds.filter(id => id !== fileId))
+      return
+    }
+    onChange([...selectedDocs, doc])
+  }
+
+  const removeDocument = (fileId) => {
+    onChange(selectedDocs.filter(doc => getDocumentFileId(doc) !== fileId))
+  }
+
+  const removeExistingFile = (fileId) => {
+    onSelectedFileIdsChange?.(selectedFileIds.filter(id => id !== fileId))
+  }
+
+  const clearSelection = () => {
+    onChange([])
+    onSelectedFileIdsChange?.([])
+  }
+
+  const visibleDocuments = useMemo(() => {
+    const keyword = query.trim().toLowerCase()
+    if (!keyword) return documents
+    return documents.filter(doc => [
+      doc.title,
+      doc.originalFileName,
+      doc.scopeName,
+      doc.fileContentType,
+    ].filter(Boolean).join(' ').toLowerCase().includes(keyword))
+  }, [documents, query])
+
+  return (
+    <div className="reserve-attachment">
+      <div className="reserve-attachment-bar">
+        <div>
+          <strong>{selectedCount > 0 ? `${selectedCount}개 문서 선택됨` : '첨부할 문서를 선택하세요'}</strong>
+          <span>메일 예약 발송 시 선택한 문서 파일이 함께 전송됩니다.</span>
+        </div>
+        <button type="button" className="btn btn-secondary" onClick={() => setOpen(true)}>
+          <FiPaperclip size={13} /> 문서 선택
+        </button>
+      </div>
+
+      {selectedDocs.length > 0 && (
+        <div className="reserve-attachment-selected">
+          {selectedDocs.map(doc => {
+            const fileId = getDocumentFileId(doc)
+            return (
+              <span key={fileId || doc.docId} className="reserve-attachment-chip">
+                {doc.title || doc.originalFileName || `파일 ${fileId}`}
+                <button type="button" onClick={() => removeDocument(fileId)} aria-label="첨부 제거">
+                  <FiX size={11} />
+                </button>
+              </span>
+            )
+          })}
+        </div>
+      )}
+
+      {selectedFileIdSet.size > 0 && (
+        <div className="reserve-attachment-selected">
+          {selectedFileIds.map(fileId => (
+            <span key={fileId} className="reserve-attachment-chip is-existing">
+              기존 첨부 #{fileId}
+              {onSelectedFileIdsChange && (
+                <button type="button" onClick={() => removeExistingFile(fileId)} aria-label="기존 첨부 제거">
+                  <FiX size={11} />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {open && (
+        <div className="reserve-modal-overlay" onClick={e => e.target === e.currentTarget && setOpen(false)}>
+          <div className="reserve-modal reserve-document-modal">
+            <div className="reserve-modal-header">
+              <div>
+                <span className="reserve-modal-title">문서 선택</span>
+                <p className="reserve-modal-subtitle">문서생성의 내 문서 목록에서 첨부할 파일을 고릅니다.</p>
+              </div>
+              <button type="button" className="reserve-modal-close" onClick={() => setOpen(false)} aria-label="닫기">
+                <FiX size={16} />
+              </button>
+            </div>
+            <div className="reserve-document-search">
+              <FiSearch size={15} />
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="문서명, 파일명 검색"
+                autoFocus
+              />
+            </div>
+            <div className="reserve-document-list">
+              {loading ? (
+                <div className="reserve-document-empty">
+                  <FiLoader size={18} className="mascot-spin" /> 문서를 불러오는 중입니다.
+                </div>
+              ) : error ? (
+                <div className="reserve-document-empty">{error}</div>
+              ) : visibleDocuments.length === 0 ? (
+                <div className="reserve-document-empty">선택할 문서가 없습니다.</div>
+              ) : (
+                visibleDocuments.map(doc => {
+                  const fileId = getDocumentFileId(doc)
+                  const checked = selectedIdSet.has(fileId) || selectedFileIdSet.has(fileId)
+                  const disabled = !fileId
+                  return (
+                    <button
+                      type="button"
+                      key={doc.docId || fileId}
+                      className={`reserve-document-item ${checked ? 'is-selected' : ''}`}
+                      onClick={() => toggleDocument(doc)}
+                      disabled={disabled}
+                    >
+                      <span className="reserve-document-check">{checked ? <FiCheck size={13} /> : null}</span>
+                      <span className="reserve-document-info">
+                        <strong>{doc.title || doc.originalFileName || '제목 없음'}</strong>
+                        <small>
+                          {doc.originalFileName || '저장 문서'}
+                          {doc.scopeName ? ` · ${doc.scopeName === 'N/A' ? '개인 문서' : doc.scopeName}` : ''}
+                        </small>
+                      </span>
+                      {disabled && <span className="reserve-document-disabled">파일 없음</span>}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+            <div className="reserve-modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={clearSelection}>선택 해제</button>
+              <button type="button" className="btn btn-primary" onClick={() => setOpen(false)}>
+                <FiCheck size={13} /> 선택 완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EditModal({ item, onClose, onSaved }) {
   const [recipients, setRecipients] = useState(
     (item.recipientEmpNos || []).map((empNo, i) => ({ empNo, name: (item.recipientNames || [])[i] || empNo }))
@@ -191,11 +392,17 @@ function EditModal({ item, onClose, onSaved }) {
   const [channel, setChannel] = useState((item.channel || '').toUpperCase() === 'MAIL' ? 'mail' : 'chat')
   const [scheduledAt, setScheduledAt] = useState(toDateTimeLocalValue(item.scheduledAt))
   const [minScheduleAt] = useState(() => toDateTimeLocalValue(Date.now() + 60000))
+  const [selectedDocs, setSelectedDocs] = useState([])
+  const [retainedFileIds, setRetainedFileIds] = useState(item.fileIds || [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const handleSave = async () => {
     if (!body.trim()) { setError('본문을 입력해주세요.'); return }
+    const selectedFileIds = Array.from(new Set([
+      ...retainedFileIds,
+      ...selectedDocs.map(getDocumentFileId).filter(Boolean),
+    ]))
     setSaving(true)
     setError('')
     try {
@@ -206,6 +413,7 @@ function EditModal({ item, onClose, onSaved }) {
         body: body.trim(),
         channel,
         scheduledAt: toLocalDateTimePayload(scheduledAt),
+        fileIds: channel === 'mail' ? selectedFileIds : [],
       })
       onSaved(updated)
     } catch (err) {
@@ -263,6 +471,17 @@ function EditModal({ item, onClose, onSaved }) {
           <input type="datetime-local" className="home-reserve-input"
             value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
             min={minScheduleAt} />
+
+          <label className="home-reserve-label">
+            <FiPaperclip size={13} /> 첨부 문서
+            <span className="home-reserve-optional">메일 전용</span>
+          </label>
+          <DocumentAttachmentPicker
+            selectedDocs={selectedDocs}
+            onChange={setSelectedDocs}
+            selectedFileIds={retainedFileIds}
+            onSelectedFileIdsChange={setRetainedFileIds}
+          />
 
           {error && <p className="home-reserve-error">{error}</p>}
         </div>
@@ -448,6 +667,9 @@ function ReserveList({ onSubPageChange }) {
                     <div className="reserve-card-meta">
                       <span><FiUser size={12} />{recipients}</span>
                       <span><FiClock size={12} />{formatScheduleTime(item.scheduledAt)}</span>
+                      {(item.fileIds || []).length > 0 && (
+                        <span><FiPaperclip size={12} />첨부 {(item.fileIds || []).length}개</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -498,6 +720,7 @@ export default function Home({ currentSubPage, onSubPageChange }) {
   const [channel, setChannel] = useState('chat')
   const [scheduledAt, setScheduledAt] = useState('')
   const [minScheduleAt] = useState(() => toDateTimeLocalValue(Date.now() + 60000))
+  const [selectedDocs, setSelectedDocs] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(null)
   const [error, setError] = useState('')
@@ -510,7 +733,7 @@ export default function Home({ currentSubPage, onSubPageChange }) {
 
   const reset = () => {
     setStep(0); setRecipients([]); setSubject(''); setBody('')
-    setChannel('chat'); setScheduledAt(''); setDone(null); setError('')
+    setChannel('chat'); setScheduledAt(''); setSelectedDocs([]); setDone(null); setError('')
   }
 
   const canNext = () => {
@@ -520,6 +743,7 @@ export default function Home({ currentSubPage, onSubPageChange }) {
   }
 
   const handleSubmit = async () => {
+    const selectedFileIds = selectedDocs.map(getDocumentFileId).filter(Boolean)
     setSubmitting(true)
     setError('')
     try {
@@ -529,7 +753,7 @@ export default function Home({ currentSubPage, onSubPageChange }) {
         subject: subject.trim() || null,
         body: body.trim(),
         channel,
-        fileIds: [],
+        fileIds: channel === 'mail' ? selectedFileIds : [],
         scheduledAt: toLocalDateTimePayload(scheduledAt),
       })
       setDone(result)
@@ -651,9 +875,12 @@ export default function Home({ currentSubPage, onSubPageChange }) {
                 <div className="home-reserve-step-content">
                   <label className="home-reserve-label">
                     <FiPaperclip size={13} /> 파일 첨부
-                    <span className="home-reserve-optional">선택</span>
+                    <span className="home-reserve-optional">메일 전용</span>
                   </label>
-                  <p className="home-reserve-hint">첨부 연동은 준비 중입니다. 지금은 메시지만 예약하고 다음 단계로 넘어가세요.</p>
+                  <DocumentAttachmentPicker selectedDocs={selectedDocs} onChange={setSelectedDocs} />
+                  {channel !== 'mail' && selectedDocs.length > 0 && (
+                    <p className="home-reserve-hint">현재 채팅 예약은 첨부 발송을 지원하지 않아, 메일 방식일 때만 첨부됩니다.</p>
+                  )}
                 </div>
               )}
 
@@ -677,6 +904,7 @@ export default function Home({ currentSubPage, onSubPageChange }) {
                     {subject && <p><strong>제목</strong>{subject}</p>}
                     <p><strong>본문</strong>{body.length > 80 ? `${body.slice(0, 80)}...` : body}</p>
                     <p><strong>방식</strong>{channel === 'mail' ? '메일' : '채팅'}</p>
+                    <p><strong>첨부</strong>{channel === 'mail' && selectedDocs.length > 0 ? `${selectedDocs.length}개 문서` : '없음'}</p>
                     <p><strong>시간</strong>{scheduledAt ? new Date(scheduledAt).toLocaleString('ko-KR') : '즉시 발송'}</p>
                   </div>
 
