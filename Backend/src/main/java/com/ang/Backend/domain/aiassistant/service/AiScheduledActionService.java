@@ -178,12 +178,17 @@ public class AiScheduledActionService {
         if (req.getChannel() != null) {
             action.setChannel("mail".equalsIgnoreCase(req.getChannel()) ? ScheduledActionChannel.MAIL : ScheduledActionChannel.CHAT);
         }
-        if (req.getScheduledAt() != null) {
-            action.setScheduledAt(req.getScheduledAt());
+        action.setScheduledAt(req.getScheduledAt() != null ? req.getScheduledAt() : LocalDateTime.now().plusSeconds(10));
+        if (req.getFileIds() != null) {
+            String fileIdsStr = req.getFileIds().isEmpty()
+                    ? null
+                    : req.getFileIds().stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+            action.setFileIds(fileIdsStr);
         }
         List<String> empNos = req.getRecipientEmpNos() != null ? req.getRecipientEmpNos() : splitStrings(action.getRecipientEmpNos());
         List<String> names = req.getRecipientNames() != null ? req.getRecipientNames() : splitStrings(action.getRecipientNames());
-        return AiAssistantDto.ScheduleResponse.from(action, empNos, names, splitLongs(action.getFileIds()));
+        List<Long> fileIds = req.getFileIds() != null ? req.getFileIds() : splitLongs(action.getFileIds());
+        return AiAssistantDto.ScheduleResponse.from(action, empNos, names, fileIds);
     }
 
     @Scheduled(fixedDelay = 30000)
