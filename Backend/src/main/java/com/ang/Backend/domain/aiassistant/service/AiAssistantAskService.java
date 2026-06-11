@@ -144,6 +144,7 @@ public class AiAssistantAskService {
                 + "규칙:\n"
                 + "- 사용자가 '오늘 일정 뭐있냐', '오늘 뭐 있어', '내일 회의 있나'처럼 물으면 schedule_query입니다.\n"
                 + "- '찾아', '찾아줘', '검색', '알려줘', '보여줘', '있어', '뭐야' 같은 동사/명령어는 keyword가 아닙니다.\n"
+                + "- '목록', '리스트', '전체', '확인', '확인해줘', '조회', '내역', '현황'처럼 전체 목록을 보여달라는 표현도 keyword가 아닙니다. 이런 단어만 있으면 keyword는 null입니다.\n"
                 + "- keyword는 사용자가 찾으려는 핵심 명사만 넣으세요. 예: '계약서 메일 찾아줘' -> 계약서\n"
                 + "- 일정 질문에서 날짜 표현이 없으면 today로 둡니다.\n"
                 + "- dateRange는 today, tomorrow, this_week, next_week, null 중 하나만 사용하세요.\n\n"
@@ -160,7 +161,9 @@ public class AiAssistantAskService {
                 + "질문: 계약서 메일 찾아줘 -> {\"intent\":\"mail_search\",\"keyword\":\"계약서\",\"dateRange\":null}\n"
                 + "질문: 결재 밀린 거 있어? -> {\"intent\":\"approval_query\",\"keyword\":null,\"dateRange\":null}\n"
                 + "질문: 내가 쓴 기획서 뭐 있나 -> {\"intent\":\"document_search\",\"keyword\":\"기획서\",\"dateRange\":null}\n"
-                + "질문: 회의자료 찾아봐 -> {\"intent\":\"document_search\",\"keyword\":\"회의자료\",\"dateRange\":null}\n\n"
+                + "질문: 회의자료 찾아봐 -> {\"intent\":\"document_search\",\"keyword\":\"회의자료\",\"dateRange\":null}\n"
+                + "질문: 메일 목록 확인해줘 -> {\"intent\":\"mail_search\",\"keyword\":null,\"dateRange\":null}\n"
+                + "질문: 최근 문서 내역 보여줘 -> {\"intent\":\"document_search\",\"keyword\":null,\"dateRange\":null}\n\n"
                 + "질문: " + userInput;
     }
 
@@ -219,13 +222,24 @@ public class AiAssistantAskService {
         return "mail_search".equals(intent) || "document_search".equals(intent) || "file_search".equals(intent);
     }
 
+    // "그냥 보여줘/목록/확인" 류의 표현 — 검색 키워드가 아니라 "전체 목록 조회" 의도를 나타내는 필러
+    private static final String[] GENERIC_LIST_FILLERS = {
+            "목록", "리스트", "전체", "모두", "내역", "현황", "좀", "줄래", "줘봐",
+            "확인해줘", "확인해", "확인할래", "조회해줘", "조회해", "보여줄래", "보여줄게"
+    };
+
     private String[] commonCommandWordsForIntent(String intent) {
-        return switch (intent) {
+        String[] generic = GENERIC_LIST_FILLERS;
+        String[] specific = switch (intent) {
             case "mail_search" -> new String[]{"메일", "이메일", "찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "보낸", "받은", "최근", "있어", "있냐", "뭐야"};
             case "document_search" -> new String[]{"문서", "보고서", "기획서", "계획서", "자료", "찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "관련", "최근", "있어", "있냐", "뭐야"};
             case "file_search" -> new String[]{"파일", "첨부", "첨부파일", "찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "관련", "최근", "있어", "있냐", "뭐야"};
             default -> new String[]{"찾아줘", "찾아", "찾아봐", "검색", "검색해줘", "알려줘", "보여줘", "뭐야", "있어", "있냐", "최근"};
         };
+        String[] combined = new String[specific.length + generic.length];
+        System.arraycopy(specific, 0, combined, 0, specific.length);
+        System.arraycopy(generic, 0, combined, specific.length, generic.length);
+        return combined;
     }
 
     private String detectDateRange(String p) {
@@ -561,7 +575,15 @@ public class AiAssistantAskService {
     }
 
     private boolean isCommandWord(String value) {
-        return containsAny(value, "찾아", "찾아줘", "검색", "검색해줘", "알려줘", "보여줘", "뭐야", "있어", "있냐", "최근");
+        if (containsAny(value, "찾아", "찾아줘", "검색", "검색해줘", "알려줘", "보여줘", "뭐야", "있어", "있냐", "최근")) return true;
+        if (containsAny(value, GENERIC_LIST_FILLERS)) return true;
+        // "확인서"처럼 단어 일부에 포함된 경우는 키워드로 인정하고, 단독 토큰일 때만 필러로 취급
+        return isExactly(value, "확인", "조회");
+    }
+
+    private boolean isExactly(String value, String... candidates) {
+        for (String c : candidates) if (value.equals(c)) return true;
+        return false;
     }
 
     private String truncate(String text, int max) {
