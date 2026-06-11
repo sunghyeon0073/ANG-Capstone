@@ -31,7 +31,7 @@
 }
 
 .chat-toast {
-  border-left: 4px solid #ff826f;
+  border-left: 4px solid var(--color-primary);
 }
 
 .chat-toast-avatar {
@@ -41,7 +41,7 @@
   height: 42px;
   place-items: center;
   border-radius: 50%;
-  background: #ff826f;
+  background: var(--color-primary);
   color: #fff;
   font-size: 16px;
   font-weight: 800;
