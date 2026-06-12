@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { session } from '../../utils/storageUtils'
+import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../api/notificationApi'
 import TopNavBar from './TopNavBar'
 import Home from '../pages/Home'
 import DocumentWriter from '../pages/DocumentWriter'
@@ -57,6 +58,27 @@ export default function Dashboard() {
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
   const [chatContactRequest, setChatContactRequest] = useState(null)
   const [chatUnreadCount, setChatUnreadCount] = useState(0)
+  const [notifications, setNotifications] = useState([])
+
+  useEffect(() => {
+    getNotifications(0, 30)
+      .then(res => setNotifications(res.data?.data?.content || []))
+      .catch(() => {})
+  }, [])
+
+  const handleNewNotification = useCallback((notification) => {
+    setNotifications(prev => [notification, ...prev])
+  }, [])
+
+  const handleMarkRead = useCallback(async (id) => {
+    await markNotificationAsRead(id).catch(() => {})
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }, [])
+
+  const handleMarkAllRead = useCallback(async () => {
+    await markAllNotificationsAsRead().catch(() => {})
+    setNotifications([])
+  }, [])
 
   useEffect(() => {
     const user = session.getUser()
@@ -87,6 +109,11 @@ export default function Dashboard() {
     } else {
       setCurrentPage(pageId)
     }
+  }
+
+  const handleNotificationNavigate = (type) => {
+    const pageMap = { BOARD: 'board', MAIL: 'mail-inbox', APPROVAL: 'esignature-waiting' }
+    handlePageChange(pageMap[type] || 'home-dashboard')
   }
 
   const openMailCompose = (contact) => {
@@ -134,6 +161,10 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
         chatUnreadCount={chatUnreadCount}
+        notifications={notifications}
+        onMarkRead={handleMarkRead}
+        onMarkAllRead={handleMarkAllRead}
+        onNotificationNavigate={handleNotificationNavigate}
       />
       <div className="dashboard-content full-width">
         <div className={`main-content${FILL_CATEGORIES.has(mainCategory) ? ' main-content--fill' : ''}`}>
@@ -149,6 +180,7 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         onCloseChatWindow={() => setIsChatWindowOpen(false)}
         onUnreadCountChange={setChatUnreadCount}
+        onNotification={handleNewNotification}
       />
       {mainCategory !== 'esignature' && (
         <FloatingMascot
