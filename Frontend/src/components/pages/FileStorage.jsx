@@ -11,18 +11,18 @@ import {
 } from 'react-icons/fa';
 import api from '../../api/axios';
 import {
-  getMyDocuments,
-  getDepartmentDocuments,
-  getTrashDocuments,
-  uploadDocument,
-  deleteDocument,
-  permanentDeleteDocument,
-  restoreDocument,
-  downloadDocumentFile,
-  toggleFavorite,
-  getFavoriteDocuments,
-  getAllDocuments
-} from '../../api/documentApi';
+  getMyFiles,
+  getDepartmentFiles,
+  getTrashFiles,
+  uploadFile as apiUploadFile,
+  deleteFile,
+  permanentDeleteFile,
+  restoreFile,
+  downloadFile as apiDownloadFile,
+  toggleFavoriteFile,
+  getFavoriteFiles,
+  getAllFiles
+} from '../../api/fileApi';
 import { getApprovalTemplates } from '../../api/approvalApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
 
@@ -77,7 +77,7 @@ export default function FileStorage() {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'uploadedAt', direction: 'desc' });
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(0); // Backend is 0-indexed
@@ -112,11 +112,11 @@ export default function FileStorage() {
       };
 
       if (activeTab === 'trash') {
-        res = await getTrashDocuments(params);
+        res = await getTrashFiles(params);
       } else if (activeTab === 'shared') {
-        res = await getDepartmentDocuments({ ...params, scopeId: targetScopeId });
+        res = await getDepartmentFiles({ ...params, scopeId: targetScopeId });
       } else if (activeTab === 'important') {
-        res = await getFavoriteDocuments(params);
+        res = await getFavoriteFiles(params);
       } else if (activeTab === 'template') {
         res = await getApprovalTemplates();
         const templates = res.data?.data || [];
@@ -135,19 +135,26 @@ export default function FileStorage() {
         setIsLoading(false);
         return;
       } else if (activeTab === 'all') {
-        res = await getAllDocuments(params);
+        res = await getAllFiles(params);
       } else {
-        res = await getMyDocuments(params);
+        res = await getMyFiles(params);
       }
       
       const pagedRes = res.data?.data;
       if (pagedRes && Array.isArray(pagedRes.content)) {
-        setDocs(pagedRes.content);
+        // Map fileId to docId for UI compatibility
+        const mappedContent = pagedRes.content.map(item => ({
+          ...item,
+          docId: item.fileId,
+          fileId: item.fileId,
+        }));
+        setDocs(mappedContent);
         setTotalPages(pagedRes.totalPages);
       } else {
         setDocs([]);
         setTotalPages(0);
       }
+
     } catch (error) {
       console.error('문서 로드 실패', error);
       setDocs([]);
@@ -159,7 +166,7 @@ export default function FileStorage() {
   const handleToggleFavorite = async (e, docId) => {
     e.stopPropagation();
     try {
-      const res = await toggleFavorite(docId);
+      const res = await toggleFavoriteFile(docId);
       const newState = res.data?.data;
       
       if (newState !== undefined) {
@@ -180,7 +187,7 @@ export default function FileStorage() {
     e.preventDefault();
     if (!selectedDocId || !renameTitle.trim()) return;
     try {
-      await api.put(`/documents/${selectedDocId}`, { title: renameTitle });
+      await renameFile(selectedDocId, { title: renameTitle });
       setDocs(prev => prev.map(doc => 
         doc.docId === selectedDocId ? { ...doc, title: renameTitle } : doc
       ));
@@ -222,7 +229,14 @@ export default function FileStorage() {
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!uploadFile || !uploadTitle.trim()) return;
+    if (!uploadFile) {
+      alert('업로드할 파일을 선택해주세요.');
+      return;
+    }
+    if (!uploadTitle.trim()) {
+      alert('문서 제목을 입력해주세요.');
+      return;
+    }
     try {
       setUploading(true);
       const formData = new FormData();
@@ -232,7 +246,7 @@ export default function FileStorage() {
         formData.append('targetScopeId', targetScopeId);
       }
       
-      await uploadDocument(formData);
+      await apiUploadFile(formData);
       setShowUploadModal(false);
       setUploadTitle('');
       setUploadFile(null);
@@ -247,7 +261,7 @@ export default function FileStorage() {
 
   const handleDownload = async (fileId, fileName) => {
     try {
-      const res = await downloadDocumentFile(fileId);
+      const res = await apiDownloadFile(fileId);
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -269,9 +283,9 @@ export default function FileStorage() {
     if (!window.confirm(msg)) return;
     try {
       if (isTrash) {
-        await permanentDeleteDocument(docId);
+        await permanentDeleteFile(docId);
       } else {
-        await deleteDocument(docId);
+        await deleteFile(docId);
       }
       fetchDocs();
       if (selectedDocId === docId) setSelectedDocId(null);
@@ -282,7 +296,7 @@ export default function FileStorage() {
 
   const handleRestore = async (docId) => {
     try {
-      await restoreDocument(docId);
+      await restoreFile(docId);
       fetchDocs();
       alert('문서가 복구되었습니다.');
     } catch (error) {
@@ -499,14 +513,14 @@ export default function FileStorage() {
                   <thead>
                   <tr>
                   <th className="file-table-star-cell"></th>
-                  <th onClick={() => handleSort('title')} style={{ cursor: 'pointer' }}>
-                  이름 {sortConfig.key === 'title' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  <th onClick={() => handleSort('originalFileName')} style={{ cursor: 'pointer' }}>
+                  이름 {sortConfig.key === 'originalFileName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th onClick={() => handleSort('fileSize')} style={{ cursor: 'pointer' }}>
                   크기 {sortConfig.key === 'fileSize' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th onClick={() => handleSort(activeTab === 'trash' ? 'deletedAt' : 'createdAt')} style={{ cursor: 'pointer' }}>
-                  {activeTab === 'trash' ? '삭제일' : '수정한 날짜'} {sortConfig.key === (activeTab === 'trash' ? 'deletedAt' : 'createdAt') && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  <th onClick={() => handleSort(activeTab === 'trash' ? 'deletedAt' : 'uploadedAt')} style={{ cursor: 'pointer' }}>
+                  {activeTab === 'trash' ? '삭제일' : '수정한 날짜'} {sortConfig.key === (activeTab === 'trash' ? 'deletedAt' : 'uploadedAt') && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th>부서</th>
                   </tr>
