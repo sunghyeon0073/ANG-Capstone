@@ -1,3 +1,6 @@
+import { session } from '../../utils/storageUtils'
+import { formatFileSize as _formatFileSize } from '../../utils/fileUtils'
+
 export const mailboxConfig = {
   'mail-compose': { title: '메일 작성', empty: '' },
   'mail-inbox': { title: '받은 메일함', empty: '받은 메일이 없습니다.' },
@@ -14,20 +17,9 @@ export const getResponseData = (response) => response?.data?.data ?? response?.d
 export const normalizeMailboxId = (id) => (id === 'mail-draft' ? 'mail-drafts' : id)
 export const getMailKey = (mail) => `${mail.box}-${mail.id}`
 
-export const getStoredUserEmpNo = () => {
-  try {
-    return JSON.parse(sessionStorage.getItem('user') || '{}')?.empNo
-  } catch {
-    return undefined
-  }
-}
+export const getStoredUserEmpNo = () => session.getUserEmpNo()
 
-export const formatFileSize = (bytes) => {
-  if (!Number.isFinite(bytes)) return '-'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
+export { _formatFileSize as formatFileSize }
 
 const parseMailDateTime = (value) => {
   if (!value) return null

@@ -1,3 +1,4 @@
+import '../../style/organization.css'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FiMail, FiMessageSquare, FiList, FiUsers } from 'react-icons/fi';
 import { getScopes, getScopeMembers } from '../../api/scopeApi';
