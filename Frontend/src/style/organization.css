@@ -78,7 +78,7 @@
 
 .org-page .profile-node:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 140, 116, 0.28);
+  border-color: rgba(35, 48, 103, 0.28);
   box-shadow: var(--shadow-soft-hover);
 }
 
@@ -102,7 +102,7 @@
   min-width: 68px;
   text-align: center;
   background: var(--color-primary);
-  box-shadow: 0 6px 16px rgba(255, 140, 116, 0.18);
+  box-shadow: 0 6px 16px rgba(35, 48, 103, 0.18);
 }
 
 .org-page .team-dept-label {
@@ -421,8 +421,8 @@
 
 .org-modal-btn-chat,
 .org-modal-btn-mail {
-  border: 2px solid #FF8C74;
-  color: #FF8C74;
+  border: 2px solid var(--color-primary);
+  color: var(--color-primary);
   background: #fff;
 }
 

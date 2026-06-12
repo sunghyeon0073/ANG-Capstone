@@ -2,12 +2,10 @@ package com.ang.Backend.domain.schedule.dto;
 
 import com.ang.Backend.domain.schedule.entity.Schedule;
 import com.ang.Backend.domain.schedule.entity.ScheduleType;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -18,6 +16,8 @@ public class ScheduleDto {
     @Getter
     @Setter
     @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class SaveRequest {
         @NotNull
         private LocalDate startDate;
@@ -39,8 +39,19 @@ public class ScheduleDto {
         @NotNull
         private ScheduleType type;
 
-        private boolean isTodo = false;
+        private boolean isTodo;
         
+        @JsonProperty("isTodo")
+        public boolean isTodo() {
+            return isTodo;
+        }
+
+        @JsonProperty("isTodo")
+        public void setTodo(boolean isTodo) {
+            this.isTodo = isTodo;
+        }
+        
+        @Builder.Default
         private String repeatType = "NONE"; // NONE, DAILY, WEEKLY, MONTHLY, YEARLY
         
         private LocalDate repeatEndDate;
@@ -57,8 +68,13 @@ public class ScheduleDto {
         private LocalTime endTime;
         private String description;
         private ScheduleType type;
+
+        @JsonProperty("isTodo")
         private boolean isTodo;
+
+        @JsonProperty("isCompleted")
         private boolean isCompleted;
+
         private Long parentScheduleId;
         private String repeatType;
         private LocalDate repeatEndDate;

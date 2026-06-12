@@ -121,7 +121,7 @@ const MemberCard = ({ member, scopeId, onClick, teamName }) => (
   </button>
 );
 
-export default function Organization({ currentSubPage = 'org-all', onSendMail }) {
+export default function Organization({ currentSubPage = 'org-all', onSendMail, onStartChat }) {
   const [scopes, setScopes] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -440,8 +440,12 @@ export default function Organization({ currentSubPage = 'org-all', onSendMail })
               <div className="org-modal-left">
                 <button
                   type="button"
+                  onClick={() => {
+                    onStartChat?.(selectedMember.member);
+                    setSelectedMember(null);
+                  }}
                   className="org-modal-btn org-modal-btn-chat"
-                  title="채팅 기능 준비 중"
+                  title="1:1 채팅"
                 >
                   <FiMessageSquare />
                   채팅

@@ -22,6 +22,15 @@
   font-weight: bold;
   color: var(--color-primary);
   margin-right: 40px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+.topnavbar-logo:hover {
+  opacity: 0.75;
 }
 
 .topnavbar-center {
@@ -152,6 +161,26 @@
   margin-left: 3px;
 }
 
+.chat-unread-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 2px solid var(--color-surface);
+  border-radius: 999px;
+  background: #ff3b30;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
 /* Profile */
 .topnavbar-profile-container {
   position: relative;
@@ -204,7 +233,7 @@
     border: none;
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-soft-lg);
-  z-index: 100;
+  z-index: 1000;
     overflow: hidden;
 }
 
@@ -233,9 +262,18 @@
 }
 
 .profile-image {
-  width: 100%;
-  height: 100%;
   object-fit: cover;
+  display: block;
+}
+
+.profile-avatar.profile-image {
+  width: 32px;
+  height: 32px;
+}
+
+.profile-large-avatar.profile-image {
+  width: 50px;
+  height: 50px;
 }
 
 .profile-info {
@@ -251,7 +289,6 @@
 
 .profile-role {
   font-size: 12px;
-  color: #666;
   margin-bottom: 4px;
 }
 
@@ -344,6 +381,7 @@
     margin-left: 4px;
   text-align: left;
     box-shadow: none;
+  color: white;
 }
 
 .sidebar-menu-item:hover {

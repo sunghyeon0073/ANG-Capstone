@@ -34,6 +34,9 @@ CONTENT_TYPES = {
 
 HWP_MAX_ATTEMPTS = int(os.getenv("HWP_MAX_ATTEMPTS", "3"))
 HWP_RETRY_DELAY_SECONDS = float(os.getenv("HWP_RETRY_DELAY_SECONDS", "1"))
+WORD_MAX_ATTEMPTS = int(os.getenv("WORD_MAX_ATTEMPTS", str(HWP_MAX_ATTEMPTS)))
+WORD_RETRY_DELAY_SECONDS = float(os.getenv("WORD_RETRY_DELAY_SECONDS", str(HWP_RETRY_DELAY_SECONDS)))
+WORD_EXPORT_FORMAT_PDF = 17
 
 
 class CreateHwpRequest(BaseModel):
@@ -147,6 +150,28 @@ async def preview_hwp_pdf(file: UploadFile = File(...)):
 
         if not output_path.exists():
             raise HTTPException(status_code=500, detail="HWP preview PDF was not created")
+
+        download_name = f"{Path(original_name).stem}-preview.pdf"
+        return FileResponse(
+            output_path,
+            media_type=CONTENT_TYPES["pdf"],
+            filename=download_name,
+        )
+
+
+@app.post("/docx/preview-pdf")
+async def preview_docx_pdf(file: UploadFile = File(...)):
+    with tempfile.TemporaryDirectory(prefix="ang-docx-preview-") as temp_dir:
+        temp_path = Path(temp_dir)
+        original_name = Path(file.filename or "document.docx").name
+        input_path = temp_path / f"{uuid.uuid4()}-{original_name}"
+        output_path = temp_path / f"{input_path.stem}-preview.pdf"
+
+        input_path.write_bytes(await file.read())
+        _save_with_word_pdf(input_path, output_path)
+
+        if not output_path.exists():
+            raise HTTPException(status_code=500, detail="DOCX preview PDF was not created")
 
         download_name = f"{Path(original_name).stem}-preview.pdf"
         return FileResponse(
@@ -326,6 +351,84 @@ def _save_new_with_hwp_once(output_path: Path, output_format: str, before_save=N
         if hwp is not None:
             try:
                 hwp.Quit()
+            except Exception:
+                pass
+        pythoncom.CoUninitialize()
+
+
+def _save_with_word_pdf(input_path: Path, output_path: Path) -> None:
+    if pythoncom is None or win32com is None:
+        raise HTTPException(status_code=500, detail="pywin32 is required on a Windows host")
+
+    last_error = None
+    for attempt in range(1, WORD_MAX_ATTEMPTS + 1):
+        try:
+            _save_with_word_pdf_once(input_path, output_path)
+            return
+        except HTTPException as exc:
+            last_error = exc
+        except Exception as exc:
+            last_error = exc
+
+        if output_path.exists():
+            try:
+                output_path.unlink()
+            except Exception:
+                pass
+
+        if attempt < WORD_MAX_ATTEMPTS:
+            time.sleep(WORD_RETRY_DELAY_SECONDS)
+
+    if isinstance(last_error, HTTPException):
+        raise last_error
+    raise HTTPException(status_code=500, detail=f"Word automation failed after {WORD_MAX_ATTEMPTS} attempts: {last_error}") from last_error
+
+
+def _save_with_word_pdf_once(input_path: Path, output_path: Path) -> None:
+    pythoncom.CoInitialize()
+    word = None
+    document = None
+    try:
+        word = win32com.client.DispatchEx("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = 0
+
+        document = word.Documents.Open(
+            str(input_path),
+            ConfirmConversions=False,
+            ReadOnly=True,
+            AddToRecentFiles=False,
+            OpenAndRepair=True,
+        )
+        document.ExportAsFixedFormat(
+            OutputFileName=str(output_path),
+            ExportFormat=WORD_EXPORT_FORMAT_PDF,
+            OpenAfterExport=False,
+            OptimizeFor=0,
+            Range=0,
+            From=1,
+            To=1,
+            Item=0,
+            IncludeDocProps=True,
+            KeepIRM=True,
+            CreateBookmarks=1,
+            DocStructureTags=True,
+            BitmapMissingFonts=True,
+            UseISO19005_1=False,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Word automation failed: {exc}") from exc
+    finally:
+        if document is not None:
+            try:
+                document.Close(False)
+            except Exception:
+                pass
+        if word is not None:
+            try:
+                word.Quit()
             except Exception:
                 pass
         pythoncom.CoUninitialize()

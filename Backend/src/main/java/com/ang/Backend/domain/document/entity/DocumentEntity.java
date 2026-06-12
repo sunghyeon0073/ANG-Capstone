@@ -71,7 +71,7 @@ public class DocumentEntity {
     }
 
     public void updateContent(String title, String content) {
-        this.title = title;
-        this.originalContent = content;
+        if (title != null) this.title = title;
+        if (content != null) this.originalContent = content;
     }
 }

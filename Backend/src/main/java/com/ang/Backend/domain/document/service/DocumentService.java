@@ -4,6 +4,7 @@ import com.ang.Backend.common.enums.DocumentStatus;
 import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.entity.DocumentEntity;
 import com.ang.Backend.domain.document.repository.DocumentRepository;
+import com.ang.Backend.domain.document.repository.FavoriteDocumentRepository;
 import com.ang.Backend.domain.file.entity.FileItem;
 import com.ang.Backend.domain.file.repository.FileItemRepository;
 import com.ang.Backend.domain.file.service.FileService;
@@ -18,7 +19,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.openxml4j.util.ZipSecureFile;
@@ -29,6 +29,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
@@ -37,6 +38,8 @@ import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -88,6 +91,7 @@ public class DocumentService {
     private static final double DOCX_MIN_INFLATE_RATIO = 0.001;
 
     private final DocumentRepository documentRepository;
+    private final FavoriteDocumentRepository favoriteDocumentRepository;
     private final FileItemRepository fileItemRepository;
     private final FileService fileService;
     private final UserMembershipRepository userMembershipRepository;
@@ -141,6 +145,45 @@ public class DocumentService {
     }
 
     @Transactional
+    public boolean toggleFavorite(Long docId, User user) {
+        DocumentEntity document = documentRepository.findById(docId)
+                .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
+
+        return favoriteDocumentRepository.findByUserAndDocument(user, document)
+                .map(fav -> {
+                    favoriteDocumentRepository.delete(fav);
+                    return false;
+                })
+                .orElseGet(() -> {
+                    favoriteDocumentRepository.save(com.ang.Backend.domain.document.entity.FavoriteDocument.builder()
+                            .user(user)
+                            .document(document)
+                            .build());
+                    return true;
+                });
+    }
+
+    public DocumentDto.PagedResponse getFavoriteDocuments(User user, Pageable pageable) {
+        Page<com.ang.Backend.domain.document.entity.FavoriteDocument> page = favoriteDocumentRepository.findByUserAndDocument_DeletedAtIsNull(user, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(fav -> {
+                    DocumentDto.Response res = DocumentDto.Response.fromEntitySummary(fav.getDocument());
+                    res.setFavorite(true);
+                    return res;
+                })
+                .collect(Collectors.toList());
+        setCanDeleteFlags(list, user);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
+    }
+
+    @Transactional
     public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
         Scope targetScope = null;
         String subPath = null;
@@ -169,16 +212,25 @@ public class DocumentService {
         return documentRepository.save(doc).getDocId();
     }
 
-    public List<DocumentDto.Response> getAllDocuments(User requester) {
-        List<DocumentDto.Response> list = documentRepository.findAllByDeletedAtIsNull().stream()
-                .map(DocumentDto.Response::fromEntity)
+    public DocumentDto.PagedResponse getAllDocuments(User requester, Pageable pageable) {
+        Page<DocumentEntity> page = documentRepository.findAllByDeletedAtIsNull(pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, requester);
-        return list;
+        setFavoriteFlags(list, requester);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat) {
+    public DocumentDto.Response generateWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds, String outputFormat, String mode) {
         if (user == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED, "AI 생성을 위해서는 로그인이 필요합니다.");
         }
@@ -187,38 +239,153 @@ public class DocumentService {
         }
 
         AiOutputFormat format = AiOutputFormat.from(outputFormat);
-        if (format == AiOutputFormat.HWP) {
-            return editHwpWithAi(prompt, user, sourceDocId, attachedDocIds);
-        }
-        if (format == AiOutputFormat.DOCX) {
-            DocxEditSource docxSource = findDocxEditSource(sourceDocId, attachedDocIds);
-            if (docxSource != null) {
-                return editDocxWithAi(prompt, user, docxSource);
+        boolean editMode = "edit".equalsIgnoreCase(mode);
+        if (editMode) {
+            if (format == AiOutputFormat.HWP) {
+                return editHwpWithAi(prompt, user, sourceDocId, attachedDocIds);
             }
+            if (format == AiOutputFormat.DOCX) {
+                DocxEditSource docxSource = findDocxEditSource(sourceDocId, attachedDocIds);
+                if (docxSource != null) {
+                    return editDocxWithAi(prompt, user, docxSource);
+                }
+            }
+            DocumentEntity sourceDoc = findSourceDocument(sourceDocId, attachedDocIds);
+            if (sourceDoc == null) {
+                throw new IllegalArgumentException("수정할 원본 문서를 찾을 수 없습니다.");
+            }
+            return editByContentWithAi(prompt, user, sourceDoc, format);
         }
 
         String finalPrompt = buildAiPrompt(prompt, sourceDocId, attachedDocIds, format);
         log.info("AI document generation started: format={}, promptChars={}", format.extension, finalPrompt.length());
 
-        Map<String, String> aiRequest = Map.of("message", finalPrompt);
+        String answer = callAiChat(finalPrompt);
+        log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
+        if (cleanParsedContent(answer).isBlank()) {
+            throw new IllegalStateException("AI returned an empty document.");
+        }
+
+        if (!looksLikeCompleteDocument(answer, format)) {
+            log.info("AI document generation result looked incomplete, retrying once: format={}", format.extension);
+            String retryAnswer = callAiChat(finalPrompt + "\n\n" + AI_DOCUMENT_RETRY_REMINDER);
+            if (!cleanParsedContent(retryAnswer).isBlank()) {
+                answer = retryAnswer;
+                log.info("AI document generation retry finished: format={}, answerChars={}", format.extension, answer.length());
+            }
+        }
+
+        String aiTitle = makeAiTitle(answer);
+
+        return saveAiDocument(aiTitle, answer, user, format);
+    }
+
+    private String callAiChat(String message) {
+        Map<String, String> aiRequest = Map.of("message", message);
         @SuppressWarnings("unchecked")
         Map<String, Object> aiResponse = restTemplate.postForObject(
                 aiBaseUrl + "/chat",
                 aiRequest,
                 Map.class
         );
-
-        String answer = aiResponse != null && aiResponse.get("reply") != null
+        return aiResponse != null && aiResponse.get("reply") != null
                 ? aiResponse.get("reply").toString()
                 : "";
-        log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
+    }
+
+    private static final String AI_DOCUMENT_RETRY_REMINDER = """
+            직전 응답이 형식 요구사항(Markdown H1 제목으로 시작, 5개 이상의 섹션 제목, 충분한 분량)을 충족하지 못했습니다.
+            같은 요청에 대해 처음부터 다시, 위에서 안내한 형식·구조·분량 기준을 정확히 지켜 완성된 문서를 작성하세요.
+            """;
+
+    private boolean looksLikeCompleteDocument(String answer, AiOutputFormat format) {
+        List<String> lines = answer.lines()
+                .map(String::strip)
+                .filter(line -> !line.isBlank())
+                .toList();
+        if (lines.isEmpty()) {
+            return false;
+        }
+
+        boolean hasTitle = lines.get(0).startsWith("# ");
+        long sectionHeadings = lines.stream().filter(line -> line.startsWith("## ")).count();
+        int minSections = (format == AiOutputFormat.PDF || format == AiOutputFormat.DOCX) ? 4 : 1;
+
+        return hasTitle && sectionHeadings >= minSections && answer.strip().length() >= 200;
+    }
+
+    private DocumentEntity findSourceDocument(Long sourceDocId, List<Long> attachedDocIds) {
+        LinkedHashSet<Long> docIds = new LinkedHashSet<>();
+        if (sourceDocId != null) {
+            docIds.add(sourceDocId);
+        }
+        if (attachedDocIds != null) {
+            attachedDocIds.stream().filter(Objects::nonNull).forEach(docIds::add);
+        }
+        if (docIds.isEmpty()) {
+            return null;
+        }
+        return transactionTemplate.execute(status -> {
+            for (Long docId : docIds) {
+                DocumentEntity doc = documentRepository.findById(docId).orElse(null);
+                if (doc != null) {
+                    return doc;
+                }
+            }
+            return null;
+        });
+    }
+
+    private DocumentDto.Response editByContentWithAi(String prompt, User user, DocumentEntity source, AiOutputFormat format) {
+        String originalContent = source.getOriginalContent();
+        if (originalContent == null || originalContent.isBlank()) {
+            throw new IllegalArgumentException("원본 문서의 텍스트 내용을 읽을 수 없습니다. 다른 형식으로 시도해 주세요.");
+        }
+
+        String finalPrompt = buildContentEditPrompt(prompt, source.getTitle(), originalContent, format);
+        log.info("AI content edit started: format={}, docId={}, promptChars={}", format.extension, source.getDocId(), finalPrompt.length());
+
+        String answer = callAiChat(finalPrompt);
+        log.info("AI content edit finished: format={}, answerChars={}", format.extension, answer.length());
         if (cleanParsedContent(answer).isBlank()) {
             throw new IllegalStateException("AI returned an empty document.");
         }
 
-        String aiTitle = makeAiTitle(answer);
+        if (!looksLikeCompleteDocument(answer, format)) {
+            log.info("AI content edit result looked incomplete, retrying once: format={}", format.extension);
+            String retryAnswer = callAiChat(finalPrompt + "\n\n" + AI_DOCUMENT_RETRY_REMINDER);
+            if (!cleanParsedContent(retryAnswer).isBlank()) {
+                answer = retryAnswer;
+            }
+        }
 
+        String aiTitle = makeAiTitle(answer);
         return saveAiDocument(aiTitle, answer, user, format);
+    }
+
+    private String buildContentEditPrompt(String instruction, String sourceTitle, String originalContent, AiOutputFormat format) {
+        String formatInstruction = switch (format) {
+            case XLSX -> "대상 파일 형식이 XLSX이므로 표 구조를 최대한 유지하고 수정된 데이터를 Markdown 표 형식으로 출력하세요.";
+            case PDF  -> "대상 파일 형식이 PDF이므로 문단과 섹션 구조를 유지하며 깔끔한 Markdown 형식으로 출력하세요.";
+            case TXT  -> "대상 파일 형식이 TXT이므로 서식 없이 일반 텍스트로 출력하세요.";
+            default   -> "대상 파일 형식: " + format.extension.toUpperCase();
+        };
+
+        String truncatedContent = originalContent.length() > 12000
+                ? originalContent.substring(0, 12000) + "\n... (이하 생략)"
+                : originalContent;
+
+        return """
+                아래 원본 문서를 사용자 지시에 따라 수정해 주세요.
+                원본의 내용과 구조를 최대한 유지하면서 지시된 부분만 변경합니다.
+                %s
+
+                [원본 문서: %s]
+                %s
+
+                [수정 지시]
+                %s
+                """.formatted(formatInstruction, sourceTitle != null ? sourceTitle : "문서", truncatedContent, instruction);
     }
 
     private DocumentDto.Response editHwpWithAi(String prompt, User user, Long sourceDocId, List<Long> attachedDocIds) {
@@ -434,35 +601,34 @@ public class DocumentService {
         }
 
         return """
-                You are editing an existing Korean DOCX document.
-                Do not rewrite the whole document.
-                Return JSON only. Do not include Markdown, code fences, explanations, or prose.
+                기존 한국어 DOCX 문서를 수정합니다. 문서 전체를 다시 쓰지 마세요.
+                다른 텍스트, 설명, 코드 블록 없이 아래 JSON 형식만 출력하세요.
 
-                Your job:
-                - Keep the original DOCX layout, tables, images, and styles.
-                - Produce only minimal block-scoped find/replace operations.
-                - The "blockId" value must be one of the listed block IDs.
-                - The "find" value must be exact text that exists inside that block only.
-                - Prefer short, unique "find" values instead of whole paragraphs.
-                - The "replace" value should contain only the replacement text for that exact "find" value.
-                - For insertion, choose a short nearby existing phrase as "find" and replace it with that phrase plus the inserted text.
-                - Do not add Markdown headings, bullets, or tables unless the user explicitly asks for those literal characters.
+                수정 규칙:
+                - 원본 DOCX의 레이아웃, 표, 이미지, 스타일을 유지합니다.
+                - 수정이 필요한 위치만 최소한의 find/replace 연산으로 표현합니다.
+                - "blockId"는 아래 블록 목록에 있는 ID 중 하나여야 합니다.
+                - "find"는 해당 블록 내에 실제로 존재하는 정확한 텍스트여야 합니다.
+                - "find"는 전체 문단보다 짧고 고유한 값을 우선 사용하세요.
+                - "replace"는 해당 find 값만 대체하는 텍스트여야 합니다.
+                - 텍스트 삽입 시 "find"를 근처 짧은 문구로 잡고 "replace"에 해당 문구 + 삽입 내용을 넣으세요.
+                - 사용자가 명시적으로 요청하지 않는 한 Markdown 헤딩, 목록, 표 기호를 넣지 마세요.
 
-                JSON schema:
+                JSON 스키마:
                 {
-                  "title": "short edited document title",
+                  "title": "수정된 문서 제목(짧게)",
                   "replacements": [
-                    {"blockId": "B001", "find": "exact text inside that block", "replace": "new text"}
+                    {"blockId": "B001", "find": "블록 내 정확한 텍스트", "replace": "새 텍스트"}
                   ]
                 }
 
-                [Original DOCX Title]
+                [원본 DOCX 제목]
                 %s
 
-                [Original DOCX Blocks]
+                [원본 DOCX 블록 목록]
                 %s
 
-                [User Edit Request]
+                [사용자 수정 요청]
                 %s
                 """.formatted(source.title(), content, prompt);
     }
@@ -499,11 +665,12 @@ public class DocumentService {
 
     private void collectDocxParagraphBlocks(List<XWPFParagraph> paragraphs, List<DocxTextBlock> blocks, int[] blockCounter) {
         for (XWPFParagraph paragraph : paragraphs) {
-            String blockId = nextDocxBlockId(blockCounter);
             String text = normalizeDocxBlockText(paragraph.getText());
-            if (!text.isBlank()) {
-                blocks.add(new DocxTextBlock(blockId, text));
+            if (text.isBlank()) {
+                continue; // 빈 단락은 건너뛰고 blockId도 소모하지 않음
             }
+            String blockId = nextDocxBlockId(blockCounter);
+            blocks.add(new DocxTextBlock(blockId, text));
         }
     }
 
@@ -673,7 +840,7 @@ public class DocumentService {
         }
 
         StringBuilder builder = new StringBuilder();
-        builder.append("Use the parsed document content below as reference when creating the document.\n\n");
+        builder.append("아래 참고 문서 내용을 문서 작성의 근거로 우선 활용하세요.\n\n");
 
         int index = 1;
         for (DocumentEntity source : sources) {
@@ -682,7 +849,7 @@ public class DocumentService {
                 continue;
             }
 
-            builder.append("[Reference Document ")
+            builder.append("[참고 문서 ")
                     .append(index++)
                     .append(": ")
                     .append(source.getTitle() != null ? source.getTitle() : source.getDocId())
@@ -695,42 +862,54 @@ public class DocumentService {
             return buildAiInstruction(prompt, format);
         }
 
-        builder.append("[User Prompt]\n")
+        builder.append("[사용자 요청]\n")
                 .append(buildAiInstruction(prompt, format));
 
         return builder.toString();
     }
 
     private String buildAiInstruction(String prompt, AiOutputFormat format) {
-        String formatInstruction = format == AiOutputFormat.XLSX
-                ? """
-                For XLSX output, write the useful content as one or more Markdown pipe tables.
-                Use clear header rows and data rows. Do not describe the table in prose unless necessary.
-                Include enough rows and columns to preserve the source document's useful detail.
-                """
-                : """
-                If the source document contains tables, preserve them as Markdown pipe tables.
-                Use clear header rows and data rows instead of describing table data in prose.
-                After each important table, add concise interpretation, decisions, and next steps.
+        String formatInstruction = switch (format) {
+            case XLSX -> """
+                XLSX로 변환되므로 핵심 내용을 하나 이상의 Markdown 표로 작성하세요.
+                표는 명확한 헤더 행과 데이터 행으로 구성하고, 표로 표현 가능한 내용을 굳이 문장으로 풀어 쓰지 마세요.
+                원본의 세부 정보를 보존할 수 있도록 충분한 행과 열을 포함하세요.
                 """;
+            case DOCX -> """
+                DOCX로 변환되므로 다음 요소만 사용해 깔끔한 업무 문서를 작성하세요.
+                - 문서 제목과 섹션 제목: Markdown 헤딩(#, ##)
+                - 본문: 일반 문단
+                - 꼭 필요한 경우에만 Markdown 글머리 기호 목록
+                - 일정, 예산, 비교, 위험 요소, 담당자, 실행 항목: Markdown 표
+                /, *, ===, --- 같은 장식 문자나 코드 블록, 단어를 강조하는 Markdown 기호(**, _ 등)는 사용하지 마세요.
+                """;
+            default -> """
+                원본 문서에 표가 있다면 Markdown 표 형식으로 그대로 보존하세요.
+                표 내용을 문장으로 풀어 설명하지 말고 명확한 헤더 행과 데이터 행으로 표현하세요.
+                중요한 표 다음에는 핵심 해석, 결정 사항, 후속 조치를 간단히 덧붙이세요.
+                """;
+        };
 
         return """
-                Create a polished Korean business document.
-                The first line must be a concise document title as a Markdown H1 heading.
-                Do not use the user's prompt verbatim as the title.
-                Target file format: %s.
+                아래 사용자 요청을 바탕으로 완성도 높은 한국어 업무 문서를 작성하세요.
+                첫 줄은 반드시 간결한 Markdown H1 제목으로 시작하고, 사용자 요청 문장을 그대로 제목으로 옮기지 마세요.
+                대상 파일 형식: %s
                 %s
+                분량과 완성도 기준:
+                - 사용자가 명시적으로 요약을 요청하지 않는 한 요약하지 말고, 짧은 답변이 아닌 완성된 업무 문서를 작성하세요.
+                - 형식이 PDF 또는 DOCX이면 5개 이상의 충실한 섹션을 포함하세요.
+                - 각 주요 섹션에는 구체적인 문장이나 글머리 항목을 3~5개 포함하세요.
+                - 이름, 날짜, 금액, 수량, 결정 사항, 위험 요소, 실행 항목 등 핵심 정보를 보존하세요.
+                - 정보가 부족하면 항목을 생략하지 말고 [담당자], [일자], [금액], [부서] 같은 자리표시자를 사용하세요.
+                - 표 위주의 원본은 표를 유지하고 짧은 분석이나 후속 조치 섹션을 덧붙이세요.
 
-                Length and completeness requirements:
-                - Do not summarize unless the user explicitly asks for a summary.
-                - Produce a complete business document, not a short answer.
-                - Include at least 5 substantial sections when the format is PDF or DOCX.
-                - Each major section should contain 3 to 5 concrete sentences or bullet points.
-                - Preserve important names, dates, amounts, counts, decisions, risks, and action items from the source.
-                - If information is missing, keep useful placeholders such as [담당자], [일자], [금액], or [부서] instead of omitting the section.
-                - For table-heavy sources, keep the table and add a short analysis or follow-up section.
+                표 작성 시 반드시 지킬 것 (어기면 변환 과정에서 표가 깨집니다):
+                - 표의 모든 행은 "| 셀1 | 셀2 | 셀3 |" 형태로 파이프(|)로 구분된 한 줄로만 작성하세요.
+                - 헤더 행 바로 다음 줄에 "| --- | --- | --- |" 구분선을 넣으세요.
+                - 한 셀의 내용을 줄바꿈으로 나누어 여러 줄에 걸쳐 쓰지 마세요. 내용이 길면 짧게 요약해서 한 줄에 담으세요.
+                - 위험 요소-대응 방안, 문제점-해결 방안처럼 짝을 이루는 항목은 글머리 기호로 나열하지 말고 "위험 요소 | 영향 | 대응 방안" 같은 표로 정리하세요.
 
-                User request:
+                사용자 요청:
                 %s
                 """.formatted(format.extension.toUpperCase(), formatInstruction, prompt);
     }
@@ -917,16 +1096,24 @@ public class DocumentService {
         };
     }
 
-    public List<DocumentDto.Response> getMyDocuments(User user) {
-        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNull(user).stream()
-                .filter(d -> d.getScope() == null)
-                .map(DocumentDto.Response::fromEntity)
+    public DocumentDto.PagedResponse getMyDocuments(User user, String keyword, Pageable pageable) {
+        Page<DocumentEntity> page = documentRepository.findMyDocuments(user, keyword, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
-        return list;
+        setFavoriteFlags(list, user);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
     }
 
-    public List<DocumentDto.Response> getDepartmentDocuments(User user, Integer targetScopeId, String keyword) {
+    public DocumentDto.PagedResponse getDepartmentDocuments(User user, Integer targetScopeId, String keyword, Pageable pageable) {
         List<Integer> scopeIds;
 
         // 사용자가 속한 모든 부서 정보 가져오기 (보안 검증용)
@@ -939,81 +1126,87 @@ public class DocumentService {
         boolean isSuperAdmin = roles.stream().anyMatch(r -> r.getRole().getRoleLevel() >= 100);
 
         if (targetScopeId != null) {
-            // 특정 부서 필터링 시 보안 검증: 요청한 부서가 사용자의 권한 범위 내에 있는지 확인
             Scope targetScope = scopeRepository.findById(targetScopeId)
                     .orElseThrow(() -> new RuntimeException("해당 부서를 찾을 수 없습니다."));
-            
+
             if (!isSuperAdmin) {
-                // 새로운 로직: 사용자가 속한 부서의 Level 2 조상을 찾음
-                // 예: 영진전문대학교(L1) -> 평생교육원(L2) -> 교육팀(L3)
-                // 사용자가 교육팀 소속이면 평생교육원 산하 모든 부서 문서를 볼 수 있음
-                
                 boolean hasAccess = false;
                 for (Scope myScope : myScopes) {
                     Scope myLevel2 = scopeService.getLevel2Ancestor(myScope);
                     Scope targetLevel2 = scopeService.getLevel2Ancestor(targetScope);
-                    
-                    if (myLevel2 != null && targetLevel2 != null && 
+
+                    if (myLevel2 != null && targetLevel2 != null &&
                         myLevel2.getScopeId().equals(targetLevel2.getScopeId())) {
                         hasAccess = true;
                         break;
                     }
-                    // 혹은 기존처럼 직계 부모-자식 관계인 경우도 허용
                     if (scopeService.isSameOrParent(myScope, targetScope)) {
                         hasAccess = true;
                         break;
                     }
                 }
-                
+
                 if (!hasAccess) {
                     throw new RuntimeException("해당 부서의 문서에 접근할 권한이 없습니다.");
                 }
             }
-            
+
             scopeIds = scopeService.getAllSubScopeIds(targetScope);
         } else {
-            // 전체 조회 시
             if (isSuperAdmin) {
-                // 최고관리자는 모든 부서 ID 가져오기
                 scopeIds = scopeRepository.findAll().stream().map(Scope::getScopeId).collect(Collectors.toList());
             } else {
                 if (myScopes.isEmpty()) {
-                    return List.of();
+                    return DocumentDto.PagedResponse.builder()
+                            .content(List.of())
+                            .currentPage(0)
+                            .totalPages(0)
+                            .totalElements(0)
+                            .size(pageable.getPageSize())
+                            .build();
                 }
 
-                // 사용자가 속한 모든 L2 조상들의 모든 하위 부서 ID를 모음
                 scopeIds = myScopes.stream()
                         .map(scopeService::getLevel2Ancestor)
                         .filter(java.util.Objects::nonNull)
                         .flatMap(l2 -> scopeService.getAllSubScopeIds(l2).stream())
                         .distinct()
-                        .collect(Collectors.toList());
-                
-                // 본인이 속한 부서의 하위 부서들도 포함 (L2가 없는 경우 대비)
+                        .collect(Collectors.toCollection(ArrayList::new));
+
                 List<Integer> myDirectSubScopes = myScopes.stream()
                         .flatMap(scope -> scopeService.getAllSubScopeIds(scope).stream())
                         .distinct()
                         .toList();
-                
+
                 scopeIds.addAll(myDirectSubScopes);
                 scopeIds = scopeIds.stream().distinct().collect(Collectors.toList());
             }
         }
 
-        List<DocumentDto.Response> list = documentRepository.searchByScopesAndDeletedAtIsNull(scopeIds, keyword).stream()
-                .map(DocumentDto.Response::fromEntity)
+        Page<DocumentEntity> page = documentRepository.searchByScopesAndDeletedAtIsNull(scopeIds, keyword, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
         setCanDeleteFlags(list, user);
-        return list;
+        setFavoriteFlags(list, user);
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
     }
 
     public DocumentDto.Response getDocument(Long id, User requester) {
         DocumentDto.Response res = documentRepository.findById(id)
                 .map(DocumentDto.Response::fromEntity)
                 .orElseThrow(() -> new RuntimeException("문서를 찾을 수 없습니다."));
-        
+
         if (requester != null) {
             setCanDeleteFlags(List.of(res), requester);
+            setFavoriteFlags(List.of(res), requester);
         }
         return res;
     }
@@ -1032,7 +1225,6 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
 
-        // 삭제 권한 체크
         if (!canUserDelete(doc, requester)) {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 휴지통으로 이동할 권한이 없습니다.");
         }
@@ -1045,7 +1237,6 @@ public class DocumentService {
         if (doc.getPreviewFile() != null) {
             doc.getPreviewFile().setDeletedAt(now);
         }
-        // 물리 파일은 남겨둡니다. 30일 후 완전 삭제 시 제거됩니다.
     }
 
     @Transactional
@@ -1053,7 +1244,6 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
 
-        // 완전 삭제 권한 체크
         if (!canUserDelete(doc, requester)) {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 완전 삭제할 권한이 없습니다.");
         }
@@ -1061,17 +1251,15 @@ public class DocumentService {
         FileItem file = doc.getFile();
         FileItem previewFile = doc.getPreviewFile();
 
-        // 1. 문서 엔티티를 먼저 삭제하고 DB에 즉시 반영하여 파일 참조를 제거합니다.
+        favoriteDocumentRepository.deleteByDocument(doc);
         documentRepository.delete(doc);
         documentRepository.flush();
-        
-        // 2. 다른 문서에서 사용하지 않는 경우에만 물리 파일과 파일 정보를 삭제합니다.
+
         if (file != null && !documentRepository.existsByFile(file)) {
             fileService.deletePhysicalFile(file);
         }
-        
+
         if (previewFile != null && !previewFile.equals(file)) {
-            // Note: existsByFile checks if ANY document uses this FileItem as its 'file' field.
             if (!documentRepository.existsByFile(previewFile)) {
                 fileService.deletePhysicalFile(previewFile);
             }
@@ -1083,7 +1271,6 @@ public class DocumentService {
         DocumentEntity doc = documentRepository.findById(id)
                 .orElseThrow(() -> new CustomException(ErrorCode.DOCUMENT_NOT_FOUND));
 
-        // 복구 권한 체크 (삭제 권한과 동일)
         if (!canUserDelete(doc, requester)) {
             throw new CustomException(ErrorCode.ACCESS_DENIED, "해당 문서를 복구할 권한이 없습니다.");
         }
@@ -1097,12 +1284,12 @@ public class DocumentService {
         }
     }
 
-    @Scheduled(cron = "0 0 0 * * ?") // 매일 자정에 실행
+    @Scheduled(cron = "0 0 0 * * ?")
     @Transactional
     public void autoDeleteTrashDocuments() {
         LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
         List<DocumentEntity> oldTrashDocuments = documentRepository.findByDeletedAtBefore(cutoffDate);
-        
+
         for (DocumentEntity doc : oldTrashDocuments) {
             try {
                 if (doc.getFile() != null) {
@@ -1112,6 +1299,7 @@ public class DocumentService {
                         && (doc.getFile() == null || !doc.getPreviewFile().getFileId().equals(doc.getFile().getFileId()))) {
                     fileService.deletePhysicalFile(doc.getPreviewFile());
                 }
+                favoriteDocumentRepository.deleteByDocument(doc);
                 documentRepository.delete(doc);
                 log.info("Auto-deleted trash document: {}", doc.getDocId());
             } catch (Exception e) {
@@ -1120,38 +1308,33 @@ public class DocumentService {
         }
     }
 
-    public List<DocumentDto.Response> getTrashDocuments(User user) {
-        // 본인의 휴지통 문서
-        List<DocumentDto.Response> list = documentRepository.findByOwnerAndDeletedAtIsNotNull(user).stream()
-                .map(DocumentDto.Response::fromEntity)
+    public DocumentDto.PagedResponse getTrashDocuments(User user, Pageable pageable) {
+        Page<DocumentEntity> page = documentRepository.findByOwnerAndDeletedAtIsNotNull(user, pageable);
+        List<DocumentDto.Response> list = page.getContent().stream()
+                .map(DocumentDto.Response::fromEntitySummary)
                 .collect(Collectors.toList());
-        
-        // 만약 관리자라면 해당 부서의 삭제된 문서도 볼 수 있어야 함
-        List<com.ang.Backend.domain.role.entity.UserRole> roles = userRoleRepository.findByUserOrderByRoleLevelDesc(user);
-        int maxLevel = roles.stream().mapToInt(r -> r.getRole().getRoleLevel()).max().orElse(0);
-        
-        if (maxLevel >= 50) {
-            List<Integer> managedScopeIds = roles.stream()
-                    .filter(r -> r.getRole().getRoleLevel() >= 50)
-                    .flatMap(r -> scopeService.getAllSubScopeIds(r.getScope()).stream())
-                    .distinct()
-                    .collect(Collectors.toList());
-            
-            if (!managedScopeIds.isEmpty()) {
-                List<DocumentDto.Response> deptTrash = documentRepository.searchByScopesAndDeletedAtIsNotNull(managedScopeIds, null).stream()
-                        .map(DocumentDto.Response::fromEntity)
-                        .collect(Collectors.toList());
-                // 중복 제거 (본인이 올린 문서가 부서 문서일 수 있음)
-                for (DocumentDto.Response r : deptTrash) {
-                    if (list.stream().noneMatch(existing -> existing.getDocId().equals(r.getDocId()))) {
-                        list.add(r);
-                    }
-                }
-            }
-        }
-        
+
         setCanDeleteFlags(list, user);
-        return list;
+
+        return DocumentDto.PagedResponse.builder()
+                .content(list)
+                .currentPage(page.getNumber())
+                .totalPages(page.getTotalPages())
+                .totalElements(page.getTotalElements())
+                .size(page.getSize())
+                .build();
+    }
+
+    private void setFavoriteFlags(List<DocumentDto.Response> responses, User requester) {
+        if (responses == null || responses.isEmpty() || requester == null) return;
+
+        List<Long> docIds = responses.stream().map(DocumentDto.Response::getDocId).toList();
+        List<com.ang.Backend.domain.document.entity.FavoriteDocument> favorites = favoriteDocumentRepository.findByUserAndDocument_DocIdIn(requester, docIds);
+        List<Long> favoriteDocIds = favorites.stream().map(f -> f.getDocument().getDocId()).toList();
+
+        for (DocumentDto.Response res : responses) {
+            res.setFavorite(favoriteDocIds.contains(res.getDocId()));
+        }
     }
 
     private boolean canUserDelete(DocumentEntity doc, User requester) {
@@ -1299,25 +1482,164 @@ public class DocumentService {
     }
 
     private byte[] createDocxBytes(String content) throws IOException {
+        List<String> lines = normalizeGeneratedDocxContent(content).lines().toList();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
-            addZipEntry(zip, "[Content_Types].xml", """
-                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-                      <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-                      <Default Extension="xml" ContentType="application/xml"/>
-                      <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-                    </Types>
-                    """);
-            addZipEntry(zip, "_rels/.rels", """
-                    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-                      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-                    </Relationships>
-                    """);
-            addZipEntry(zip, "word/document.xml", buildDocxDocumentXml(content));
+
+        try (XWPFDocument document = new XWPFDocument()) {
+            List<List<String>> tableRows = new ArrayList<>();
+            boolean wroteAnyContent = false;
+
+            for (String rawLine : lines) {
+                String line = rawLine.strip();
+                if (isMarkdownTableRow(line)) {
+                    if (!isMarkdownTableSeparator(line)) {
+                        tableRows.add(splitMarkdownTableRow(line).stream()
+                                .map(this::cleanDocxInlineText)
+                                .toList());
+                    }
+                    continue;
+                }
+
+                if (!tableRows.isEmpty()) {
+                    addDocxTable(document, tableRows);
+                    tableRows.clear();
+                    wroteAnyContent = true;
+                }
+
+                if (line.isBlank()) {
+                    continue;
+                }
+
+                if (line.startsWith("# ")) {
+                    addDocxParagraph(document, cleanDocxInlineText(line.replaceFirst("^#+\\s*", "")), 22, true, ParagraphAlignment.CENTER, 220, 160);
+                } else if (line.matches("^#{2,6}\\s+.+")) {
+                    addDocxParagraph(document, cleanDocxInlineText(line.replaceFirst("^#+\\s*", "")), 15, true, ParagraphAlignment.LEFT, 260, 80);
+                } else if (isMarkdownBulletLine(line)) {
+                    addDocxBulletParagraph(document, cleanDocxInlineText(line.replaceFirst("^[-*•]\\s+", "")));
+                } else if (isMarkdownNumberedLine(line)) {
+                    addDocxBulletParagraph(document, cleanDocxInlineText(line.replaceFirst("^\\d+[.)]\\s+", "")));
+                } else {
+                    addDocxParagraph(document, cleanDocxInlineText(line), 11, false, ParagraphAlignment.LEFT, 70, 70);
+                }
+                wroteAnyContent = true;
+            }
+
+            if (!tableRows.isEmpty()) {
+                addDocxTable(document, tableRows);
+                wroteAnyContent = true;
+            }
+
+            if (!wroteAnyContent) {
+                addDocxParagraph(document, "생성된 문서 내용이 없습니다.", 11, false, ParagraphAlignment.LEFT, 70, 70);
+            }
+
+            document.write(out);
         }
         return out.toByteArray();
+    }
+
+    private String normalizeGeneratedDocxContent(String content) {
+        String cleaned = cleanParsedContent(content == null ? "" : content);
+        cleaned = cleaned.replaceAll("(?s)<think>.*?</think>", "");
+        cleaned = cleaned.replaceAll("(?m)^```[a-zA-Z0-9_-]*\\s*$", "");
+        cleaned = cleaned.replaceAll("(?m)^```\\s*$", "");
+        cleaned = cleaned.replace("\r\n", "\n").replace('\r', '\n');
+        cleaned = cleaned.replaceAll("(?m)^\\s*/\\s*([^/\\n]{2,80})\\s*/\\s*$", "$1");
+        return cleaned.strip();
+    }
+
+    private boolean isMarkdownBulletLine(String line) {
+        return line.matches("^[-*•]\\s+.+");
+    }
+
+    private boolean isMarkdownNumberedLine(String line) {
+        return line.matches("^\\d+[.)]\\s+.+");
+    }
+
+    private String cleanDocxInlineText(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text
+                .replaceAll("\\*\\*(.*?)\\*\\*", "$1")
+                .replaceAll("__(.*?)__", "$1")
+                .replaceAll("`([^`]*)`", "$1")
+                .replaceAll("^#+\\s*", "")
+                .replaceAll("^[-*•]\\s+", "")
+                .replaceAll("^\\d+[.)]\\s+", "")
+                .replaceAll("\\s+", " ")
+                .strip();
+    }
+
+    private void addDocxParagraph(
+            XWPFDocument document,
+            String text,
+            int fontSize,
+            boolean bold,
+            ParagraphAlignment alignment,
+            int spacingBefore,
+            int spacingAfter) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setAlignment(alignment);
+        paragraph.setSpacingBefore(spacingBefore);
+        paragraph.setSpacingAfter(spacingAfter);
+        XWPFRun run = paragraph.createRun();
+        run.setFontFamily("Malgun Gothic");
+        run.setFontSize(fontSize);
+        run.setBold(bold);
+        run.setText(text);
+    }
+
+    private void addDocxBulletParagraph(XWPFDocument document, String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setIndentationLeft(420);
+        paragraph.setIndentationHanging(220);
+        paragraph.setSpacingAfter(80);
+        XWPFRun bullet = paragraph.createRun();
+        bullet.setFontFamily("Malgun Gothic");
+        bullet.setFontSize(11);
+        bullet.setText("• ");
+        XWPFRun run = paragraph.createRun();
+        run.setFontFamily("Malgun Gothic");
+        run.setFontSize(11);
+        run.setText(text);
+    }
+
+    private void addDocxTable(XWPFDocument document, List<List<String>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        int columnCount = rows.stream().mapToInt(List::size).max().orElse(1);
+        XWPFTable table = document.createTable(rows.size(), columnCount);
+        table.setWidth("100%");
+
+        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+            XWPFTableRow tableRow = table.getRow(rowIndex);
+            List<String> row = rows.get(rowIndex);
+            for (int cellIndex = 0; cellIndex < columnCount; cellIndex++) {
+                XWPFTableCell cell = tableRow.getCell(cellIndex);
+                if (rowIndex == 0) {
+                    cell.setColor("EAF2F8");
+                }
+                cell.removeParagraph(0);
+                XWPFParagraph paragraph = cell.addParagraph();
+                paragraph.setSpacingAfter(40);
+                XWPFRun run = paragraph.createRun();
+                run.setFontFamily("Malgun Gothic");
+                run.setFontSize(10);
+                run.setBold(rowIndex == 0);
+                run.setText(cellIndex < row.size() ? row.get(cellIndex) : "");
+            }
+        }
+
+        XWPFParagraph spacer = document.createParagraph();
+        spacer.setSpacingAfter(120);
     }
 
     private byte[] applyDocxReplacements(byte[] originalBytes, List<Map<String, String>> replacements) throws IOException {
@@ -1363,22 +1685,29 @@ public class DocumentService {
     private int applyDocxParagraphReplacements(List<XWPFParagraph> paragraphs, List<Map<String, String>> replacements, int[] blockCounter) {
         int applied = 0;
         for (XWPFParagraph paragraph : paragraphs) {
+            String paraText = normalizeDocxBlockText(paragraph.getText());
+            if (paraText.isBlank()) {
+                continue; // 추출 로직과 동일하게 빈 단락은 건너뜀
+            }
             String blockId = nextDocxBlockId(blockCounter);
-            List<Map<String, String>> blockReplacements = replacementsForBlock(replacements, blockId);
+            List<Map<String, String>> blockReplacements = replacementsForBlock(replacements, blockId, paraText);
             if (blockReplacements.isEmpty()) {
                 continue;
             }
-            applied += replaceDocxRunsInPlace(paragraph, blockReplacements);
-            applied += replaceDocxParagraphFallback(paragraph, blockReplacements);
+            int runApplied = replaceDocxRunsInPlace(paragraph, blockReplacements);
+            applied += runApplied > 0 ? runApplied : replaceDocxParagraphFallback(paragraph, blockReplacements);
         }
         return applied;
     }
 
-    private List<Map<String, String>> replacementsForBlock(List<Map<String, String>> replacements, String blockId) {
+    private List<Map<String, String>> replacementsForBlock(List<Map<String, String>> replacements, String blockId, String normalizedParaText) {
         return replacements.stream()
                 .filter(replacement -> {
-                    String replacementBlockId = replacement.getOrDefault("blockId", "").strip();
-                    return replacementBlockId.isBlank() || replacementBlockId.equals(blockId);
+                    String rid = replacement.getOrDefault("blockId", "").strip();
+                    String find = replacement.getOrDefault("find", "").strip();
+                    // blockId 일치, 또는 blockId 없음, 또는 find 텍스트가 이 단락에 포함된 경우 모두 허용
+                    if (rid.isBlank() || rid.equals(blockId)) return true;
+                    return !find.isBlank() && normalizedParaText.contains(find);
                 })
                 .toList();
     }
@@ -1393,43 +1722,82 @@ public class DocumentService {
     }
 
     private int replaceDocxRunsInPlace(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
+        List<XWPFRun> runs = paragraph.getRuns();
+        if (runs.isEmpty()) return 0;
+
+        // 모든 run의 텍스트를 이어붙여 전체 단락 텍스트와 각 run의 시작 위치를 구함
+        StringBuilder stitched = new StringBuilder();
+        int[] runStartPositions = new int[runs.size()];
+        for (int i = 0; i < runs.size(); i++) {
+            runStartPositions[i] = stitched.length();
+            String t = runs.get(i).getText(0);
+            if (t != null) stitched.append(t);
+        }
+
+        String fullText = stitched.toString();
         int applied = 0;
-        for (XWPFRun run : paragraph.getRuns()) {
-            String text = run.getText(0);
-            if (text == null || text.isEmpty()) {
-                continue;
+
+        for (Map<String, String> replacement : replacements) {
+            String find = replacement.getOrDefault("find", "").strip();
+            if (find.isBlank()) continue;
+            String replace = replacement.getOrDefault("replace", "");
+
+            int matchPos = fullText.indexOf(find);
+            if (matchPos < 0) continue;
+
+            int matchEnd = matchPos + find.length();
+            boolean firstRunUpdated = false;
+
+            for (int i = 0; i < runs.size(); i++) {
+                int runStart = runStartPositions[i];
+                String runText = runs.get(i).getText(0);
+                int runLen = runText != null ? runText.length() : 0;
+                int runEnd = runStart + runLen;
+
+                if (runEnd <= matchPos || runStart >= matchEnd) continue; // 범위 밖
+
+                if (!firstRunUpdated) {
+                    // 매칭 영역의 첫 번째 run: before + replace + after(잔여) 설정
+                    String before = fullText.substring(runStart, matchPos);
+                    String after = runEnd > matchEnd ? fullText.substring(matchEnd, runEnd) : "";
+                    setRunText(runs.get(i), before + replace + after);
+                    firstRunUpdated = true;
+                } else {
+                    // 매칭 영역에 걸친 이후 run: 매칭 범위 내 부분을 빈 문자열로
+                    if (runEnd <= matchEnd) {
+                        setRunText(runs.get(i), "");
+                    } else {
+                        setRunText(runs.get(i), fullText.substring(matchEnd, runEnd));
+                    }
+                }
             }
 
-            String replaced = text;
-            for (Map<String, String> replacement : replacements) {
-                String find = replacement.getOrDefault("find", "");
-                if (find.isBlank()) {
-                    continue;
+            if (firstRunUpdated) {
+                // 이후 replacement를 위해 stitched 텍스트 갱신
+                fullText = fullText.substring(0, matchPos) + replace + fullText.substring(matchEnd);
+                // runStartPositions 재계산 (delta 적용)
+                int delta = replace.length() - find.length();
+                for (int i = 0; i < runs.size(); i++) {
+                    if (runStartPositions[i] > matchPos) {
+                        runStartPositions[i] += delta;
+                    }
                 }
-                String replace = replacement.getOrDefault("replace", "");
-                if (replaced.contains(find)) {
-                    replaced = replaced.replace(find, replace);
-                    applied++;
-                }
-            }
-
-            if (!replaced.equals(text)) {
-                setRunText(run, replaced);
+                applied++;
             }
         }
         return applied;
     }
 
     private int replaceDocxParagraphFallback(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
-        String text = paragraph.getText();
-        if (text == null || text.isEmpty()) {
+        String normText = normalizeDocxBlockText(paragraph.getText());
+        if (normText.isEmpty()) {
             return 0;
         }
 
-        String replaced = text;
+        String replaced = normText;
         int applied = 0;
         for (Map<String, String> replacement : replacements) {
-            String find = replacement.getOrDefault("find", "");
+            String find = replacement.getOrDefault("find", "").strip();
             if (find.isBlank()) {
                 continue;
             }
@@ -1440,7 +1808,7 @@ public class DocumentService {
             }
         }
 
-        if (applied == 0 || replaced.equals(text)) {
+        if (applied == 0 || replaced.equals(normText)) {
             return 0;
         }
 
@@ -2034,7 +2402,7 @@ public class DocumentService {
     }
 
     private String parsePdfContent(byte[] bytes) {
-        try (PDDocument document = Loader.loadPDF(bytes)) {
+        try (PDDocument document = PDDocument.load(bytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
             return cleanParsedContent(stripper.getText(document));
@@ -2344,13 +2712,23 @@ public class DocumentService {
             return originalFile;
         }
 
-        if (isHwpFile(lowerName, contentType)) {
-            log.info("Skipping HWP preview PDF for {}. The frontend native HWP viewer will use the original file.", originalName);
+        if (!isConvertibleToPdf(lowerName, contentType)) {
             return null;
         }
 
-        if (!isConvertibleToPdf(lowerName, contentType)) {
-            return null;
+        if (isHwpFile(lowerName, contentType)) {
+            FileItem hwpPreview = createHwpBridgePreviewFile(file, user, originalName);
+            if (hwpPreview != null) {
+                return hwpPreview;
+            }
+            throw new IllegalStateException("HWP preview PDF conversion failed. The document was not created.");
+        }
+
+        if (isWordFile(lowerName, contentType)) {
+            FileItem wordPreview = createBridgePreviewFile(file, user, originalName, "/docx/preview-pdf", "DOCX");
+            if (wordPreview != null) {
+                return wordPreview;
+            }
         }
 
         Path tempDir = null;
@@ -2368,13 +2746,10 @@ public class DocumentService {
             Path pdfFile = findConvertedPdf(tempDir, tempFile);
             if (pdfFile == null || !Files.exists(pdfFile)) {
                 log.warn("Preview PDF conversion finished but no PDF was created for {}", originalName);
-                if (shouldCreateParsedPreviewFallback(lowerName, contentType, parsedContent)) {
-                    pdfFile = createParsedContentPreviewPdf(parsedContent, originalName, tempDir);
-                }
             }
 
             if (pdfFile == null || !Files.exists(pdfFile)) {
-                return null;
+                throw new IllegalStateException("Preview PDF conversion failed. The document was not created.");
             }
 
             byte[] pdfBytes = Files.readAllBytes(pdfFile);
@@ -2392,8 +2767,7 @@ public class DocumentService {
                     .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                     .build());
         } catch (Exception e) {
-            log.warn("Preview PDF generation failed: {}", e.getMessage());
-            return null;
+            throw new IllegalStateException("Preview PDF conversion failed. The document was not created.", e);
         } finally {
             deleteQuietly(tempFile);
             deleteDirectoryQuietly(tempDir);
@@ -2401,15 +2775,19 @@ public class DocumentService {
     }
 
     private FileItem createHwpBridgePreviewFile(MultipartFile file, User user, String originalName) {
+        return createBridgePreviewFile(file, user, originalName, "/hwp/preview-pdf", "HWP");
+    }
+
+    private FileItem createBridgePreviewFile(MultipartFile file, User user, String originalName, String endpoint, String label) {
         if (hwpEditBaseUrl == null || hwpEditBaseUrl.isBlank()) {
-            log.warn("HWP preview skipped because HWP_EDIT_BASE_URL is not configured.");
+            log.warn("{} preview skipped because HWP_EDIT_BASE_URL is not configured.", label);
             return null;
         }
 
         try {
-            byte[] pdfBytes = callHwpPreviewBridge(file.getBytes(), originalName).getBody();
+            byte[] pdfBytes = callPreviewBridge(file.getBytes(), originalName, endpoint).getBody();
             if (pdfBytes == null || pdfBytes.length == 0) {
-                log.warn("HWP preview bridge returned an empty PDF for {}", originalName);
+                log.warn("{} preview bridge returned an empty PDF for {}", label, originalName);
                 return null;
             }
 
@@ -2427,12 +2805,16 @@ public class DocumentService {
                     .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                     .build());
         } catch (Exception e) {
-            log.warn("HWP preview bridge failed for {}: {}", originalName, e.getMessage());
+            log.warn("{} preview bridge failed for {}: {}", label, originalName, e.getMessage());
             return null;
         }
     }
 
     private ResponseEntity<byte[]> callHwpPreviewBridge(byte[] originalBytes, String originalName) {
+        return callPreviewBridge(originalBytes, originalName, "/hwp/preview-pdf");
+    }
+
+    private ResponseEntity<byte[]> callPreviewBridge(byte[] originalBytes, String originalName, String endpoint) {
         ByteArrayResource fileResource = new ByteArrayResource(originalBytes) {
             @Override
             public String getFilename() {
@@ -2447,7 +2829,7 @@ public class DocumentService {
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
         return restTemplate.postForEntity(
-                hwpEditBaseUrl.replaceAll("/+$", "") + "/hwp/preview-pdf",
+                hwpEditBaseUrl.replaceAll("/+$", "") + endpoint,
                 new HttpEntity<>(body, headers),
                 byte[].class
         );
@@ -2472,39 +2854,14 @@ public class DocumentService {
         return lowerName.endsWith(".hwp") || contentType.contains("hwp");
     }
 
+    private boolean isWordFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".doc")
+                || lowerName.endsWith(".docx")
+                || contentType.contains("word");
+    }
+
     private boolean isPlainTextFile(String lowerName, String contentType) {
         return lowerName.endsWith(".txt") || contentType.contains("text/plain");
-    }
-
-    private boolean shouldCreateParsedPreviewFallback(String lowerName, String contentType, String parsedContent) {
-        return parsedContent != null
-                && !parsedContent.isBlank()
-                && (isPlainTextFile(lowerName, contentType) || isConvertibleToPdf(lowerName, contentType));
-    }
-
-    private Path createParsedContentPreviewPdf(String parsedContent, String originalName, Path outputDir)
-            throws IOException, InterruptedException {
-        if (parsedContent == null || parsedContent.isBlank()) {
-            return null;
-        }
-
-        String htmlName = originalName.replaceFirst("\\.[^.]+$", "") + "-parsed.html";
-        Path htmlFile = outputDir.resolve(sanitizeFileName(htmlName));
-        Files.writeString(htmlFile, toPreviewHtml(parsedContent), StandardCharsets.UTF_8);
-
-        KordocResult result = runLibreOffice(htmlFile, outputDir);
-        if (result.exitCode() != 0) {
-            log.warn("Parsed content PDF conversion failed with exit code {}: {}", result.exitCode(), result.output());
-            return null;
-        }
-
-        Path pdfFile = findConvertedPdf(outputDir, htmlFile);
-        if (pdfFile == null || !Files.exists(pdfFile)) {
-            log.warn("Parsed content PDF conversion finished but no PDF was created for {}", originalName);
-            return null;
-        }
-
-        return pdfFile;
     }
 
     private String toPreviewHtml(String content) {

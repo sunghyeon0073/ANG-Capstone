@@ -12,12 +12,12 @@ export default function Login() {
     try {
       const response = await login({ empNo: employeeId, password })
       const { data } = response.data
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('token', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
+      sessionStorage.setItem('user', JSON.stringify(data.user))
+      sessionStorage.setItem('token', data.accessToken)
+      sessionStorage.setItem('refreshToken', data.refreshToken)
       const username = data.user?.name || data.user?.empNo || '사용자'
       alert(`${username}님 환영합니다.`)
-      navigate('/dashboard')
+      navigate('/dashboard', { replace: true })
     } catch (error) {
       const message = error.response?.data?.message || '로그인에 실패했습니다.'
       alert(message)
@@ -30,6 +30,14 @@ export default function Login() {
 
   return (
     <div className="auth-container">
+      {/* 왼쪽 로고 영역 */}
+      <div className="auth-brand">
+        <div className="auth-brand-logo">ANG</div>
+        <p className="auth-brand-sub">스마트 업무 포털</p>
+      </div>
+
+      {/* 오른쪽 로그인 패널 */}
+      <div className="auth-panel">
       <div className="auth-box">
         <h1>로그인</h1>
         <form onSubmit={handleLogin}>
@@ -68,6 +76,7 @@ export default function Login() {
             회원가입
           </button>
         </div>
+      </div>
       </div>
     </div>
   )

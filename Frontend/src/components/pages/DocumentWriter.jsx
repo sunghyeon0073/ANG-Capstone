@@ -4,7 +4,8 @@ import {
   getMyDocuments,
   getDepartmentDocuments,
   deleteDocument,
-  downloadDocumentFile
+  downloadDocumentFile,
+  updateDocument
 } from '../../api/documentApi'
 // removed mock data imports - use backend APIs only
 import {
@@ -15,7 +16,7 @@ import {
   isImageDocument,
 } from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiChevronRight, FiUpload } from 'react-icons/fi'
+import { FiCheck, FiChevronRight, FiEdit3, FiFileText, FiPlus, FiX } from 'react-icons/fi'
 import { useAiGeneration } from '../../contexts/useAiGeneration'
 // use backend download endpoint instead of frontend export logic
 
@@ -28,7 +29,37 @@ const parseCsvToTable = (text) => {
   return { headers, rows }
 }
 
+const AI_PROGRESS_STEPS = {
+  create: [
+    { label: '요청 내용 분석 중', description: '작성 의도와 참조 문서를 확인하고 있습니다.', percent: 25 },
+    { label: '문서 초안 구성 중', description: '기획서 흐름과 핵심 문장을 정리하고 있습니다.', percent: 55 },
+    { label: '문서 파일 생성 중', description: '작성 결과를 문서 파일로 저장하고 있습니다.', percent: 82 },
+    { label: '문서 목록에 반영 중', description: '완성된 문서를 불러오는 중입니다.', percent: 94 },
+  ],
+  edit: [
+    { label: '원본 문서 분석 중', description: '선택한 문서와 수정 요청을 확인하고 있습니다.', percent: 25 },
+    { label: '수정 내용 반영 중', description: '원본 구조를 기준으로 내용을 고치고 있습니다.', percent: 55 },
+    { label: '수정본 저장 중', description: '수정된 문서를 파일로 저장하고 있습니다.', percent: 82 },
+    { label: '문서 목록에 반영 중', description: '완성된 수정본을 불러오는 중입니다.', percent: 94 },
+  ],
+}
+
+const createDraftDocumentTab = () => ({
+  id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  doc: null,
+})
+
+const extractDocumentList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.content)) return payload.data.content
+  return []
+}
+
 export default function DocumentWriter() {
+  const [openDocumentTabs, setOpenDocumentTabs] = useState(() => [createDraftDocumentTab()])
+  const [activeDocumentTabId, setActiveDocumentTabId] = useState(() => null)
   const [documents, setDocuments] = useState([])
   const [filteredDocuments, setFilteredDocuments] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -36,7 +67,6 @@ export default function DocumentWriter() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [prompt, setPrompt] = useState('')
-  const [aiOutputFormat, setAiOutputFormat] = useState('pdf')
   const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
   const [sortOrder, setSortOrder] = useState('newest')
@@ -49,14 +79,26 @@ export default function DocumentWriter() {
   const [selectedScopeId, setSelectedScopeId] = useState('all')
   const [showFullView, setShowFullView] = useState(false)
   const [promptOpen, setPromptOpen] = useState(true)
+  const [showDocumentPicker, setShowDocumentPicker] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadTargetScopeId, setUploadTargetScopeId] = useState('')
+  const [aiProgressMode, setAiProgressMode] = useState(null)
+  const [aiProgressStep, setAiProgressStep] = useState(0)
+  const [docxEditInstructions, setDocxEditInstructions] = useState([])
+  const [docxEditMode, setDocxEditMode] = useState(false)
+  const [titleEditMode, setTitleEditMode] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [isTitleSaving, setIsTitleSaving] = useState(false)
   const fileInputRef = useRef(null)
   const mountedRef = useRef(true)
   const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
+
+  useEffect(() => {
+    setActiveDocumentTabId((currentId) => currentId || openDocumentTabs[0]?.id || null)
+  }, [openDocumentTabs])
 
   useEffect(() => {
     return () => {
@@ -83,6 +125,11 @@ export default function DocumentWriter() {
   }, [category, selectedScopeId])
 
   useEffect(() => {
+    setDocxEditInstructions([])
+    setDocxEditMode(false)
+  }, [selectedDoc?.docId])
+
+  useEffect(() => {
     const handleGeneratedDocument = (event) => {
       const generatedDocument = event.detail?.document
       if (!generatedDocument) return
@@ -93,12 +140,15 @@ export default function DocumentWriter() {
           return exists ? currentDocuments : [generatedDocument, ...currentDocuments]
         })
       }
+      setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
+        tab.id === activeDocumentTabId ? { ...tab, doc: generatedDocument } : tab
+      )))
       setSelectedDoc(generatedDocument)
     }
 
     window.addEventListener('ang:ai-document-generated', handleGeneratedDocument)
     return () => window.removeEventListener('ang:ai-document-generated', handleGeneratedDocument)
-  }, [category])
+  }, [activeDocumentTabId, category])
 
   useEffect(() => {
     const filtered = documents.filter((doc) => {
@@ -119,6 +169,20 @@ export default function DocumentWriter() {
 
     setFilteredDocuments(sorted)
   }, [searchTerm, documents, sortOrder])
+
+  useEffect(() => {
+    if (!aiLoading || !aiProgressMode) return undefined
+
+    setAiProgressStep(0)
+    const timer = window.setInterval(() => {
+      setAiProgressStep((currentStep) => {
+        const lastStep = AI_PROGRESS_STEPS[aiProgressMode].length - 1
+        return currentStep >= lastStep ? currentStep : currentStep + 1
+      })
+    }, 1400)
+
+    return () => window.clearInterval(timer)
+  }, [aiLoading, aiProgressMode])
 
   useEffect(() => {
     let objectUrl = null
@@ -218,6 +282,52 @@ export default function DocumentWriter() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [showFullView])
 
+  useEffect(() => {
+    setTitleEditMode(false)
+    setTitleDraft(selectedDoc?.title || '')
+  }, [selectedDoc?.docId, selectedDoc?.title])
+
+  const startTitleEdit = () => {
+    if (!selectedDoc) return
+    setTitleDraft(selectedDoc.title || '')
+    setTitleEditMode(true)
+  }
+
+  const cancelTitleEdit = () => {
+    setTitleDraft(selectedDoc?.title || '')
+    setTitleEditMode(false)
+  }
+
+  const saveTitleEdit = async () => {
+    if (!selectedDoc || isTitleSaving) return
+    const nextTitle = titleDraft.trim()
+    if (!nextTitle) {
+      alert('문서 제목을 입력해 주세요.')
+      return
+    }
+    if (nextTitle === selectedDoc.title) {
+      setTitleEditMode(false)
+      return
+    }
+
+    try {
+      setIsTitleSaving(true)
+      await updateDocument(selectedDoc.docId, { title: nextTitle })
+      const applyTitle = doc => doc.docId === selectedDoc.docId ? { ...doc, title: nextTitle } : doc
+      setSelectedDoc(prev => prev ? { ...prev, title: nextTitle } : prev)
+      setDocuments(prev => prev.map(applyTitle))
+      setAttachedDocs(prev => prev.map(applyTitle))
+      setOpenDocumentTabs(prev => prev.map(tab => (
+        tab.doc?.docId === selectedDoc.docId ? { ...tab, doc: applyTitle(tab.doc) } : tab
+      )))
+      setTitleEditMode(false)
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || '문서 제목 수정에 실패했습니다.')
+    } finally {
+      setIsTitleSaving(false)
+    }
+  }
+
   const handleExport = async () => {
     if (!selectedDoc || !selectedDoc.fileId) return
 
@@ -286,7 +396,7 @@ export default function DocumentWriter() {
         const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
         response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam })
       }
-      setDocuments(response.data?.data || [])
+      setDocuments(extractDocumentList(response.data?.data))
       setError(null)
     } catch (err) {
       console.error('문서 목록 조회 실패:', err)
@@ -325,6 +435,9 @@ export default function DocumentWriter() {
           // If we are in department view and uploaded to a department, we should ideally refresh or check if it matches
           fetchDocuments()
         }
+        setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
+          tab.id === activeDocumentTabId ? { ...tab, doc: newDoc } : tab
+        )))
         setSelectedDoc(newDoc)
         setShowUploadModal(false)
         setUploadTitle('')
@@ -350,6 +463,9 @@ export default function DocumentWriter() {
     try {
       await deleteDocument(docId)
       setDocuments(prev => prev.filter(d => d.docId !== docId))
+      setOpenDocumentTabs(prev => prev.map(tab => (
+        tab.doc?.docId === docId ? { ...tab, doc: null } : tab
+      )))
       if (selectedDoc?.docId === docId) setSelectedDoc(null)
       window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
         detail: { message: '문서를 휴지통으로 보냈어요.' },
@@ -369,169 +485,264 @@ export default function DocumentWriter() {
     setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
   }
 
-  const handleAiGenerate = async () => {
-    if (!prompt.trim()) {
+  const handleAddDocxEditInstruction = (instruction) => {
+    setDocxEditInstructions((current) => [...current, instruction])
+  }
+
+  const handleRemoveDocxEditInstruction = (instructionId) => {
+    setDocxEditInstructions((current) => current.filter((instruction) => instruction.id !== instructionId))
+  }
+
+  const handleOpenNewDocumentTab = () => {
+    const nextTab = createDraftDocumentTab()
+    setOpenDocumentTabs((currentTabs) => [...currentTabs, nextTab])
+    setActiveDocumentTabId(nextTab.id)
+    setSelectedDoc(null)
+    setShowDocumentPicker(false)
+  }
+
+  const handleActivateDocumentTab = (tab) => {
+    setActiveDocumentTabId(tab.id)
+    setSelectedDoc(tab.doc)
+    setShowDocumentPicker(!tab.doc)
+  }
+
+  const handleCloseDocumentTab = (e, tabId) => {
+    e.stopPropagation()
+    setOpenDocumentTabs((currentTabs) => {
+      if (currentTabs.length === 1) {
+        // 마지막 탭은 닫지 않고 빈 탭으로 초기화
+        const fresh = createDraftDocumentTab()
+        setActiveDocumentTabId(fresh.id)
+        setSelectedDoc(null)
+        setShowDocumentPicker(false)
+        return [fresh]
+      }
+      const idx = currentTabs.findIndex((t) => t.id === tabId)
+      const next = currentTabs.filter((t) => t.id !== tabId)
+      // 닫힌 탭이 활성 탭이면 인접 탭으로 포커스 이동
+      if (tabId === activeDocumentTabId) {
+        const focusTab = next[Math.min(idx, next.length - 1)]
+        setActiveDocumentTabId(focusTab.id)
+        setSelectedDoc(focusTab.doc)
+        setShowDocumentPicker(!focusTab.doc)
+      }
+      return next
+    })
+  }
+
+  const handleSelectDocument = (doc) => {
+    const existingTab = openDocumentTabs.find((tab) => tab.doc?.docId === doc.docId)
+    if (existingTab) {
+      setActiveDocumentTabId(existingTab.id)
+      setSelectedDoc(existingTab.doc)
+      setShowDocumentPicker(false)
+      return
+    }
+
+    setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
+      tab.id === activeDocumentTabId ? { ...tab, doc } : tab
+    )))
+    setSelectedDoc(doc)
+    setShowDocumentPicker(false)
+  }
+
+  const handleAiGenerate = async (mode = 'create') => {
+    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
+    const hasDocxEditInstructions = mode === 'edit' && selectedKind === 'word' && docxEditInstructions.length > 0
+
+    if (!prompt.trim() && !hasDocxEditInstructions) {
       alert('프롬프트를 입력하세요.')
       return
     }
 
+    const editOutputFormat =
+      selectedKind === 'hwp' || selectedKind === 'hwpx'
+        ? 'hwp'
+        : selectedKind === 'word'
+          ? 'docx'
+          : selectedKind === 'excel'
+            ? 'xlsx'
+            : selectedKind === 'pdf'
+              ? 'pdf'
+              : selectedKind === 'text'
+                ? 'txt'
+                : null
+
+    // 새 문서 작성 시에는 선택된 문서의 형식을 그대로 따라간다 (hwp 선택 → hwp 생성, xlsx 선택 → xlsx 생성 등).
+    const createOutputFormat =
+      selectedKind === 'hwp' || selectedKind === 'hwpx'
+        ? 'hwp'
+        : selectedKind === 'excel'
+          ? 'xlsx'
+          : selectedKind === 'pdf'
+            ? 'pdf'
+            : 'docx'
+
+    if (mode === 'edit' && !selectedDoc) {
+      alert('수정할 문서를 선택하세요.')
+      return
+    }
+
+    if (mode === 'edit' && !editOutputFormat) {
+      alert('이미지 형식은 AI 수정을 지원하지 않습니다.')
+      return
+    }
+
+    const scopedEditPrompt = docxEditInstructions
+      .map((instruction, index) => [
+        `${index + 1}. blockId: ${instruction.blockId}`,
+        `selectedText: ${instruction.selectedText}`,
+        `instruction: ${instruction.instruction}`,
+      ].join('\n'))
+      .join('\n\n')
+
+    const finalPrompt = hasDocxEditInstructions
+      ? [
+        prompt.trim(),
+        '아래 DOCX 블록별 수정 요청은 사용자가 미리보기에서 직접 지정한 위치입니다. 반드시 각 요청의 blockId를 유지하고, selectedText를 find 값으로 우선 사용해 주세요. instruction에 해당하는 내용만 replace에 반영하고, 요청하지 않은 문단은 수정하지 마세요. selectedText가 비어 있으면 해당 blockId 근처 문맥에서 instruction만 반영할 최소 find/replace를 만드세요.',
+        scopedEditPrompt,
+      ].filter(Boolean).join('\n\n')
+      : prompt
+
     const payload = {
-      prompt,
-      outputFormat: aiOutputFormat,
-      attachedDocIds: attachedDocs.map((doc) => doc.docId),
-      attachedDocs: attachedDocs.length > 0
-        ? attachedDocs.map((doc) => ({
-            docId: doc.docId,
-            title: doc.title,
-            content: doc.originalContent || doc.title,
-          }))
-        : null,
+      prompt: finalPrompt,
+      mode,
+      outputFormat: mode === 'edit' ? editOutputFormat : createOutputFormat,
+      sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
+      attachedDocIds: attachedDocs
+        .filter((doc) => mode !== 'edit' || doc.docId !== selectedDoc.docId)
+        .map((doc) => doc.docId),
     }
 
     try {
+      setAiProgressMode(mode)
+      setAiProgressStep(0)
       await startGeneration(payload)
       if (mountedRef.current) {
         setPrompt('')
         setAttachedDocs([])
+        setDocxEditInstructions([])
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
       if (mountedRef.current) {
         alert(err.response?.data?.message || err.message || 'AI 문서 생성에 실패했습니다.')
       }
+    } finally {
+      if (mountedRef.current) {
+        setAiProgressMode(null)
+        setAiProgressStep(0)
+      }
     }
   }
 
+  const aiProgressSteps = aiProgressMode ? AI_PROGRESS_STEPS[aiProgressMode] : []
+  const currentAiProgress = aiProgressSteps[aiProgressStep] || aiProgressSteps[0]
+
   return (
     <div className="document-writer-container">
-      <div className="document-sidebar">
-        <div className="sidebar-header">
-          <h3>문서 목록</h3>
-          <div className="category-tabs">
+      <div className={`document-main ${promptOpen ? '' : 'document-main--prompt-collapsed'}`}>
+        <div className="document-editor-pane">
+          <div className="document-browser-tabs">
+            {openDocumentTabs.map((tab) => (
+              <div
+                key={tab.id}
+                className={`document-browser-tab ${tab.id === activeDocumentTabId ? 'active' : ''}`}
+                onClick={() => handleActivateDocumentTab(tab)}
+                title={tab.doc?.title || '문서 선택'}
+              >
+                <FiFileText />
+                <span>{tab.doc?.title || 'Untitled'}</span>
+                <button
+                  type="button"
+                  className="document-tab-close"
+                  onClick={(e) => handleCloseDocumentTab(e, tab.id)}
+                  title="탭 닫기"
+                >
+                  <FiX size={12} />
+                </button>
+              </div>
+            ))}
             <button
               type="button"
-              className={`category-tab ${category === 'my' ? 'active' : ''}`}
-              onClick={() => setCategory('my')}
+              className="document-browser-add"
+              onClick={handleOpenNewDocumentTab}
+              aria-label="새 문서 탭"
+              title="새 문서 탭"
             >
-              내 문서
-            </button>
-            <button
-              type="button"
-              className={`category-tab ${category === 'dept' ? 'active' : ''}`}
-              onClick={() => setCategory('dept')}
-            >
-              부서 문서
+              <FiPlus />
             </button>
           </div>
 
-          {category === 'dept' && myScopes.length > 0 && (
-            <div className="scope-filter">
-              <select
-                className="scope-select"
-                value={selectedScopeId}
-                onChange={(e) => setSelectedScopeId(e.target.value)}
-              >
-                <option value="all">전체 부서 문서보기</option>
-                {myScopes.map((scope) => (
-                  <option key={scope.id} value={scope.id}>{scope.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        <div className="search-with-filter">
-          <input
-            type="text"
-            placeholder="문서 검색..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
-          />
-          <button 
-            type="button"
-            className="sort-toggle-btn"
-            onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
-            title={sortOrder === 'newest' ? '최신순 (오래된순으로 변경)' : '오래된순 (최신순으로 변경)'}
-          >
-            {sortOrder === 'newest' ? '↓' : '↑'}
-          </button>
-        </div>
-
-        <div className="document-list">
-          {loading ? (
-            <div className="loading">로딩 중...</div>
-          ) : error ? (
-            <div className="error">{error}</div>
-          ) : filteredDocuments.length === 0 ? (
-            <div className="empty-state">
-              {documents.length === 0 ? '문서가 없습니다.' : '검색 결과가 없습니다.'}
-            </div>
-          ) : (
-            filteredDocuments.map((doc) => (
-              <div
-                key={doc.docId}
-                className={`document-item ${selectedDoc?.docId === doc.docId ? 'active' : ''}`}
-                onClick={() => setSelectedDoc(doc)}
-              >
-                <div className="document-item-row">
-                  <div className="doc-title">{doc.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(doc)}`}>
-                      {getFileTypeLabel(doc)}
-                    </span>
-                    {doc.canDelete && (
-                      <button
-                        className="btn-delete-doc"
-                        onClick={(e) => handleDelete(e, doc.docId)}
-                        title="삭제"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#ff4d4f',
-                          cursor: 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          fontSize: '14px'
-                        }}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                  {category === 'dept' && doc.scopeName && (
-                    <span className={`doc-scope-tag ${doc.scopeName === 'N/A' ? 'doc-scope-tag--personal' : ''}`}>
-                      {doc.scopeName === 'N/A' ? '개인 문서' : doc.scopeName}
-                    </span>
-                  )}
-                </div>
-                <div className="doc-date">
-                  {new Date(doc.createdAt).toLocaleString('ko-KR', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                  })}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      <div className={`document-main ${promptOpen ? '' : 'document-main--prompt-collapsed'}`}>
-        <div className="document-content">
+          <div className="document-content">
           {selectedDoc ? (
             <div className="selected-document">
               <div className="doc-viewer-header">
                 <div className="doc-viewer-header-left">
-                  <h2 className="selected-document-title">{selectedDoc.title}</h2>
+                  <div className={`document-title-editor ${titleEditMode ? 'is-editing' : ''}`}>
+                    {titleEditMode ? (
+                      <>
+                        <input
+                          className="document-title-input"
+                          value={titleDraft}
+                          onChange={(event) => setTitleDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') saveTitleEdit()
+                            if (event.key === 'Escape') cancelTitleEdit()
+                          }}
+                          autoFocus
+                          disabled={isTitleSaving}
+                          aria-label="문서 제목"
+                        />
+                        <button
+                          type="button"
+                          className="document-title-icon-button"
+                          onClick={saveTitleEdit}
+                          disabled={isTitleSaving}
+                          aria-label="제목 저장"
+                          title="제목 저장"
+                        >
+                          <FiCheck />
+                        </button>
+                        <button
+                          type="button"
+                          className="document-title-icon-button"
+                          onClick={cancelTitleEdit}
+                          disabled={isTitleSaving}
+                          aria-label="제목 수정 취소"
+                          title="제목 수정 취소"
+                        >
+                          <FiX />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <h2 className="selected-document-title">{selectedDoc.title}</h2>
+                        <button
+                          type="button"
+                          className="document-title-icon-button"
+                          onClick={startTitleEdit}
+                          aria-label="제목 수정"
+                          title="제목 수정"
+                        >
+                          <FiEdit3 />
+                        </button>
+                      </>
+                    )}
+                  </div>
                   <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
                     {getFileTypeLabel(selectedDoc)}
                   </span>
+                  {getDocumentPreviewKind(selectedDoc) === 'word' && (
+                    <button
+                      type="button"
+                      className={`doc-edit-mode-toggle ${docxEditMode ? 'active' : ''}`}
+                      onClick={() => setDocxEditMode((enabled) => !enabled)}
+                    >
+                      {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
+                    </button>
+                  )}
                   {selectedDoc.scopeName && (
                     <span className={`doc-scope-badge ${selectedDoc.scopeName === 'N/A' ? 'doc-scope-badge--personal' : ''}`}>
                       {selectedDoc.scopeName === 'N/A' ? '개인 문서' : selectedDoc.scopeName}
@@ -576,13 +787,17 @@ export default function DocumentWriter() {
                 previewData={previewData}
                 previewLoading={previewLoading}
                 previewError={previewError}
+                docxEditInstructions={docxEditInstructions}
+                onAddDocxEditInstruction={handleAddDocxEditInstruction}
+                docxEditEnabled={docxEditMode}
               />
             </div>
           ) : (
             <div className="empty-content">
-              <p>왼쪽 목록에서 문서를 선택하거나 새 문서를 작성하세요.</p>
+              <p>빈 탭입니다. 이 탭에서 오른쪽 AI에게 새 문서 작성을 요청하거나 탭을 눌러 문서를 선택하세요.</p>
             </div>
           )}
+          </div>
         </div>
 
         <div className="ai-prompt-section">
@@ -608,6 +823,20 @@ export default function DocumentWriter() {
                   ×
                 </button>
                 <span className="tab-name">{doc.title}</span>
+              </div>
+            ))}
+
+            {docxEditInstructions.map((instruction) => (
+              <div key={instruction.id} className="prompt-tab prompt-tab-docx-edit">
+                <button
+                  type="button"
+                  className="tab-remove-btn"
+                  onClick={() => handleRemoveDocxEditInstruction(instruction.id)}
+                  title="삭제"
+                >
+                  ×
+                </button>
+                <span className="tab-name">{instruction.blockId} 수정 요청</span>
               </div>
             ))}
 
@@ -640,49 +869,188 @@ export default function DocumentWriter() {
               disabled={aiLoading}
             />
 
+            {aiLoading && currentAiProgress && (
+              <div className="ai-progress-panel" role="status" aria-live="polite">
+                <div className="ai-progress-copy">
+                  <strong>{currentAiProgress.label}</strong>
+                  <span>{currentAiProgress.description}</span>
+                </div>
+                <div className="ai-progress-track" aria-hidden="true">
+                  <div
+                    className="ai-progress-fill"
+                    style={{ width: `${currentAiProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="prompt-actions">
               <div className="prompt-actions-left">
                 <button
                   type="button"
-                  className="btn-prompt-upload"
-                  onClick={() => setShowUploadModal(true)}
-                  disabled={isUploading}
-                  title="파일 업로드"
+                  onClick={() => handleAiGenerate('create')}
+                  className="btn-generate btn-generate--create"
+                  disabled={aiLoading}
                 >
-                  <FiUpload />
-                  <span>업로드</span>
+                  {aiLoading ? '생성 중...' : '새 문서 작성'}
                 </button>
-
-                <div className="ai-format-selector" aria-label="AI 문서 형식 선택">
-                  {['pdf', 'docx', 'xlsx', 'txt', 'hwp'].map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      className={`ai-format-btn ${aiOutputFormat === format ? 'active' : ''}`}
-                      onClick={() => setAiOutputFormat(format)}
-                      disabled={aiLoading}
-                    >
-                      {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               <div className="prompt-actions-right">
                 <button
                   type="button"
-                  onClick={handleAiGenerate}
-                  className="btn-generate"
-                  disabled={aiLoading}
+                  onClick={() => handleAiGenerate('edit')}
+                  className="btn-generate btn-generate--edit"
+                  disabled={aiLoading || !selectedDoc}
                 >
-                  {aiLoading ? '생성 중...' : 'AI 생성'}
+                  <FiEdit3 />
+                  <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
                 </button>
+                {selectedDoc && getDocumentPreviewKind(selectedDoc) === 'word' && (
+                  <button
+                    type="button"
+                    className={`btn-generate btn-generate--docx-edit ${docxEditMode ? 'active' : ''}`}
+                    onClick={() => setDocxEditMode((enabled) => !enabled)}
+                    disabled={aiLoading}
+                  >
+                    {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
           )}
         </div>
       </div>
+
+      {showDocumentPicker && (
+        <div className="modal-overlay document-picker-overlay" onClick={() => setShowDocumentPicker(false)}>
+          <div
+            className="document-picker-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="document-picker-title"
+          >
+            <div className="document-picker-header">
+              <h3 id="document-picker-title">문서 선택</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowDocumentPicker(false)}
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="document-picker-controls">
+              <div className="category-tabs">
+                <button
+                  type="button"
+                  className={`category-tab ${category === 'my' ? 'active' : ''}`}
+                  onClick={() => setCategory('my')}
+                >
+                  내 문서
+                </button>
+                <button
+                  type="button"
+                  className={`category-tab ${category === 'dept' ? 'active' : ''}`}
+                  onClick={() => setCategory('dept')}
+                >
+                  공유 문서
+                </button>
+              </div>
+
+              {category === 'dept' && myScopes.length > 0 && (
+                <div className="scope-filter">
+                  <select
+                    className="scope-select"
+                    value={selectedScopeId}
+                    onChange={(e) => setSelectedScopeId(e.target.value)}
+                  >
+                    <option value="all">전체 공유 문서보기</option>
+                    {myScopes.map((scope) => (
+                      <option key={scope.id} value={scope.id}>{scope.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="search-with-filter">
+                <input
+                  type="text"
+                  placeholder="문서 검색..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="search-input"
+                />
+                <button
+                  type="button"
+                  className="sort-toggle-btn"
+                  onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
+                  title={sortOrder === 'newest' ? '최신순 (오래된순으로 변경)' : '오래된순 (최신순으로 변경)'}
+                >
+                  {sortOrder === 'newest' ? '↓' : '↑'}
+                </button>
+              </div>
+            </div>
+
+            <div className="document-list document-picker-list">
+              {loading ? (
+                <div className="loading">로딩 중...</div>
+              ) : error ? (
+                <div className="error">{error}</div>
+              ) : filteredDocuments.length === 0 ? (
+                <div className="empty-state">
+                  {documents.length === 0 ? '문서가 없습니다.' : '검색 결과가 없습니다.'}
+                </div>
+              ) : (
+                filteredDocuments.map((doc) => (
+                  <div
+                    key={doc.docId}
+                    className={`document-item ${selectedDoc?.docId === doc.docId ? 'active' : ''}`}
+                    onClick={() => handleSelectDocument(doc)}
+                  >
+                    <div className="document-item-row">
+                      <div className="doc-title">{doc.title}</div>
+                      <div className="document-item-actions">
+                        <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(doc)}`}>
+                          {getFileTypeLabel(doc)}
+                        </span>
+                        {doc.canDelete && (
+                          <button
+                            className="btn-delete-doc"
+                            onClick={(e) => handleDelete(e, doc.docId)}
+                            title="삭제"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                      {category === 'dept' && doc.scopeName && (
+                        <span className={`doc-scope-tag ${doc.scopeName === 'N/A' ? 'doc-scope-tag--personal' : ''}`}>
+                          {doc.scopeName === 'N/A' ? '개인 문서' : doc.scopeName}
+                        </span>
+                      )}
+                    </div>
+                    <div className="doc-date">
+                      {new Date(doc.createdAt).toLocaleString('ko-KR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showFullView && selectedDoc && (
         <div
@@ -704,6 +1072,7 @@ export default function DocumentWriter() {
               previewLoading={previewLoading}
               previewError={previewError}
               variant="fullscreen"
+              docxEditInstructions={docxEditInstructions}
             />
             <button
               type="button"

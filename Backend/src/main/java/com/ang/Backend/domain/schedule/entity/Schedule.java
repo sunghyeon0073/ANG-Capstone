@@ -28,6 +28,10 @@ public class Schedule {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "scope_id")
+    private com.ang.Backend.domain.scope.entity.Scope scope;
+
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
@@ -54,6 +58,10 @@ public class Schedule {
     @Builder.Default
     private boolean isTodo = false;
 
+    public void setIsTodo(boolean isTodo) {
+        this.isTodo = isTodo;
+    }
+
     @Column(name = "is_completed", nullable = false)
     @Builder.Default
     private boolean isCompleted = false;
@@ -75,7 +83,7 @@ public class Schedule {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public void update(LocalDate startDate, LocalDate endDate, String title, LocalTime startTime, LocalTime endTime, String description, ScheduleType type) {
+    public void update(LocalDate startDate, LocalDate endDate, String title, LocalTime startTime, LocalTime endTime, String description, ScheduleType type, boolean isTodo, String repeatType, LocalDate repeatEndDate) {
         this.startDate = startDate;
         this.endDate = endDate;
         this.title = title;
@@ -83,6 +91,9 @@ public class Schedule {
         this.endTime = endTime;
         this.description = description;
         this.type = type;
+        this.isTodo = isTodo;
+        this.repeatType = repeatType;
+        this.repeatEndDate = repeatEndDate;
     }
 
     public void toggleComplete() {
