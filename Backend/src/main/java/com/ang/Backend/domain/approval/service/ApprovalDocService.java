@@ -14,11 +14,13 @@ import com.ang.Backend.domain.approval.entity.ApprovalAttachment;
 import com.ang.Backend.domain.approval.entity.ApprovalDoc;
 import com.ang.Backend.domain.approval.entity.ApprovalLine;
 import com.ang.Backend.domain.approval.entity.ApprovalTemplate;
+import com.ang.Backend.domain.approval.entity.UserSignature;
 import com.ang.Backend.domain.approval.event.ApprovalCompletedEvent;
 import com.ang.Backend.domain.approval.repository.ApprovalAttachmentRepository;
 import com.ang.Backend.domain.approval.repository.ApprovalDocRepository;
 import com.ang.Backend.domain.approval.repository.ApprovalLineRepository;
 import com.ang.Backend.domain.approval.repository.ApprovalTemplateRepository;
+import com.ang.Backend.domain.approval.repository.UserSignatureRepository;
 import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
@@ -50,6 +52,7 @@ public class ApprovalDocService {
     private final ApprovalAttachmentRepository attachmentRepository;
     private final ApprovalLineRepository lineRepository;
     private final ApprovalTemplateRepository templateRepository;
+    private final UserSignatureRepository userSignatureRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ApplicationEventPublisher eventPublisher;
@@ -160,7 +163,7 @@ public class ApprovalDocService {
         // 서명 스냅샷 + 승인 처리
         currentLine.setStatus(ApprovalLineStatus.APPROVED);
         currentLine.setComment(req.getComment());
-        currentLine.setSignatureSnapshot(requester.getSignatureImageUrl());
+        currentLine.setSignatureSnapshot(resolveSignatureImageUrl(req.getSignatureId(), requester));
         currentLine.setProcessedAt(LocalDateTime.now());
 
         // 다음 WAITING 결재선 활성화
@@ -275,6 +278,19 @@ public class ApprovalDocService {
     }
 
     // ─── 내부 헬퍼 ────────────────────────────────────────────────────────────
+
+    private String resolveSignatureImageUrl(Long signatureId, User requester) {
+        if (signatureId != null) {
+            UserSignature signature = userSignatureRepository.findByIdAndUser(signatureId, requester)
+                    .orElseThrow(() -> new CustomException(ErrorCode.APPROVAL_SIGN_NOT_FOUND));
+            return signature.getImageUrl();
+        }
+        // signatureId 미지정 시 가장 최근에 등록한 서명으로 대체
+        return userSignatureRepository.findByUserOrderByCreatedAtDesc(requester).stream()
+                .findFirst()
+                .map(UserSignature::getImageUrl)
+                .orElse(null);
+    }
 
     private void buildApprovalLines(ApprovalDoc doc, List<ApprovalLineDto.Request> lineRequests, boolean submitNow) {
         boolean firstActivatable = submitNow;
