@@ -57,6 +57,61 @@
   cursor: not-allowed;
 }
 
+.ai-generation-summary-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #d9eee9;
+  border-radius: 10px;
+  background: #f7fffc;
+  color: var(--color-text);
+  box-shadow: var(--shadow-soft-xs);
+}
+
+.ai-generation-summary-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-generation-summary-header strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.ai-generation-summary-kicker {
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #dff7ef;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ai-generation-summary-panel p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-generation-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-generation-summary-meta span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .ai-progress-panel {
   display: flex;
   flex-direction: column;

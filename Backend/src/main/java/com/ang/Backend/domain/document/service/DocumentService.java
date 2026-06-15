@@ -276,8 +276,9 @@ public class DocumentService {
         }
 
         String aiTitle = makeAiTitle(answer);
+        String aiSummary = createAiGenerationSummary(prompt, aiTitle, answer, format);
 
-        return saveAiDocument(aiTitle, answer, user, format);
+        return saveAiDocument(aiTitle, answer, aiSummary, user, format);
     }
 
     private String callAiChat(String message) {
@@ -360,7 +361,8 @@ public class DocumentService {
         }
 
         String aiTitle = makeAiTitle(answer);
-        return saveAiDocument(aiTitle, answer, user, format);
+        String aiSummary = createAiGenerationSummary(prompt, aiTitle, answer, format);
+        return saveAiDocument(aiTitle, answer, aiSummary, user, format);
     }
 
     private String buildContentEditPrompt(String instruction, String sourceTitle, String originalContent, AiOutputFormat format) {
@@ -914,7 +916,44 @@ public class DocumentService {
                 """.formatted(format.extension.toUpperCase(), formatInstruction, prompt);
     }
 
-    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, User user, AiOutputFormat format) {
+    private String createAiGenerationSummary(String prompt, String aiTitle, String answer, AiOutputFormat format) {
+        String content = cleanParsedContent(answer);
+        if (content.length() > 8000) {
+            content = content.substring(0, 8000);
+        }
+
+        String summaryPrompt = """
+                아래 AI 생성 문서의 생성 결과를 사용자에게 보여줄 짧은 한국어 요약으로 작성하세요.
+                반드시 3문장 이내로 답하고, 문서 목적·주요 내용·활용 포인트를 포함하세요.
+                제목이나 마크다운 헤딩은 쓰지 마세요.
+
+                생성 요청:
+                %s
+
+                문서 제목: %s
+                문서 형식: %s
+
+                문서 내용:
+                %s
+                """.formatted(prompt, aiTitle, format.extension.toUpperCase(), content);
+
+        try {
+            String summary = cleanParsedContent(callAiChat(summaryPrompt));
+            if (!summary.isBlank()) {
+                return summary.length() > 500 ? summary.substring(0, 500).strip() : summary;
+            }
+        } catch (Exception e) {
+            log.warn("AI generation summary failed, using fallback summary: {}", e.getMessage());
+        }
+        return buildFallbackSummary(aiTitle, format);
+    }
+
+    private String buildFallbackSummary(String aiTitle, AiOutputFormat format) {
+        return "%s 형식의 문서 \"%s\" 생성이 완료되었습니다. 문서함에서 내용을 확인하고 필요한 부분을 이어서 편집할 수 있습니다."
+                .formatted(format.extension.toUpperCase(), aiTitle);
+    }
+
+    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, String aiSummary, User user, AiOutputFormat format) {
         AiGeneratedFile generatedFile = createAiGeneratedFile(aiTitle, answer, format);
 
         return transactionTemplate.execute(status -> {
@@ -930,7 +969,7 @@ public class DocumentService {
                     .owner(user)
                     .status(DocumentStatus.DRAFT)
                     .originalContent(answer)
-                    .aiSummary(answer)
+                    .aiSummary(aiSummary)
                     .isAiGenerated(true)
                     .build();
 

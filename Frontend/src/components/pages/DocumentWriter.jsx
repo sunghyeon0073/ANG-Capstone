@@ -82,6 +82,7 @@ export default function DocumentWriter() {
   const [showFullView, setShowFullView] = useState(false)
   const [promptOpen, setPromptOpen] = useState(true)
   const [showDocumentPicker, setShowDocumentPicker] = useState(false)
+  const [generationSummary, setGenerationSummary] = useState(null)
   const [isExporting, setIsExporting] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadTitle, setUploadTitle] = useState('')
@@ -146,6 +147,12 @@ export default function DocumentWriter() {
         tab.id === activeDocumentTabId ? { ...tab, doc: generatedDocument } : tab
       )))
       setSelectedDoc(generatedDocument)
+      setGenerationSummary({
+        title: generatedDocument.title || '생성된 문서',
+        summary: generatedDocument.aiSummary || '문서 생성이 완료되었습니다. 문서함에서 내용을 확인해 주세요.',
+        fileType: getFileTypeLabel(generatedDocument),
+        createdAt: generatedDocument.createdAt,
+      })
     }
 
     window.addEventListener('ang:ai-document-generated', handleGeneratedDocument)
@@ -620,6 +627,7 @@ export default function DocumentWriter() {
     try {
       setAiProgressMode(mode)
       setAiProgressStep(0)
+      setGenerationSummary(null)
       await startGeneration(payload)
       if (mountedRef.current) {
         setPrompt('')
@@ -863,6 +871,22 @@ export default function DocumentWriter() {
 
           {promptOpen && (
           <div className="prompt-input-group">
+            {generationSummary && (
+              <section className="ai-generation-summary-panel" aria-label="AI 문서 생성 요약">
+                <div className="ai-generation-summary-header">
+                  <span className="ai-generation-summary-kicker">생성 완료</span>
+                  <strong>{generationSummary.title}</strong>
+                </div>
+                <p>{generationSummary.summary}</p>
+                <div className="ai-generation-summary-meta">
+                  <span>{generationSummary.fileType}</span>
+                  {generationSummary.createdAt && (
+                    <span>{new Date(generationSummary.createdAt).toLocaleString('ko-KR')}</span>
+                  )}
+                </div>
+              </section>
+            )}
+
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
