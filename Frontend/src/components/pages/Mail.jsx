@@ -1,3 +1,4 @@
+import '../../style/mail.css'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiEdit, FiInbox, FiSend, FiStar, FiFolder, FiTrash2 } from 'react-icons/fi'
 import {

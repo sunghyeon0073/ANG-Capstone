@@ -1,3 +1,4 @@
+import '../../style/home.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import HomeCalendar from './HomeCalendar'
 import Board from './Board'
@@ -6,7 +7,7 @@ import { searchUsers } from '../../api/userApi'
 import { getMyDocuments } from '../../api/documentApi'
 import {
   FiAlertCircle, FiCheck, FiChevronLeft, FiChevronRight,
-  FiClock, FiEdit2, FiLoader, FiMail, FiMessageSquare,
+  FiClock, FiEdit2, FiHome, FiLoader, FiMail, FiMessageSquare,
   FiPaperclip, FiSearch, FiSend, FiTrash2, FiUser, FiX
 } from 'react-icons/fi'
 import {
@@ -15,6 +16,8 @@ import {
   getRejectedInbox,
   getProgressOutbox,
 } from '../../api/approvalApi'
+import { unwrapList } from '../../utils/responseUtils'
+import { toDateTimeLocalValue, toLocalDateTimePayload } from '../../utils/dateUtils'
 
 const STEPS = ['수신자', '제목', '본문', '전송 방식', '파일 첨부', '예약 시간']
 
@@ -29,26 +32,9 @@ const STATUS_META = {
 
 const STATUS_FILTERS = ['ALL', 'PENDING', 'SENT', 'FAILED', 'CANCELLED']
 
-const unwrapApiData = response => response?.data?.data ?? response?.data ?? response
-
-const extractDocumentList = response => {
-  const data = unwrapApiData(response)
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.content)) return data.content
-  return []
-}
+const extractDocumentList = response => unwrapList(response)
 
 const getDocumentFileId = doc => doc?.fileId ?? doc?.file?.id ?? doc?.fileItemId ?? null
-
-const toDateTimeLocalValue = (value) => {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const offset = date.getTimezoneOffset() * 60000
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
-}
-
-const toLocalDateTimePayload = (value) => value ? `${value}:00` : null
 
 const formatScheduleTime = (value) => {
   if (!value) return '즉시 발송'
@@ -713,6 +699,11 @@ function ReserveList({ onSubPageChange }) {
   )
 }
 
+const HOME_NAV = [
+  { id: 'home-dashboard', label: '대시보드', icon: FiHome },
+  { id: 'home-reserve-list', label: '예약 목록', icon: FiClock },
+]
+
 export default function Home({ currentSubPage, onSubPageChange }) {
   const [step, setStep] = useState(0)
   const [recipients, setRecipients] = useState([])
@@ -725,12 +716,6 @@ export default function Home({ currentSubPage, onSubPageChange }) {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(null)
   const [error, setError] = useState('')
-
-  if (currentSubPage === 'home-reserve-list') {
-    return <ReserveList onSubPageChange={onSubPageChange} />
-  }
-
-  if (currentSubPage === 'home-memo') return null
 
   const reset = () => {
     setStep(0); setRecipients([]); setSubject(''); setBody('')
@@ -772,7 +757,29 @@ export default function Home({ currentSubPage, onSubPageChange }) {
   }
 
   return (
-    <div className="home-page">
+    <div className="org-workspace">
+      <aside className="home-rail">
+        <div className="home-rail-header">
+          <span className="home-rail-title">홈</span>
+        </div>
+        <nav className="home-nav">
+          {HOME_NAV.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              className={`home-nav-item ${currentSubPage === id || (id === 'home-dashboard' && currentSubPage !== 'home-reserve-list') ? 'active' : ''}`}
+              onClick={() => onSubPageChange?.(id)}
+            >
+              <Icon size={15} />
+              <span className="home-nav-label">{label}</span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+      <div className="home-content">
+        {currentSubPage === 'home-reserve-list' ? (
+          <ReserveList onSubPageChange={onSubPageChange} />
+        ) : (
+          <div className="home-page">
       <div className="home-reserve-card">
         <div className="home-reserve-header">
           <div>
@@ -948,6 +955,9 @@ export default function Home({ currentSubPage, onSubPageChange }) {
         <section className="home-panel home-approval-panel">
           <ApprovalSummary onSubPageChange={onSubPageChange} />
         </section>
+      </div>
+          </div>
+        )}
       </div>
     </div>
   )

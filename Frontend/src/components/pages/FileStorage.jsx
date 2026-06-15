@@ -1,9 +1,10 @@
+import '../../style/file-storage.css'
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  FiFileText, FiGrid, FiList, FiSearch, 
-  FiFilter, FiInfo, FiDownload, FiTrash2, FiStar, 
+  FiFileText, FiGrid, FiList, FiSearch,
+  FiFilter, FiInfo, FiDownload, FiTrash2, FiStar,
   FiUsers, FiFolder, FiChevronRight, FiUploadCloud,
-  FiShare2, FiRotateCcw, FiChevronLeft
+  FiShare2, FiRotateCcw, FiChevronLeft, FiEye
 } from 'react-icons/fi';
 import { 
   FaStar, FaRegStar, FaFilePdf, FaFileWord, FaFileExcel, 
@@ -25,6 +26,7 @@ import {
 } from '../../api/documentApi';
 import { getApprovalTemplates } from '../../api/approvalApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
+import FilePreviewModal from '../file/FilePreviewModal';
 
 const formatDate = (iso, includeTime = false) => {
   if (!iso) return '-';
@@ -78,7 +80,8 @@ export default function FileStorage() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
-  
+  const [previewDoc, setPreviewDoc] = useState(null);
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(0); // Backend is 0-indexed
   const [totalPages, setTotalPages] = useState(0);
@@ -286,6 +289,34 @@ export default function FileStorage() {
       fetchDocs();
       alert('문서가 복구되었습니다.');
     } catch (error) {
+      alert('복구 실패');
+    }
+  };
+
+  const handleDeleteFromPreview = async (docId) => {
+    const isTrash = activeTab === 'trash';
+    const msg = isTrash
+      ? '정말 영구 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.'
+      : '정말 삭제하시겠습니까? 삭제된 문서는 휴지통으로 이동합니다.';
+    if (!window.confirm(msg)) return;
+    try {
+      if (isTrash) await permanentDeleteDocument(docId);
+      else await deleteDocument(docId);
+      fetchDocs();
+      if (selectedDocId === docId) setSelectedDocId(null);
+      setPreviewDoc(null);
+    } catch {
+      alert('삭제 실패');
+    }
+  };
+
+  const handleRestoreFromPreview = async (docId) => {
+    try {
+      await restoreDocument(docId);
+      fetchDocs();
+      setPreviewDoc(null);
+      alert('문서가 복구되었습니다.');
+    } catch {
       alert('복구 실패');
     }
   };
@@ -623,8 +654,17 @@ export default function FileStorage() {
                   </>
                   ) : (
                   <>
-                  <button 
-                  className="btn btn-primary" 
+                  {selectedDoc.fileId && (
+                  <button
+                  className="btn btn-secondary"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  onClick={() => setPreviewDoc(selectedDoc)}
+                  >
+                  <FiEye /> 미리보기
+                  </button>
+                  )}
+                  <button
+                  className="btn btn-primary"
                   style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                   onClick={() => handleDownload(selectedDoc.fileId, selectedDoc.originalFileName || selectedDoc.title)}
                   >
@@ -728,6 +768,24 @@ export default function FileStorage() {
             </form>
           </div>
         </div>
+      )}
+      {/* File Preview Modal */}
+      {previewDoc && (
+        <FilePreviewModal
+          doc={previewDoc}
+          isTrash={activeTab === 'trash'}
+          onClose={() => setPreviewDoc(null)}
+          onDownload={handleDownload}
+          onRename={(doc) => {
+            setPreviewDoc(null);
+            setSelectedDocId(doc.docId);
+            setRenameTitle(doc.title);
+            setShowRenameModal(true);
+          }}
+          onShare={() => {}}
+          onDelete={handleDeleteFromPreview}
+          onRestore={handleRestoreFromPreview}
+        />
       )}
       {/* Rename Modal */}
       {showRenameModal && (
