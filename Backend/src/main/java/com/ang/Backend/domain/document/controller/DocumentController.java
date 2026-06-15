@@ -32,7 +32,7 @@ public class DocumentController {
     @PostMapping("/sync")
     public ApiResponse<Void> syncFiles() {
         documentService.manualSync();
-        return ApiResponse.ok(null);
+        return ApiResponse.success(null);
     }
 
     @PostMapping
@@ -48,7 +48,7 @@ public class DocumentController {
         Integer scopeId = (targetScopeId != null && !targetScopeId.isEmpty())
                 ? Integer.parseInt(targetScopeId) : null;
 
-        return ApiResponse.ok(documentService.create(title, file, user, scopeId));
+        return ApiResponse.success(documentService.create(title, file, user, scopeId));
     }
 
     @GetMapping
@@ -59,7 +59,7 @@ public class DocumentController {
         if (userDetails != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.getAllDocuments(user, pageable));
+        return ApiResponse.success(documentService.getAllDocuments(user, pageable));
     }
 
     @PostMapping("/ai-generate")
@@ -70,7 +70,7 @@ public class DocumentController {
         if (userDetails != null && userDetails.getUsername() != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.generateWithAi(
+        return ApiResponse.success(documentService.generateWithAi(
                 request.getPrompt(),
                 user,
                 request.getSourceDocId(),
@@ -89,7 +89,7 @@ public class DocumentController {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getMyDocuments(user, keyword, pageable));
+        return ApiResponse.success(documentService.getMyDocuments(user, keyword, pageable));
     }
 
     @GetMapping("/favorites")
@@ -100,7 +100,7 @@ public class DocumentController {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getFavoriteDocuments(user, pageable));
+        return ApiResponse.success(documentService.getFavoriteDocuments(user, pageable));
     }
 
     @PostMapping("/{id}/favorite")
@@ -109,7 +109,7 @@ public class DocumentController {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.toggleFavorite(id, user));
+        return ApiResponse.success(documentService.toggleFavorite(id, user));
     }
 
     @GetMapping("/department")
@@ -122,7 +122,7 @@ public class DocumentController {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getDepartmentDocuments(user, scopeId, keyword, pageable));
+        return ApiResponse.success(documentService.getDepartmentDocuments(user, scopeId, keyword, pageable));
     }
 
     @GetMapping("/{id}")
@@ -131,18 +131,18 @@ public class DocumentController {
         if (userDetails != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.getDocument(id, user));
+        return ApiResponse.success(documentService.getDocument(id, user));
     }
 
     @GetMapping("/{id}/original-content")
     public ApiResponse<String> getOriginalContent(@PathVariable Long id) {
-        return ApiResponse.ok("요청이 성공적으로 처리되었습니다.", documentService.getOriginalContent(id));
+        return ApiResponse.success("요청이 성공적으로 처리되었습니다.", documentService.getOriginalContent(id));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<Void> update(@PathVariable Long id, @RequestBody DocumentDto.UpdateRequest dto) {
         documentService.update(id, dto);
-        return ApiResponse.ok(null);
+        return ApiResponse.success(null);
     }
 
     @PostMapping("/{id}/hwp-replace")
@@ -177,7 +177,7 @@ public class DocumentController {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getTrashDocuments(user, pageable));
+        return ApiResponse.success(documentService.getTrashDocuments(user, pageable));
     }
 
     @DeleteMapping("/{id}")
@@ -187,7 +187,7 @@ public class DocumentController {
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.delete(id, user);
-        return ApiResponse.ok(null);
+        return ApiResponse.success(null);
     }
 
     @DeleteMapping("/{id}/permanent")
@@ -197,7 +197,7 @@ public class DocumentController {
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.permanentDelete(id, user);
-        return ApiResponse.ok(null);
+        return ApiResponse.success(null);
     }
 
     @PutMapping("/{id}/restore")
@@ -207,6 +207,6 @@ public class DocumentController {
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.restore(id, user);
-        return ApiResponse.ok(null);
+        return ApiResponse.success(null);
     }
 }

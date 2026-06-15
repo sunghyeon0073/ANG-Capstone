@@ -27,4 +27,7 @@ export const getFavoriteFiles = (params) => api.get('/files/favorites', { params
 export const downloadFile = (fileId) => 
   api.get(`/files/download/${fileId}`, { responseType: 'blob' });
 
+export const getFilePreview = (fileId) =>
+  api.get(`/files/preview/${fileId}`, { responseType: 'blob' });
+
 export const renameFile = (fileId, data) => api.put(`/files/${fileId}`, data);

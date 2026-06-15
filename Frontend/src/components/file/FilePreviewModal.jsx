@@ -6,7 +6,7 @@ import {
   FiDownload, FiEdit2, FiShare2, FiTrash2, FiX,
   FiFile, FiAlertCircle, FiRotateCcw,
 } from 'react-icons/fi'
-import { downloadDocumentFile } from '../../api/documentApi'
+import { downloadFile } from '../../api/fileApi'
 import { getDocumentPreviewKind, inferContentType } from '../../utils/documentFileUtils'
 import HwpViewer from '../pages/HwpViewer'
 
@@ -138,7 +138,7 @@ export default function FilePreviewModal({ doc, isTrash, onClose, onDownload, on
     setFileData(null)
     setBlobUrl(null)
 
-    downloadDocumentFile(doc.fileId)
+    downloadFile(doc.fileId)
       .then(async (res) => {
         const ab = await res.data.arrayBuffer()
         const mimeType = inferContentType(doc.originalFileName || doc.title || '')

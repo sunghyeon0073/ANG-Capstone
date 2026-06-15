@@ -1,14 +1,20 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import '../../style/document.css'
 import '../../style/AIprompt.css'
 import { useState, useEffect, useRef } from 'react'
-import api from '../../api/axios'
+// 리뷰 반영: 불필요한 axios import 제거
 import {
   getMyDocuments,
   getDepartmentDocuments,
   deleteDocument,
-  downloadDocumentFile,
-  updateDocument
+  updateDocument,
+  uploadDocument
 } from '../../api/documentApi'
+// 리뷰 반영: fileApi의 downloadFile 사용
+import { getFilePreview, downloadFile } from '../../api/fileApi'
+import { getMyScopes } from '../../api/scopeApi'
+// 리뷰 반영: 공통 유틸리티 사용
+import { formatDate, formatDateTime } from '../../utils/dateUtils'
 // removed mock data imports - use backend APIs only
 import {
   getDocumentPreviewKind,
@@ -60,14 +66,14 @@ const extractDocumentList = (payload) => {
 }
 
 export default function DocumentWriter() {
+  const queryClient = useQueryClient()
   const [openDocumentTabs, setOpenDocumentTabs] = useState(() => [createDraftDocumentTab()])
   const [activeDocumentTabId, setActiveDocumentTabId] = useState(() => null)
-  const [documents, setDocuments] = useState([])
   const [filteredDocuments, setFilteredDocuments] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedDoc, setSelectedDoc] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  
+  // 리팩토링: React Query 도입. 기존 loading, error, documents useState 제거
   const [prompt, setPrompt] = useState('')
   const [attachedDocs, setAttachedDocs] = useState([])
   const [category, setCategory] = useState('my')
@@ -93,10 +99,61 @@ export default function DocumentWriter() {
   const [docxEditMode, setDocxEditMode] = useState(false)
   const [titleEditMode, setTitleEditMode] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
-  const [isTitleSaving, setIsTitleSaving] = useState(false)
+  
   const fileInputRef = useRef(null)
   const mountedRef = useRef(true)
   const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
+
+  // 리팩토링: React Query의 useQuery를 사용하여 데이터 패칭 로직 간소화
+  const { data: documents = [], isLoading: loading, isError: isFetchError } = useQuery({
+    queryKey: ['documents', category, selectedScopeId],
+    queryFn: async () => {
+      let response
+      if (category === 'my') {
+        response = await getMyDocuments({ size: 1000 })
+      } else {
+        const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
+        response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam, size: 1000 })
+      }
+      return extractDocumentList(response.data?.data) // 백엔드에서 규격화된 데이터를 그대로 매핑
+    }
+  })
+
+  // 리팩토링: 삭제 로직을 useMutation으로 교체 및 캐시 무효화 적용
+  const deleteMutation = useMutation({
+    mutationFn: (docId) => deleteDocument(docId),
+    onSuccess: (_, docId) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      setOpenDocumentTabs(prev => prev.map(tab => (
+        tab.doc?.docId === docId ? { ...tab, doc: null } : tab
+      )))
+      if (selectedDoc?.docId === docId) setSelectedDoc(null)
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: '문서를 휴지통으로 보냈어요.' },
+      }))
+    },
+    onError: (err) => {
+      alert('삭제 실패: ' + (err.response?.data?.message || '오류가 발생했습니다.'))
+    }
+  })
+
+  // 리팩토링: 수정 로직을 useMutation으로 교체 및 캐시 무효화 적용
+  const updateMutation = useMutation({
+    mutationFn: ({ docId, nextTitle }) => updateDocument(docId, { title: nextTitle }),
+    onSuccess: (_, { docId, nextTitle }) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      const applyTitle = doc => doc.docId === docId ? { ...doc, title: nextTitle } : doc
+      setSelectedDoc(prev => prev ? { ...prev, title: nextTitle } : prev)
+      setAttachedDocs(prev => prev.map(applyTitle))
+      setOpenDocumentTabs(prev => prev.map(tab => (
+        tab.doc?.docId === docId ? { ...tab, doc: applyTitle(tab.doc) } : tab
+      )))
+      setTitleEditMode(false)
+    },
+    onError: (err) => {
+      alert(err.response?.data?.message || err.message || '문서 제목 수정에 실패했습니다.')
+    }
+  })
 
   useEffect(() => {
     setActiveDocumentTabId((currentId) => currentId || openDocumentTabs[0]?.id || null)
@@ -111,7 +168,7 @@ export default function DocumentWriter() {
   useEffect(() => {
     const fetchScopes = async () => {
       try {
-        const res = await api.get('/scopes/my')
+        const res = await getMyScopes()
         const scopes = res.data?.data || []
         setMyScopes(scopes)
       } catch (err) {
@@ -238,9 +295,7 @@ export default function DocumentWriter() {
 
       try {
         setPreviewLoading(true)
-        const response = await api.get(`/files/preview/${previewFileId}`, {
-          responseType: 'blob',
-        })
+        const response = await getFilePreview(previewFileId)
         const blob = response.data
 
         if (['word', 'excel', 'hwp', 'hwpx'].includes(previewKind)) {
@@ -335,7 +390,7 @@ export default function DocumentWriter() {
 
     try {
       setIsExporting(true)
-      const res = await downloadDocumentFile(selectedDoc.fileId)
+      const res = await downloadFile(selectedDoc.fileId)
 
       const disposition = res.headers['content-disposition']
       let filename = selectedDoc.originalFileName || selectedDoc.title || 'document'
@@ -393,10 +448,11 @@ export default function DocumentWriter() {
       setLoading(true)
       let response
       if (category === 'my') {
-        response = await getMyDocuments()
+        // 리뷰 반영: 기본 사이즈 누락으로 인한 데이터 소실 방지
+        response = await getMyDocuments({ size: 1000 })
       } else {
         const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
-        response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam })
+        response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam, size: 1000 })
       }
       setDocuments(extractDocumentList(response.data?.data))
       setError(null)
@@ -427,7 +483,7 @@ export default function DocumentWriter() {
         formData.append('targetScopeId', uploadTargetScopeId)
       }
       
-      const response = await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const response = await uploadDocument(formData)
 
       if (response.data?.success) {
         const newDoc = { ...response.data.data, source: 'uploaded' }
@@ -1001,8 +1057,8 @@ export default function DocumentWriter() {
             <div className="document-list document-picker-list">
               {loading ? (
                 <div className="loading">로딩 중...</div>
-              ) : error ? (
-                <div className="error">{error}</div>
+              ) : isFetchError ? (
+                <div className="error">문서 목록을 불러올 수 없습니다.</div>
               ) : filteredDocuments.length === 0 ? (
                 <div className="empty-state">
                   {documents.length === 0 ? '문서가 없습니다.' : '검색 결과가 없습니다.'}
@@ -1037,14 +1093,7 @@ export default function DocumentWriter() {
                       )}
                     </div>
                     <div className="doc-date">
-                      {new Date(doc.createdAt).toLocaleString('ko-KR', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false
-                      })}
+                      {formatDate(doc.createdAt)}
                     </div>
                   </div>
                 ))

@@ -21,7 +21,8 @@ public class GlobalExceptionHandler {
         log.warn("CustomException: {}", e.getMessage());
         return ResponseEntity
                 .status(e.getErrorCode().getHttpStatus())
-                .body(ApiResponse.fail(e.getMessage()));
+                // 리팩토링: ApiResponse 정규화 규격(status 포함) 적용
+                .body(ApiResponse.error(e.getErrorCode().getHttpStatus().value(), e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -33,6 +34,7 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity
                 .badRequest()
+                // 리팩토링: ApiResponse 정규화 규격 적용 (데이터 포함 에러는 fail 그대로 유지하거나 확장 가능)
                 .body(ApiResponse.fail("입력값 검증 실패", errors));
     }
 
@@ -40,7 +42,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(AccessDeniedException e) {
         return ResponseEntity
                 .status(ErrorCode.FORBIDDEN.getHttpStatus())
-                .body(ApiResponse.fail(ErrorCode.FORBIDDEN.getMessage()));
+                .body(ApiResponse.error(ErrorCode.FORBIDDEN.getHttpStatus().value(), ErrorCode.FORBIDDEN.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
@@ -48,6 +50,6 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception: ", e);
         return ResponseEntity
                 .status(ErrorCode.INTERNAL_SERVER_ERROR.getHttpStatus())
-                .body(ApiResponse.fail(ErrorCode.INTERNAL_SERVER_ERROR.getMessage()));
+                .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR.getHttpStatus().value(), ErrorCode.INTERNAL_SERVER_ERROR.getMessage()));
     }
 }
