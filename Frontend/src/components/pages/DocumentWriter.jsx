@@ -15,6 +15,7 @@ import { getFilePreview, downloadFile } from '../../api/fileApi'
 import { getMyScopes } from '../../api/scopeApi'
 // 리뷰 반영: 공통 유틸리티 사용
 import { formatDate, formatDateTime } from '../../utils/dateUtils'
+import { getBaseName, getExtension } from '../../utils/fileUtils'
 // removed mock data imports - use backend APIs only
 import {
   getDocumentPreviewKind,
@@ -387,22 +388,27 @@ export default function DocumentWriter() {
 
   const startTitleEdit = () => {
     if (!selectedDoc) return
-    setTitleDraft(selectedDoc.title || '')
+    setTitleDraft(getBaseName(selectedDoc.title) || '')
     setTitleEditMode(true)
   }
 
   const cancelTitleEdit = () => {
-    setTitleDraft(selectedDoc?.title || '')
+    setTitleDraft(getBaseName(selectedDoc?.title) || '')
     setTitleEditMode(false)
   }
 
   const saveTitleEdit = async () => {
     if (!selectedDoc || isTitleSaving) return
-    const nextTitle = titleDraft.trim()
-    if (!nextTitle) {
+    const baseName = titleDraft.trim()
+    if (!baseName) {
       alert('문서 제목을 입력해 주세요.')
       return
     }
+    
+    // 원래 확장자를 가져와서 새 이름에 붙여줍니다.
+    const ext = getExtension(selectedDoc.title)
+    const nextTitle = baseName + ext
+
     if (nextTitle === selectedDoc.title) {
       setTitleEditMode(false)
       return
@@ -707,7 +713,7 @@ export default function DocumentWriter() {
                 title={tab.doc?.title || '문서 선택'}
               >
                 <FiFileText />
-                <span>{tab.doc?.title || 'Untitled'}</span>
+                <span>{getBaseName(tab.doc?.title) || 'Untitled'}</span>
                 <button
                   type="button"
                   className="document-tab-close"
@@ -772,7 +778,7 @@ export default function DocumentWriter() {
                       </>
                     ) : (
                       <>
-                        <h2 className="selected-document-title">{selectedDoc.title}</h2>
+                        <h2 className="selected-document-title">{getBaseName(selectedDoc.title)}</h2>
                         <button
                           type="button"
                           className="document-title-icon-button"
@@ -876,7 +882,7 @@ export default function DocumentWriter() {
                 >
                   ×
                 </button>
-                <span className="tab-name">{doc.title}</span>
+                <span className="tab-name">{getBaseName(doc.title)}</span>
               </div>
             ))}
 
@@ -908,7 +914,7 @@ export default function DocumentWriter() {
                 }}
               >
                 <span className="tab-add-btn">+</span>
-                <span className="tab-name">{selectedDoc.title}</span>
+                <span className="tab-name">{getBaseName(selectedDoc.title)}</span>
               </div>
             )}
           </div>
@@ -923,7 +929,7 @@ export default function DocumentWriter() {
                 <div className="ai-generation-summary-content">
                   <div className="ai-generation-summary-header">
                     <span className="ai-generation-summary-kicker">생성 완료</span>
-                    <strong>{generationSummary.title}</strong>
+                    <strong>{getBaseName(generationSummary.title)}</strong>
                   </div>
                   <p>{generationSummary.summary}</p>
                   <div className="ai-generation-summary-meta">
@@ -1088,7 +1094,7 @@ export default function DocumentWriter() {
                     onClick={() => handleSelectDocument(doc)}
                   >
                     <div className="document-item-row">
-                      <div className="doc-title">{doc.title}</div>
+                      <div className="doc-title">{getBaseName(doc.title)}</div>
                       <div className="document-item-actions">
                         <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(doc)}`}>
                           {getFileTypeLabel(doc)}

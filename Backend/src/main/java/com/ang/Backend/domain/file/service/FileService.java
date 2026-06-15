@@ -33,6 +33,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -52,6 +53,7 @@ public class FileService {
     private final S3FileService s3FileService;
     private final DocumentRepository documentRepository;
     private final FavoriteDocumentRepository favoriteDocumentRepository;
+    private final com.ang.Backend.domain.document.service.DocumentParser documentParser;
 
     @Value("${file.upload-dir:uploads}")
     private String uploadDir;
@@ -61,6 +63,7 @@ public class FileService {
     public void syncPdfFilesFromUploadsDir() {
         File directory = new File(uploadDir);
         if (!directory.exists()) {
+            directory.mkdirs();
             return;
         }
 
@@ -91,21 +94,18 @@ public class FileService {
             throw new IllegalArgumentException("파일이 존재하지 않습니다.");
         }
 
-        String customPath = uploadDir;
-        if (ownerType == OwnerType.USER) {
-            customPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
-        } else if (ownerType == OwnerType.SCOPE) {
-            customPath += File.separator + "Scopes" + File.separator + ownerId;
-        }
-
-        File directory = new File(customPath);
-        if (!directory.exists()) {
-            log.debug("Skipping local upload directory creation because files are stored in S3: {}", customPath);
-        }
-
         String originalFilename = file.getOriginalFilename();
-        String storedFileName = s3FileService.upload(file);
-        String filePath = storedFileName;
+        String storedFileName;
+        String filePath;
+        
+        try {
+            storedFileName = s3FileService.upload(file);
+            filePath = storedFileName;
+        } catch (Exception e) {
+            log.warn("S3 upload failed, falling back to local storage: {}", e.getMessage());
+            filePath = storeFileLocally(file, uploader, ownerType, ownerId);
+            storedFileName = new File(filePath).getName();
+        }
 
         FileItem fileItem = FileItem.builder()
                 .originalFileName(originalFilename)
@@ -119,12 +119,16 @@ public class FileService {
                 .build();
 
         FileItem saved = fileItemRepository.save(fileItem);
-        
-        // 문서와 파일함 로직을 원래대로 이행하기 위해, 파일 업로드 시 DocumentEntity도 함께 생성 (동기화)
+
+        String scopeName = "N/A";
         com.ang.Backend.domain.scope.entity.Scope scope = null;
         if (ownerType == OwnerType.SCOPE && ownerId != null) {
             scope = scopeRepository.findById(ownerId).orElse(null);
+            if (scope != null) scopeName = scope.getName();
         }
+
+        // Parse content for AI knowledge base
+        String parsedContent = documentParser.parseOriginalContent(file);
 
         com.ang.Backend.domain.document.entity.DocumentEntity doc = com.ang.Backend.domain.document.entity.DocumentEntity.builder()
                 .title(originalFilename)
@@ -132,12 +136,32 @@ public class FileService {
                 .owner(uploader)
                 .scope(scope)
                 .status(com.ang.Backend.common.enums.DocumentStatus.DRAFT)
-                .originalContent("Uploaded via File Storage: " + originalFilename)
+                .originalContent(parsedContent.isBlank() ? "Uploaded via File Storage: " + originalFilename : parsedContent)
                 .build();
         documentRepository.save(doc);
 
-        String scopeName = getScopeName(saved);
         return FileDto.Response.fromEntity(saved, false, scopeName);
+    }
+
+    private String storeFileLocally(MultipartFile file, User uploader, OwnerType ownerType, Integer ownerId) throws IOException {
+        String customPath = uploadDir;
+        if (ownerType == OwnerType.USER && uploader != null) {
+            customPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
+        } else if (ownerType == OwnerType.SCOPE && ownerId != null) {
+            customPath += File.separator + "Scopes" + File.separator + ownerId;
+        }
+
+        File directory = new File(customPath);
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        String storedFileName = java.util.UUID.randomUUID().toString() + "_" + originalFilename;
+        Path targetPath = Paths.get(customPath).resolve(storedFileName);
+        
+        Files.copy(file.getInputStream(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        return targetPath.toAbsolutePath().toString();
     }
 
     @Transactional
@@ -173,21 +197,18 @@ public class FileService {
     public FileItem storeFile(MultipartFile file, User uploader, String subPath) throws IOException {
         if (file.isEmpty()) return null;
 
-        String finalPath = uploadDir;
-        if (subPath != null && !subPath.isBlank()) {
-            finalPath += File.separator + subPath;
-        } else if (uploader != null) {
-            finalPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
-        }
-
-        File directory = new File(finalPath).getAbsoluteFile();
-        if (!directory.exists()) {
-            log.debug("Skipping local upload directory creation because files are stored in S3: {}", finalPath);
-        }
-
         String originalFilename = file.getOriginalFilename();
-        String storedFileName = s3FileService.upload(file);
-        String filePath = storedFileName;
+        String storedFileName;
+        String filePath;
+
+        try {
+            storedFileName = s3FileService.upload(file);
+            filePath = storedFileName;
+        } catch (Exception e) {
+            log.warn("S3 upload failed in storeFile, falling back to local storage: {}", e.getMessage());
+            filePath = storeFileLocallyWithSubPath(file, uploader, subPath);
+            storedFileName = new File(filePath).getName();
+        }
 
         return fileItemRepository.save(FileItem.builder()
                 .originalFileName(originalFilename)
@@ -199,6 +220,40 @@ public class FileService {
                 .ownerId(uploader != null ? uploader.getUserId() : null)
                 .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                 .build());
+    }
+
+    private String storeFileLocallyWithSubPath(MultipartFile file, User uploader, String subPath) throws IOException {
+        String finalPath = uploadDir;
+        if (subPath != null && !subPath.isBlank()) {
+            finalPath += File.separator + subPath;
+        } else if (uploader != null) {
+            finalPath += File.separator + "Users" + File.separator + uploader.getEmpNo();
+        }
+
+        File directory = new File(finalPath);
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        String storedFileName = java.util.UUID.randomUUID().toString() + "_" + originalFilename;
+        Path targetPath = Paths.get(finalPath).resolve(storedFileName);
+        
+        Files.copy(file.getInputStream(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        return targetPath.toAbsolutePath().toString();
+    }
+
+    public String storeBytesLocally(byte[] bytes, String fileName, String prefix) throws IOException {
+        String finalPath = uploadDir + File.separator + prefix + File.separator + java.time.LocalDate.now();
+        File directory = new File(finalPath);
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+
+        String storedFileName = java.util.UUID.randomUUID().toString() + "_" + fileName;
+        Path targetPath = Paths.get(finalPath).resolve(storedFileName);
+        Files.write(targetPath, bytes);
+        return targetPath.toAbsolutePath().toString();
     }
 
     @Transactional

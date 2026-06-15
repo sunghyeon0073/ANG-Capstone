@@ -8,6 +8,7 @@ import {
 } from 'react-icons/fi'
 import { downloadFile } from '../../api/fileApi'
 import { getDocumentPreviewKind, inferContentType } from '../../utils/documentFileUtils'
+import { getBaseName } from '../../utils/fileUtils'
 import HwpViewer from '../pages/HwpViewer'
 
 function DocxViewer({ data }) {
@@ -210,7 +211,7 @@ export default function FilePreviewModal({ doc, isTrash, onClose, onDownload, on
     <div className="fp-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="fp-modal">
         <header className="fp-modal-header">
-          <span className="fp-modal-title" title={doc.title}>{doc.title}</span>
+          <span className="fp-modal-title" title={doc.title}>{getBaseName(doc.title)}</span>
           <button className="fp-modal-close" type="button" onClick={onClose}><FiX size={20} /></button>
         </header>
 

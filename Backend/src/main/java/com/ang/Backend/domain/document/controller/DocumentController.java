@@ -7,6 +7,7 @@ import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.service.DocumentService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -36,7 +37,7 @@ public class DocumentController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<Long>> create(@RequestParam String title,
+    public ResponseEntity<ApiResponse<DocumentDto.Response>> create(@RequestParam String title,
                                                    @RequestPart MultipartFile file,
                                                    @RequestParam(required = false) String targetScopeId,
                                                    @AuthenticationPrincipal UserDetails userDetails) throws Exception {
@@ -64,7 +65,7 @@ public class DocumentController {
 
     @PostMapping("/ai-generate")
     public ResponseEntity<ApiResponse<DocumentDto.Response>> generateWithAi(
-            @RequestBody DocumentDto.AiGenerateRequest request,
+            @Valid @RequestBody DocumentDto.AiGenerateRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = null;
         if (userDetails != null && userDetails.getUsername() != null) {

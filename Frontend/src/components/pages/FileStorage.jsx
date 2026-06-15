@@ -30,7 +30,7 @@ import { getApprovalTemplates } from '../../api/approvalApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
 // 리뷰 반영: 공통 유틸리티 사용
 import { formatDate, formatDateTime } from '../../utils/dateUtils';
-import { formatFileSize } from '../../utils/fileUtils';
+import { formatFileSize, getBaseName, getExtension } from '../../utils/fileUtils';
 import FilePreviewModal from '../file/FilePreviewModal';
 
 const getFileIcon = (doc) => {
@@ -216,8 +216,13 @@ export default function FileStorage() {
 
   const handleRename = (e) => {
     e.preventDefault();
-    if (!selectedDocId || !renameTitle.trim()) return;
-    renameMutation.mutate({ id: selectedDocId, data: { title: renameTitle } });
+    if (!selectedDocId || !renameTitle.trim() || !selectedDoc) return;
+    
+    // 원래 확장자를 가져와서 새 이름에 붙여줍니다.
+    const ext = getExtension(selectedDoc.title);
+    const finalTitle = renameTitle.trim() + ext;
+    
+    renameMutation.mutate({ id: selectedDocId, data: { title: finalTitle } });
   };
 
   const handleSort = (key) => {
@@ -486,7 +491,7 @@ export default function FileStorage() {
                   {getFileIcon(doc)}
                   </div>
                   <div className="file-card-info">
-                  <div className="file-card-name" title={doc.title}>{doc.title}</div>
+                  <div className="file-card-name" title={doc.title}>{getBaseName(doc.title)}</div>
                   <div className="file-card-meta">{formatFileSize(doc.fileSize)}</div>
                   </div>
                   </div>
@@ -529,7 +534,7 @@ export default function FileStorage() {
                   <td>
                     <div className="file-table-name-cell">
                       <span style={{ fontSize: '30px' }}>{getFileIcon(doc)}</span>
-                      <span style={{ fontSize: '15px' }}>{doc.title}</span>
+                      <span style={{ fontSize: '15px' }}>{getBaseName(doc.title)}</span>
                     </div>
                   </td>
 
@@ -582,7 +587,7 @@ export default function FileStorage() {
                   <div className="detail-preview">
                   {getFileIcon(selectedDoc)}
                   </div>
-                  <div className="detail-title">{selectedDoc.title}</div>
+                  <div className="detail-title">{getBaseName(selectedDoc.title)}</div>
 
                   <div className="detail-info-list">
                   <div className="detail-info-item">
@@ -641,7 +646,7 @@ export default function FileStorage() {
                   className="btn btn-secondary" 
                   style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                   onClick={() => {
-                    setRenameTitle(selectedDoc.title);
+                    setRenameTitle(getBaseName(selectedDoc.title));
                     setShowRenameModal(true);
                   }}
                   >
@@ -711,7 +716,7 @@ export default function FileStorage() {
                   onChange={e => {
                     const file = e.target.files[0];
                     setUploadFile(file);
-                    if (file && !uploadTitle) setUploadTitle(file.name.split('.').slice(0, -1).join('.'));
+                    if (file && !uploadTitle) setUploadTitle(getBaseName(file.name));
                   }}
                   required
                   style={{ display: 'none' }}
@@ -746,7 +751,7 @@ export default function FileStorage() {
           onRename={(doc) => {
             setPreviewDoc(null);
             setSelectedDocId(doc.docId);
-            setRenameTitle(doc.title);
+            setRenameTitle(getBaseName(doc.title));
             setShowRenameModal(true);
           }}
           onShare={() => {}}
