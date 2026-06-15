@@ -28,5 +28,3 @@ export const toggleFavorite = (docId) => api.post(`/documents/${docId}/favorite`
 
 export const getFavoriteDocuments = (params) => api.get('/documents/favorites', { params });
 
-export const downloadDocumentFile = (fileId) => 
-  api.get(`/files/download/${fileId}`, { responseType: 'blob' });

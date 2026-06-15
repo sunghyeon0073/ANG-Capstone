@@ -1,10 +1,95 @@
 /* ============================================================================
    ORGANIZATION
    ============================================================================ */
+
+/* ── Workspace (full-screen shell) ─────────────────────────── */
+.org-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  background: var(--color-bg, #f3f2ed);
+  overflow: hidden;
+}
+
+/* ── Left Rail ──────────────────────────────────────────────── */
+.org-rail {
+  width: 210px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface, #fff);
+  border-right: 1px solid var(--color-border-subtle, #e5e7eb);
+  overflow-y: auto;
+}
+
+.org-rail-header {
+  display: flex;
+  align-items: center;
+  padding: 20px 18px 14px;
+  border-bottom: 1px solid var(--color-border-subtle, #e5e7eb);
+}
+
+.org-rail-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-text-muted, #6b7280);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Nav items ──────────────────────────────────────────────── */
+.org-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+}
+
+.org-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-secondary, #374151);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.org-nav-item:hover {
+  background: var(--color-surface-muted, #f3f4f6);
+  color: var(--color-text, #111827);
+}
+
+.org-nav-item.active {
+  background: var(--color-primary-soft, #eff6ff);
+  color: var(--color-primary, #3a5cad);
+  font-weight: 700;
+}
+
+.org-nav-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Main content pane ──────────────────────────────────────── */
 .org-page {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
   background: #fff;
-  min-height: 100vh;
   overflow-y: auto;
   padding: 20px;
 }
@@ -15,12 +100,26 @@
   color: #999;
 }
 
+.org-loading-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: #eef6f8;
+  color: #44606a;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .org-tree {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 36px 0 48px;
+  padding: 36px 20px 48px;
   width: 100%;
+  overflow-x: auto;
 }
 
 .org-dept-view {
@@ -29,9 +128,15 @@
 
 .org-tabs {
   display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 40px;
+  gap: 8px;
+  padding-bottom: 24px;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+}
+
+.org-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .org-tab-btn {
@@ -142,6 +247,7 @@
   padding-bottom: 18px;
 }
 
+/* 부모 카드 아래로 내려오는 수직선 */
 .org-page .org-parent-row::after {
   content: '';
   position: absolute;
@@ -149,7 +255,7 @@
   bottom: 0;
   width: 2px;
   height: 18px;
-  background: rgba(0, 121, 140, 0.22);
+  background: rgba(0, 121, 140, 0.3);
   transform: translateX(-50%);
 }
 
@@ -157,63 +263,78 @@
   position: relative;
   width: 100%;
   margin-top: 18px;
-  padding-top: 18px;
+  /* padding-top 제거: 자식 노드 자체 padding으로 처리 */
 }
 
+/* margin 갭을 이어주는 수직 브릿지 (org-connector-down div 대체) */
 .org-page .org-children-block::before {
   content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: min(640px, 88%);
-  height: 2px;
-  background: rgba(0, 121, 140, 0.22);
-  transform: translateX(-50%);
-}
-
-.org-page .org-connector-down {
   position: absolute;
   left: 50%;
   top: -18px;
   width: 2px;
   height: 18px;
-  background: rgba(0, 121, 140, 0.22);
+  background: rgba(0, 121, 140, 0.3);
   transform: translateX(-50%);
 }
 
+/* 자식 행: 줄 바꿈 금지 — 이것이 선 끊김의 핵심 원인이었음 */
 .org-page .org-children-row {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 18px 20px;
+  flex-wrap: nowrap;
+  gap: 20px;
   width: 100%;
+  overflow-x: auto;
 }
 
+/* 자식 노드: 수직 드롭선 공간 확보 */
 .org-page .org-child-node {
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
+  flex-shrink: 0;
+  padding-top: 18px;
 }
 
+/* 수평 레일 → 카드 상단까지 수직 드롭선 */
 .org-page .org-child-node::before {
   content: '';
   position: absolute;
-  top: -18px;
+  top: 0;
   left: 50%;
   width: 2px;
   height: 18px;
-  background: rgba(0, 121, 140, 0.22);
+  background: rgba(0, 121, 140, 0.3);
   transform: translateX(-50%);
 }
 
-.org-page .org-children-single::before {
-  width: 2px;
+/* 수평 레일 — 중간 노드는 양쪽 gap 절반씩 커버 */
+.org-page .org-child-node::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -10px;   /* column-gap(20px)의 절반 */
+  right: -10px;
+  height: 2px;
+  background: rgba(0, 121, 140, 0.3);
 }
 
-.org-page .org-children-multi::before {
-  width: min(760px, 92%);
+/* 첫 번째 노드: 레일은 자신의 중앙에서 오른쪽으로만 */
+.org-page .org-child-node:first-child::after {
+  left: 50%;
+}
+
+/* 마지막 노드: 레일은 왼쪽에서 자신의 중앙까지만 */
+.org-page .org-child-node:last-child::after {
+  right: 50%;
+}
+
+/* 자식이 하나뿐: 수평 레일 불필요, 수직선만 */
+.org-page .org-child-node:first-child:last-child::after {
+  display: none;
 }
 
 .org-page .org-dept-tree {
@@ -337,6 +458,8 @@
   width: 80px;
   height: 80px;
   border-radius: 50%;
+  background: linear-gradient(135deg, #4db8c4 0%, #00a3c4 100%);
+  box-shadow: 0 8px 24px rgba(0, 163, 196, 0.3);
   color: #fff;
   display: flex;
   align-items: center;
@@ -344,6 +467,7 @@
   font-size: 30px;
   font-weight: bold;
   border: 4px solid #fff;
+  flex-shrink: 0;
 }
 
 .org-modal-name {

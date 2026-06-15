@@ -45,5 +45,7 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> 
     @Query("SELECT COUNT(d) > 0 FROM DocumentEntity d WHERE (d.file = :file OR d.previewFile = :file) AND d.docId <> :excludeDocId")
     boolean existsByFileOrPreviewFileExcluding(@Param("file") FileItem file, @Param("excludeDocId") Long excludeDocId);
 
+    List<DocumentEntity> findByFileOrPreviewFile(FileItem file, FileItem previewFile);
+
     void deleteByFile(FileItem file);
     }

@@ -2721,7 +2721,8 @@ public class DocumentService {
             if (hwpPreview != null) {
                 return hwpPreview;
             }
-            throw new IllegalStateException("HWP preview PDF conversion failed. The document was not created.");
+            log.warn("HWP preview PDF conversion failed for {}, upload will continue without preview.", originalName);
+            return null;
         }
 
         if (isWordFile(lowerName, contentType)) {
@@ -2749,7 +2750,8 @@ public class DocumentService {
             }
 
             if (pdfFile == null || !Files.exists(pdfFile)) {
-                throw new IllegalStateException("Preview PDF conversion failed. The document was not created.");
+                log.warn("Preview PDF conversion produced no output for {}, upload will continue without preview.", originalName);
+                return null;
             }
 
             byte[] pdfBytes = Files.readAllBytes(pdfFile);
@@ -2767,7 +2769,8 @@ public class DocumentService {
                     .ownerType(com.ang.Backend.common.enums.OwnerType.USER)
                     .build());
         } catch (Exception e) {
-            throw new IllegalStateException("Preview PDF conversion failed. The document was not created.", e);
+            log.warn("Preview PDF conversion failed for {}, upload will continue without preview: {}", originalName, e.getMessage());
+            return null;
         } finally {
             deleteQuietly(tempFile);
             deleteDirectoryQuietly(tempDir);

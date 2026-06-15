@@ -1,16 +1,5 @@
 import api from './axios'
-
-const unwrap = response => response.data?.data ?? response.data
-
-const unwrapList = response => {
-  const data = unwrap(response)
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.content)) return data.content
-  if (Array.isArray(data?.items)) return data.items
-  if (Array.isArray(data?.list)) return data.list
-  if (Array.isArray(data?.data)) return data.data
-  return []
-}
+import { unwrap, unwrapList } from '../utils/responseUtils'
 
 export const getChatRooms = async () => {
   const response = await api.get('/chat/rooms')
@@ -73,15 +62,10 @@ export const uploadChatFile = async (roomId, file) => {
   const formData = new FormData()
   formData.append('roomId', roomId)
   formData.append('file', file)
-
   const response = await api.post('/chat/files', formData)
   return unwrap(response)
 }
 
 export const downloadChatFile = async key => {
-  const response = await api.get('/chat/files', {
-    params: { key },
-    responseType: 'blob',
-  })
-  return response
+  return api.get('/chat/files', { params: { key }, responseType: 'blob' })
 }

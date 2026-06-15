@@ -1,3 +1,4 @@
+import '../../style/board.css'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FiDownload, FiEdit, FiFileText, FiFlag, FiPaperclip, FiStar, FiTrash2, FiX } from 'react-icons/fi'
 import {

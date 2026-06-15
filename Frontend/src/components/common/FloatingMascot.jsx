@@ -1,3 +1,4 @@
+import '../../style/mascot.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FiCalendar, FiCheck, FiChevronDown, FiFileText, FiFolder,

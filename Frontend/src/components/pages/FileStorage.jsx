@@ -1,46 +1,37 @@
+// 리팩토링: React Query 도입
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import '../../style/file-storage.css'
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  FiFileText, FiGrid, FiList, FiSearch, 
-  FiFilter, FiInfo, FiDownload, FiTrash2, FiStar, 
+  FiFileText, FiGrid, FiList, FiSearch,
+  FiFilter, FiInfo, FiDownload, FiTrash2, FiStar,
   FiUsers, FiFolder, FiChevronRight, FiUploadCloud,
-  FiShare2, FiRotateCcw, FiChevronLeft
+  FiShare2, FiRotateCcw, FiChevronLeft, FiEye
 } from 'react-icons/fi';
-import { 
-  FaStar, FaRegStar, FaFilePdf, FaFileWord, FaFileExcel, 
-  FaFileImage, FaFileAlt, FaFilePowerpoint, FaFileCsv 
-} from 'react-icons/fa';
-import api from '../../api/axios';
+import { FaStar, FaRegStar, FaFilePdf, FaFileWord, FaFileExcel, 
+  FaFileImage, FaFileAlt, FaFilePowerpoint, FaFileCsv } from 'react-icons/fa';
+// 리뷰 반영: 불필요한 axios import 제거
 import {
-  getMyDocuments,
-  getDepartmentDocuments,
-  getTrashDocuments,
-  uploadDocument,
-  deleteDocument,
-  permanentDeleteDocument,
-  restoreDocument,
-  downloadDocumentFile,
-  toggleFavorite,
-  getFavoriteDocuments,
-  getAllDocuments
-} from '../../api/documentApi';
+  getMyFiles,
+  getDepartmentFiles,
+  getTrashFiles,
+  uploadFile as apiUploadFile,
+  deleteFile,
+  permanentDeleteFile,
+  restoreFile,
+  downloadFile as apiDownloadFile,
+  toggleFavoriteFile,
+  getFavoriteFiles,
+  getAllFiles,
+  renameFile
+} from '../../api/fileApi';
+import { getMyScopes } from '../../api/scopeApi';
 import { getApprovalTemplates } from '../../api/approvalApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
-
-const formatDate = (iso, includeTime = false) => {
-  if (!iso) return '-';
-  const date = new Date(iso);
-  const dateStr = date.toLocaleDateString('ko-KR');
-  if (!includeTime) return dateStr;
-  const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-  return `${dateStr} ${timeStr}`;
-};
-
-const formatSize = (bytes) => {
-  if (!bytes) return '-';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
+// 리뷰 반영: 공통 유틸리티 사용
+import { formatDate, formatDateTime } from '../../utils/dateUtils';
+import { formatFileSize } from '../../utils/fileUtils';
+import FilePreviewModal from '../file/FilePreviewModal';
 
 const getFileIcon = (doc) => {
   const kind = getDocumentPreviewKind(doc);
@@ -61,30 +52,143 @@ const getFileIcon = (doc) => {
 };
 
 export default function FileStorage() {
+  const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
   const [activeTab, setActiveTab] = useState('my'); // 'my', 'shared', 'template', 'important', 'trash'
-  const [docs, setDocs] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [myScopes, setMyScopes] = useState([]);
   const [targetScopeId, setTargetScopeId] = useState('');
   const [filterTypes, setFilterTypes] = useState(['all']); 
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
-  
+  const [previewDoc, setPreviewDoc] = useState(null);
   // Pagination State
   const [currentPage, setCurrentPage] = useState(0); // Backend is 0-indexed
-  const [totalPages, setTotalPages] = useState(0);
   const itemsPerPage = 20;
 
   const mainRef = useRef();
+
+  // 리팩토링: React Query의 useQuery를 사용하여 데이터 패칭 로직 교체
+  const { data: queryData = { content: [], totalPages: 0 }, isLoading, isError } = useQuery({
+    queryKey: ['files', activeTab, targetScopeId, currentPage, sortConfig.key, sortConfig.direction, searchQuery],
+    queryFn: async () => {
+      let res;
+      const params = {
+        page: currentPage,
+        size: itemsPerPage,
+        sort: `${sortConfig.key},${sortConfig.direction}`,
+        keyword: searchQuery
+      };
+
+      if (activeTab === 'trash') {
+        res = await getTrashFiles(params);
+      } else if (activeTab === 'shared') {
+        res = await getDepartmentFiles({ ...params, scopeId: targetScopeId });
+      } else if (activeTab === 'important') {
+        res = await getFavoriteFiles(params);
+      } else if (activeTab === 'template') {
+        res = await getApprovalTemplates();
+        const templates = res.data?.data || [];
+        return {
+          content: templates.map(t => ({
+            docId: `temp-${t.id}`,
+            title: t.title,
+            fileSize: 0,
+            createdAt: t.createdAt,
+            isFavorite: false,
+            scopeName: t.category || '양식',
+            isTemplate: true,
+            formSchema: t.formSchema
+          })),
+          totalPages: 1
+        };
+      } else if (activeTab === 'all') {
+        res = await getAllFiles(params);
+      } else {
+        res = await getMyFiles(params);
+      }
+      
+      const pagedRes = res.data?.data;
+      if (pagedRes && Array.isArray(pagedRes.content)) {
+        return {
+          content: pagedRes.content.map(item => ({
+            ...item,
+            docId: item.fileId,
+            fileId: item.fileId,
+          })),
+          totalPages: pagedRes.totalPages
+        };
+      }
+      return { content: [], totalPages: 0 };
+    }
+  });
+
+  const docs = queryData.content;
+  const totalPages = queryData.totalPages;
+
+  // 리팩토링: 부서 목록도 useQuery로 전환
+  const { data: myScopes = [] } = useQuery({
+    queryKey: ['myScopes'],
+    queryFn: async () => {
+      const res = await getMyScopes();
+      return res.data?.data || [];
+    }
+  });
+
+  // 리팩토링: 상태 변경 로직을 useMutation으로 교체 및 캐시 자동 갱신 적용
+  const uploadMutation = useMutation({
+    mutationFn: (formData) => apiUploadFile(formData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      setShowUploadModal(false);
+      setUploadTitle('');
+      setUploadFile(null);
+      setTargetScopeId('');
+    },
+    onError: (error) => {
+      alert('업로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ docId, isTrash }) => isTrash ? permanentDeleteFile(docId) : deleteFile(docId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      if (selectedDocId === variables.docId) setSelectedDocId(null);
+      setPreviewDoc(null);
+    },
+    onError: () => alert('삭제 실패')
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (docId) => restoreFile(docId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      setPreviewDoc(null);
+      alert('문서가 복구되었습니다.');
+    },
+    onError: () => alert('복구 실패')
+  });
+
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: (docId) => toggleFavoriteFile(docId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['files'] }),
+    onError: () => console.error('즐겨찾기 토글 실패')
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ id, data }) => renameFile(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      setShowRenameModal(false);
+    },
+    onError: () => alert('이름 변경 실패')
+  });
 
   const toggleFilter = (type) => {
     setFilterTypes(prev => {
@@ -100,94 +204,15 @@ export default function FileStorage() {
     setCurrentPage(0);
   };
 
-  const fetchDocs = async () => {
-    try {
-      setIsLoading(true);
-      let res;
-      const params = {
-        page: currentPage,
-        size: itemsPerPage,
-        sort: `${sortConfig.key},${sortConfig.direction}`,
-        keyword: searchQuery
-      };
-
-      if (activeTab === 'trash') {
-        res = await getTrashDocuments(params);
-      } else if (activeTab === 'shared') {
-        res = await getDepartmentDocuments({ ...params, scopeId: targetScopeId });
-      } else if (activeTab === 'important') {
-        res = await getFavoriteDocuments(params);
-      } else if (activeTab === 'template') {
-        res = await getApprovalTemplates();
-        const templates = res.data?.data || [];
-        const transformedTemplates = templates.map(t => ({
-          docId: `temp-${t.id}`,
-          title: t.title,
-          fileSize: 0,
-          createdAt: t.createdAt,
-          isFavorite: false,
-          scopeName: t.category || '양식',
-          isTemplate: true,
-          formSchema: t.formSchema
-        }));
-        setDocs(transformedTemplates);
-        setTotalPages(1);
-        setIsLoading(false);
-        return;
-      } else if (activeTab === 'all') {
-        res = await getAllDocuments(params);
-      } else {
-        res = await getMyDocuments(params);
-      }
-      
-      const pagedRes = res.data?.data;
-      if (pagedRes && Array.isArray(pagedRes.content)) {
-        setDocs(pagedRes.content);
-        setTotalPages(pagedRes.totalPages);
-      } else {
-        setDocs([]);
-        setTotalPages(0);
-      }
-    } catch (error) {
-      console.error('문서 로드 실패', error);
-      setDocs([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleToggleFavorite = async (e, docId) => {
+  const handleToggleFavorite = (e, docId) => {
     e.stopPropagation();
-    try {
-      const res = await toggleFavorite(docId);
-      const newState = res.data?.data;
-      
-      if (newState !== undefined) {
-        setDocs(prev => prev.map(doc => 
-          doc.docId === docId ? { ...doc, isFavorite: newState } : doc
-        ));
-
-        if (activeTab === 'important' && newState === false) {
-          setDocs(prev => prev.filter(doc => doc.docId !== docId));
-        }
-      }
-    } catch (error) {
-      console.error('즐겨찾기 토글 실패', error);
-    }
+    toggleFavoriteMutation.mutate(docId);
   };
 
-  const handleRename = async (e) => {
+  const handleRename = (e) => {
     e.preventDefault();
     if (!selectedDocId || !renameTitle.trim()) return;
-    try {
-      await api.put(`/documents/${selectedDocId}`, { title: renameTitle });
-      setDocs(prev => prev.map(doc => 
-        doc.docId === selectedDocId ? { ...doc, title: renameTitle } : doc
-      ));
-      setShowRenameModal(false);
-    } catch (error) {
-      alert('이름 변경 실패');
-    }
+    renameMutation.mutate({ id: selectedDocId, data: { title: renameTitle } });
   };
 
   const handleSort = (key) => {
@@ -198,56 +223,32 @@ export default function FileStorage() {
     setCurrentPage(0);
   };
 
-  const fetchMyScopes = async () => {
-    try {
-      const res = await api.get('/scopes/my');
-      setMyScopes(res.data?.data || []);
-    } catch (error) {
-      console.error('부서 목록 로드 실패', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchDocs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, targetScopeId, currentPage, sortConfig]);
-
-  useEffect(() => {
-    fetchMyScopes();
-  }, []);
-
   const selectedDoc = useMemo(() => {
     return docs.find(d => d.docId === selectedDocId);
   }, [docs, selectedDocId]);
 
-  const handleUpload = async (e) => {
+  const handleUpload = (e) => {
     e.preventDefault();
-    if (!uploadFile || !uploadTitle.trim()) return;
-    try {
-      setUploading(true);
-      const formData = new FormData();
-      formData.append('title', uploadTitle);
-      formData.append('file', uploadFile);
-      if (targetScopeId) {
-        formData.append('targetScopeId', targetScopeId);
-      }
-      
-      await uploadDocument(formData);
-      setShowUploadModal(false);
-      setUploadTitle('');
-      setUploadFile(null);
-      setTargetScopeId('');
-      fetchDocs();
-    } catch (error) {
-      alert('업로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
-    } finally {
-      setUploading(false);
+    if (!uploadFile) {
+      alert('업로드할 파일을 선택해주세요.');
+      return;
     }
+    if (!uploadTitle.trim()) {
+      alert('문서 제목을 입력해주세요.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('title', uploadTitle);
+    formData.append('file', uploadFile);
+    if (targetScopeId) {
+      formData.append('targetScopeId', targetScopeId);
+    }
+    uploadMutation.mutate(formData);
   };
 
   const handleDownload = async (fileId, fileName) => {
     try {
-      const res = await downloadDocumentFile(fileId);
+      const res = await apiDownloadFile(fileId);
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -261,33 +262,25 @@ export default function FileStorage() {
     }
   };
 
-  const handleDelete = async (docId) => {
+  const handleDelete = (docId) => {
     const isTrash = activeTab === 'trash';
     const msg = isTrash 
       ? '정말 영구 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.' 
       : '정말 삭제하시겠습니까? 삭제된 문서는 휴지통으로 이동합니다.';
     if (!window.confirm(msg)) return;
-    try {
-      if (isTrash) {
-        await permanentDeleteDocument(docId);
-      } else {
-        await deleteDocument(docId);
-      }
-      fetchDocs();
-      if (selectedDocId === docId) setSelectedDocId(null);
-    } catch (error) {
-      alert('삭제 실패');
-    }
+    deleteMutation.mutate({ docId, isTrash });
   };
 
-  const handleRestore = async (docId) => {
-    try {
-      await restoreDocument(docId);
-      fetchDocs();
-      alert('문서가 복구되었습니다.');
-    } catch (error) {
-      alert('복구 실패');
-    }
+  const handleRestore = (docId) => {
+    restoreMutation.mutate(docId);
+  };
+
+  const handleDeleteFromPreview = (docId) => {
+    handleDelete(docId);
+  };
+
+  const handleRestoreFromPreview = (docId) => {
+    handleRestore(docId);
   };
 
   const renderSidebarItem = (id, icon, label) => (
@@ -367,7 +360,7 @@ export default function FileStorage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     setCurrentPage(0);
-                    fetchDocs();
+                    // 검색어는 queryKey에 포함되어 있으므로 상태 변경만으로 리패칭됨
                   }
                 }}
               />
@@ -489,7 +482,7 @@ export default function FileStorage() {
                   </div>
                   <div className="file-card-info">
                   <div className="file-card-name" title={doc.title}>{doc.title}</div>
-                  <div className="file-card-meta">{formatSize(doc.fileSize)}</div>
+                  <div className="file-card-meta">{formatFileSize(doc.fileSize)}</div>
                   </div>
                   </div>
                   ))}
@@ -499,14 +492,14 @@ export default function FileStorage() {
                   <thead>
                   <tr>
                   <th className="file-table-star-cell"></th>
-                  <th onClick={() => handleSort('title')} style={{ cursor: 'pointer' }}>
-                  이름 {sortConfig.key === 'title' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  <th onClick={() => handleSort('originalFileName')} style={{ cursor: 'pointer' }}>
+                  이름 {sortConfig.key === 'originalFileName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th onClick={() => handleSort('fileSize')} style={{ cursor: 'pointer' }}>
                   크기 {sortConfig.key === 'fileSize' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
-                  <th onClick={() => handleSort(activeTab === 'trash' ? 'deletedAt' : 'createdAt')} style={{ cursor: 'pointer' }}>
-                  {activeTab === 'trash' ? '삭제일' : '수정한 날짜'} {sortConfig.key === (activeTab === 'trash' ? 'deletedAt' : 'createdAt') && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  <th onClick={() => handleSort(activeTab === 'trash' ? 'deletedAt' : 'uploadedAt')} style={{ cursor: 'pointer' }}>
+                  {activeTab === 'trash' ? '삭제일' : '수정한 날짜'} {sortConfig.key === (activeTab === 'trash' ? 'deletedAt' : 'uploadedAt') && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th>부서</th>
                   </tr>
@@ -535,7 +528,7 @@ export default function FileStorage() {
                     </div>
                   </td>
 
-                  <td>{formatSize(doc.fileSize)}</td>
+                  <td>{formatFileSize(doc.fileSize)}</td>
                   <td>{formatDate(activeTab === 'trash' ? doc.deletedAt : doc.createdAt)}</td>
                   <td>
                     <span style={{ 
@@ -593,7 +586,7 @@ export default function FileStorage() {
                   </div>
                   <div className="detail-info-item">
                   <span className="detail-info-label">크기</span>
-                  <span className="detail-info-value">{formatSize(selectedDoc.fileSize)}</span>
+                  <span className="detail-info-value">{formatFileSize(selectedDoc.fileSize)}</span>
                   </div>
                   <div className="detail-info-item">
                   <span className="detail-info-label">위치</span>
@@ -601,7 +594,7 @@ export default function FileStorage() {
                   </div>
                   <div className="detail-info-item">
                   <span className="detail-info-label">생성일</span>
-                  <span className="detail-info-value">{formatDate(selectedDoc.createdAt, true)}</span>
+                  <span className="detail-info-value">{formatDateTime(selectedDoc.createdAt).date} {formatDateTime(selectedDoc.createdAt).time}</span>
                   </div>
                   {activeTab === 'trash' && (
                   <div className="detail-info-item">
@@ -623,8 +616,17 @@ export default function FileStorage() {
                   </>
                   ) : (
                   <>
-                  <button 
-                  className="btn btn-primary" 
+                  {selectedDoc.fileId && (
+                  <button
+                  className="btn btn-secondary"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  onClick={() => setPreviewDoc(selectedDoc)}
+                  >
+                  <FiEye /> 미리보기
+                  </button>
+                  )}
+                  <button
+                  className="btn btn-primary"
                   style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                   onClick={() => handleDownload(selectedDoc.fileId, selectedDoc.originalFileName || selectedDoc.title)}
                   >
@@ -715,19 +717,37 @@ export default function FileStorage() {
                 </label>
                 {uploadFile && (
                   <div className="selected-file-info">
-                    <strong>선택된 파일:</strong> {uploadFile.name} ({formatSize(uploadFile.size)})
+                    <strong>선택된 파일:</strong> {uploadFile.name} ({formatFileSize(uploadFile.size)})
                   </div>
                 )}
               </div>
               <div className="form-actions" style={{ marginTop: '10px', display: 'flex', gap: '12px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)} style={{ flex: 1, margin: 0 }}>취소</button>
-                <button type="submit" className="btn btn-primary" disabled={uploading} style={{ flex: 1, margin: 0 }}>
-                  {uploading ? '업로드 중...' : '업로드'}
+                <button type="submit" className="btn btn-primary" disabled={uploadMutation.isPending} style={{ flex: 1, margin: 0 }}>
+                  {uploadMutation.isPending ? '업로드 중...' : '업로드'}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+      {/* File Preview Modal */}
+      {previewDoc && (
+        <FilePreviewModal
+          doc={previewDoc}
+          isTrash={activeTab === 'trash'}
+          onClose={() => setPreviewDoc(null)}
+          onDownload={handleDownload}
+          onRename={(doc) => {
+            setPreviewDoc(null);
+            setSelectedDocId(doc.docId);
+            setRenameTitle(doc.title);
+            setShowRenameModal(true);
+          }}
+          onShare={() => {}}
+          onDelete={handleDeleteFromPreview}
+          onRestore={handleRestoreFromPreview}
+        />
       )}
       {/* Rename Modal */}
       {showRenameModal && (
