@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import '../../style/document.css'
 import '../../style/AIprompt.css'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 // 리뷰 반영: 불필요한 axios import 제거
 import {
   getMyDocuments,
@@ -69,7 +69,6 @@ export default function DocumentWriter() {
   const queryClient = useQueryClient()
   const [openDocumentTabs, setOpenDocumentTabs] = useState(() => [createDraftDocumentTab()])
   const [activeDocumentTabId, setActiveDocumentTabId] = useState(() => null)
-  const [filteredDocuments, setFilteredDocuments] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedDoc, setSelectedDoc] = useState(null)
   
@@ -155,6 +154,25 @@ export default function DocumentWriter() {
     }
   })
 
+  // 검색어 필터링 및 정렬 (documents가 변경될 때마다 자동 수행)
+  const filteredDocuments = useMemo(() => {
+    const filtered = documents.filter((doc) => {
+      const matchSearch = searchTerm
+        ? (doc.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           (doc.ownerName && doc.ownerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+           (doc.originalContent && doc.originalContent.toLowerCase().includes(searchTerm.toLowerCase())))
+        : true
+      return matchSearch
+    })
+
+    return [...filtered].sort((a, b) => {
+      if (sortOrder === 'newest') return new Date(b.createdAt) - new Date(a.createdAt)
+      if (sortOrder === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt)
+      if (sortOrder === 'title') return (a.title || "").localeCompare(b.title || "")
+      return 0
+    })
+  }, [documents, searchTerm, sortOrder])
+
   useEffect(() => {
     setActiveDocumentTabId((currentId) => currentId || openDocumentTabs[0]?.id || null)
   }, [openDocumentTabs])
@@ -180,10 +198,6 @@ export default function DocumentWriter() {
   }, [])
 
   useEffect(() => {
-    fetchDocuments()
-  }, [category, selectedScopeId])
-
-  useEffect(() => {
     setDocxEditInstructions([])
     setDocxEditMode(false)
   }, [selectedDoc?.docId])
@@ -193,12 +207,8 @@ export default function DocumentWriter() {
       const generatedDocument = event.detail?.document
       if (!generatedDocument) return
 
-      if (category === 'my') {
-        setDocuments((currentDocuments) => {
-          const exists = currentDocuments.some((doc) => doc.docId === generatedDocument.docId)
-          return exists ? currentDocuments : [generatedDocument, ...currentDocuments]
-        })
-      }
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+
       setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
         tab.id === activeDocumentTabId ? { ...tab, doc: generatedDocument } : tab
       )))
@@ -208,26 +218,6 @@ export default function DocumentWriter() {
     window.addEventListener('ang:ai-document-generated', handleGeneratedDocument)
     return () => window.removeEventListener('ang:ai-document-generated', handleGeneratedDocument)
   }, [activeDocumentTabId, category])
-
-  useEffect(() => {
-    const filtered = documents.filter((doc) => {
-      const matchesSearch =
-        doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (doc.originalContent && doc.originalContent.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (doc.originalFileName && doc.originalFileName.toLowerCase().includes(searchTerm.toLowerCase()))
-
-      return matchesSearch
-    })
-
-    // Apply sorting
-    const sorted = [...filtered].sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime()
-      const dateB = new Date(b.createdAt).getTime()
-      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB
-    })
-
-    setFilteredDocuments(sorted)
-  }, [searchTerm, documents, sortOrder])
 
   useEffect(() => {
     if (!aiLoading || !aiProgressMode) return undefined
@@ -369,17 +359,9 @@ export default function DocumentWriter() {
 
     try {
       setIsTitleSaving(true)
-      await updateDocument(selectedDoc.docId, { title: nextTitle })
-      const applyTitle = doc => doc.docId === selectedDoc.docId ? { ...doc, title: nextTitle } : doc
-      setSelectedDoc(prev => prev ? { ...prev, title: nextTitle } : prev)
-      setDocuments(prev => prev.map(applyTitle))
-      setAttachedDocs(prev => prev.map(applyTitle))
-      setOpenDocumentTabs(prev => prev.map(tab => (
-        tab.doc?.docId === selectedDoc.docId ? { ...tab, doc: applyTitle(tab.doc) } : tab
-      )))
-      setTitleEditMode(false)
+      await updateMutation.mutateAsync({ docId: selectedDoc.docId, nextTitle })
     } catch (err) {
-      alert(err.response?.data?.message || err.message || '문서 제목 수정에 실패했습니다.')
+      // Error handled by mutation onError
     } finally {
       setIsTitleSaving(false)
     }
@@ -443,28 +425,6 @@ export default function DocumentWriter() {
     }
   }
 
-  const fetchDocuments = async () => {
-    try { 
-      setLoading(true)
-      let response
-      if (category === 'my') {
-        // 리뷰 반영: 기본 사이즈 누락으로 인한 데이터 소실 방지
-        response = await getMyDocuments({ size: 1000 })
-      } else {
-        const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
-        response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam, size: 1000 })
-      }
-      setDocuments(extractDocumentList(response.data?.data))
-      setError(null)
-    } catch (err) {
-      console.error('문서 목록 조회 실패:', err)
-      setError('문서 목록을 불러올 수 없습니다.')
-      setDocuments([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // file preview generation removed; rely on backend-provided documents
 
   const handleModalUpload = async (e) => {
@@ -487,12 +447,8 @@ export default function DocumentWriter() {
 
       if (response.data?.success) {
         const newDoc = { ...response.data.data, source: 'uploaded' }
-        if (category === 'my' && !uploadTargetScopeId) {
-          setDocuments([newDoc, ...documents])
-        } else if (category === 'dept' && uploadTargetScopeId) {
-          // If we are in department view and uploaded to a department, we should ideally refresh or check if it matches
-          fetchDocuments()
-        }
+        queryClient.invalidateQueries({ queryKey: ['documents'] })
+        
         setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
           tab.id === activeDocumentTabId ? { ...tab, doc: newDoc } : tab
         )))
@@ -518,19 +474,7 @@ export default function DocumentWriter() {
   const handleDelete = async (e, docId) => {
     e.stopPropagation()
     if (!window.confirm('정말 삭제하시겠습니까? 삭제된 문서는 휴지통으로 이동합니다.')) return
-    try {
-      await deleteDocument(docId)
-      setDocuments(prev => prev.filter(d => d.docId !== docId))
-      setOpenDocumentTabs(prev => prev.map(tab => (
-        tab.doc?.docId === docId ? { ...tab, doc: null } : tab
-      )))
-      if (selectedDoc?.docId === docId) setSelectedDoc(null)
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: '문서를 휴지통으로 보냈어요.' },
-      }))
-    } catch (err) {
-      alert('삭제 실패: ' + (err.response?.data?.message || '오류가 발생했습니다.'))
-    }
+    deleteMutation.mutate(docId)
   }
 
   const handleAddToPrompt = () => {

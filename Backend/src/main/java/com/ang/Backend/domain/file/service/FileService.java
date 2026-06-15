@@ -15,6 +15,7 @@ import com.ang.Backend.domain.scope.entity.Scope;
 import com.ang.Backend.domain.scope.entity.UserMembership;
 import com.ang.Backend.domain.scope.repository.ScopeRepository;
 import com.ang.Backend.domain.scope.repository.UserMembershipRepository;
+import com.ang.Backend.domain.scope.service.ScopeService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import jakarta.annotation.PostConstruct;
@@ -269,14 +270,17 @@ public class FileService {
         return toPagedResponse(page, user);
     }
 
+    private final ScopeService scopeService;
+
     @Transactional(readOnly = true)
     public FileDto.PagedResponse getDepartmentFiles(User user, Integer targetScopeId, String keyword, Pageable pageable) {
         List<Integer> scopeIds;
         if (targetScopeId != null) {
             scopeIds = List.of(targetScopeId);
         } else {
-            scopeIds = userMembershipRepository.findByUser(user).stream()
-                    .map(um -> um.getScope().getScopeId())
+            // Accessible scopes: Level 2 ancestors and their children
+            scopeIds = scopeService.getAccessibleScopes(user).stream()
+                    .map(Scope::getScopeId)
                     .collect(Collectors.toList());
         }
         
@@ -290,8 +294,11 @@ public class FileService {
 
     @Transactional(readOnly = true)
     public FileDto.PagedResponse getTrashFiles(User user, Pageable pageable) {
-        Page<FileItem> page = fileItemRepository.findByOwnerTypeAndOwnerIdAndDeletedAtIsNotNull(
-                OwnerType.USER, user.getUserId(), pageable);
+        List<Integer> accessibleScopeIds = scopeService.getAccessibleScopes(user).stream()
+                .map(Scope::getScopeId)
+                .toList();
+
+        Page<FileItem> page = fileItemRepository.findTrashFiles(user.getUserId(), accessibleScopeIds, pageable);
         return toPagedResponse(page, user);
     }
 

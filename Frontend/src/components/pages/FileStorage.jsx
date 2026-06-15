@@ -65,7 +65,7 @@ export default function FileStorage() {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'uploadedAt', direction: 'desc' });
   const [previewDoc, setPreviewDoc] = useState(null);
   // Pagination State
   const [currentPage, setCurrentPage] = useState(0); // Backend is 0-indexed
@@ -78,17 +78,22 @@ export default function FileStorage() {
     queryKey: ['files', activeTab, targetScopeId, currentPage, sortConfig.key, sortConfig.direction, searchQuery],
     queryFn: async () => {
       let res;
+      const isImportantTab = activeTab === 'important';
       const params = {
         page: currentPage,
         size: itemsPerPage,
-        sort: `${sortConfig.key},${sortConfig.direction}`,
+        sort: `${isImportantTab ? 'createdAt' : sortConfig.key},${sortConfig.direction}`,
         keyword: searchQuery
       };
 
       if (activeTab === 'trash') {
         res = await getTrashFiles(params);
       } else if (activeTab === 'shared') {
-        res = await getDepartmentFiles({ ...params, scopeId: targetScopeId });
+        const sharedParams = { ...params };
+        if (targetScopeId && targetScopeId !== 'all') {
+          sharedParams.scopeId = targetScopeId;
+        }
+        res = await getDepartmentFiles(sharedParams);
       } else if (activeTab === 'important') {
         res = await getFavoriteFiles(params);
       } else if (activeTab === 'template') {

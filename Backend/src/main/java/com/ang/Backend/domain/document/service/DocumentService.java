@@ -750,13 +750,16 @@ public class DocumentService {
             AiGeneratedFile generatedFile,
             User user) {
         return transactionTemplate.execute(status -> {
-            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            // Reload user to ensure it's managed in the current transaction
+            User managedUser = user != null ? userRepository.findById(user.getUserId()).orElse(user) : null;
+            
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, managedUser, "documents");
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(title)
                     .file(fileItem)
                     .previewFile(fileItem)
-                    .owner(user)
+                    .owner(managedUser)
                     .status(DocumentStatus.DRAFT)
                     .originalContent("""
                             AI HWP edit based on source document: %s
@@ -782,19 +785,22 @@ public class DocumentService {
             AiGeneratedFile generatedFile,
             User user) {
         return transactionTemplate.execute(status -> {
-            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            // Reload user to ensure it's managed in the current transaction
+            User managedUser = user != null ? userRepository.findById(user.getUserId()).orElse(user) : null;
+            
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, managedUser, "documents");
             FileItem previewFile = createAiPreviewFile(title, """
                     AI DOCX edit based on source document: %s
 
                     User request:
                     %s
-                    """.formatted(source.title(), prompt), user);
+                    """.formatted(source.title(), prompt), managedUser);
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(title)
                     .file(fileItem)
                     .previewFile(previewFile)
-                    .owner(user)
+                    .owner(managedUser)
                     .status(DocumentStatus.DRAFT)
                     .originalContent("""
                             AI DOCX edit based on source document: %s
@@ -918,16 +924,19 @@ public class DocumentService {
         AiGeneratedFile generatedFile = createAiGeneratedFile(aiTitle, answer, format);
 
         return transactionTemplate.execute(status -> {
-            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            // Reload user to ensure it's managed in the current transaction
+            User managedUser = user != null ? userRepository.findById(user.getUserId()).orElse(user) : null;
+            
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, managedUser, "documents");
             FileItem previewFile = (format == AiOutputFormat.PDF || format == AiOutputFormat.HWP)
                     ? fileItem
-                    : createAiPreviewFile(aiTitle, answer, user);
+                    : createAiPreviewFile(aiTitle, answer, managedUser);
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(aiTitle)
                     .file(fileItem)
                     .previewFile(previewFile)
-                    .owner(user)
+                    .owner(managedUser)
                     .status(DocumentStatus.DRAFT)
                     .originalContent(answer)
                     .aiSummary(answer)
