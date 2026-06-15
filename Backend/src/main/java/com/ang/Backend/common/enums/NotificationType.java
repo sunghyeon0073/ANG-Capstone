@@ -1,5 +1,5 @@
 package com.ang.Backend.common.enums;
 
 public enum NotificationType {
-    CHAT, MAIL, APPROVAL
+    CHAT, MAIL, APPROVAL, BOARD, AI
 }
