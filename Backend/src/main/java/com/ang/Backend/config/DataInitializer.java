@@ -80,6 +80,19 @@ public class DataInitializer {
                 userRepository.save(manager);
                 log.info("[DataInitializer] manager 계정 정보를 업데이트했습니다.");
             });
+
+            // 직급(User.position) 누락 사용자 백필: 소속 부서의 직급으로 채움
+            userRepository.findAll().stream()
+                    .filter(u -> u.getPosition() == null || u.getPosition().isBlank())
+                    .forEach(u -> userMembershipRepository.findByUser(u).stream()
+                            .map(UserMembership::getPosition)
+                            .filter(p -> p != null && !p.isBlank())
+                            .findFirst()
+                            .ifPresent(p -> {
+                                u.setPosition(p);
+                                userRepository.save(u);
+                                log.info("[DataInitializer] {} 직급을 '{}'로 백필했습니다.", u.getEmpNo(), p);
+                            }));
         } finally {
             jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
         }

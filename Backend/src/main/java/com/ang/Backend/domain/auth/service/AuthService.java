@@ -69,6 +69,7 @@ public class AuthService {
                 .email(req.getEmail())
                 .birthdate(req.getBirthdate())
                 .status(UserStatus.PENDING)
+                .position("사원") // Default position
                 .build();
         userRepository.save(user);
         createPhysicalUserFolder(user.getEmpNo());
