@@ -1,6 +1,5 @@
 package com.ang.Backend.domain.aiassistant.service;
 
-import com.ang.Backend.common.enums.ChatRoomType;
 import com.ang.Backend.common.enums.NotificationType;
 import com.ang.Backend.common.exception.CustomException;
 import com.ang.Backend.common.exception.ErrorCode;
@@ -178,12 +177,17 @@ public class AiScheduledActionService {
         if (req.getChannel() != null) {
             action.setChannel("mail".equalsIgnoreCase(req.getChannel()) ? ScheduledActionChannel.MAIL : ScheduledActionChannel.CHAT);
         }
-        if (req.getScheduledAt() != null) {
-            action.setScheduledAt(req.getScheduledAt());
+        action.setScheduledAt(req.getScheduledAt() != null ? req.getScheduledAt() : LocalDateTime.now().plusSeconds(10));
+        if (req.getFileIds() != null) {
+            String fileIdsStr = req.getFileIds().isEmpty()
+                    ? null
+                    : req.getFileIds().stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+            action.setFileIds(fileIdsStr);
         }
         List<String> empNos = req.getRecipientEmpNos() != null ? req.getRecipientEmpNos() : splitStrings(action.getRecipientEmpNos());
         List<String> names = req.getRecipientNames() != null ? req.getRecipientNames() : splitStrings(action.getRecipientNames());
-        return AiAssistantDto.ScheduleResponse.from(action, empNos, names, splitLongs(action.getFileIds()));
+        List<Long> fileIds = req.getFileIds() != null ? req.getFileIds() : splitLongs(action.getFileIds());
+        return AiAssistantDto.ScheduleResponse.from(action, empNos, names, fileIds);
     }
 
     @Scheduled(fixedDelay = 30000)
@@ -201,6 +205,14 @@ public class AiScheduledActionService {
                         ? sendMail(action)
                         : sendChat(action);
                 action.markSent(targetId);
+                String channelLabel = action.getChannel() == ScheduledActionChannel.MAIL ? "메일" : "채팅";
+                notificationService.send(
+                        action.getRequester(),
+                        NotificationType.AI,
+                        "예약 발송 완료",
+                        channelLabel + " 예약이 발송되었습니다: " + (action.getTitle() != null ? action.getTitle() : action.getMessage()),
+                        action.getId()
+                );
             } catch (Exception e) {
                 log.warn("Scheduled action dispatch failed: id={}, channel={}, error={}", action.getId(), action.getChannel(), e.toString());
                 action.markFailed(e.toString());
@@ -227,7 +239,6 @@ public class AiScheduledActionService {
         ChatDto.MessageResponse response = chatMessageService.save(request, action.getRequester());
         messagingTemplate.convertAndSend("/topic/room." + roomId, response);
 
-        chatRoomRepository.findById(roomId).ifPresent(room -> sendChatNotifications(room, action.getRequester(), response));
         return response.getMessageId();
     }
 
@@ -251,21 +262,6 @@ public class AiScheduledActionService {
         request.setName(roomName);
         request.setMemberEmpNos(recipients);
         return chatRoomService.createGroupRoom(action.getRequester(), request);
-    }
-
-    private void sendChatNotifications(ChatRoom room, User sender, ChatDto.MessageResponse response) {
-        String title = room.getType() == ChatRoomType.PRIVATE
-                ? sender.getName() + "님이 메시지를 보냈습니다."
-                : room.getName() + "에 알림이 있습니다.";
-        chatMemberRepository.findByRoomAndLeftAtIsNull(room).stream()
-                .filter(member -> !member.getUser().getUserId().equals(sender.getUserId()))
-                .forEach(member -> notificationService.send(
-                        member.getUser(),
-                        NotificationType.CHAT,
-                        title,
-                        response.getContent(),
-                        room.getId()
-                ));
     }
 
     private List<String> splitStrings(String value) {

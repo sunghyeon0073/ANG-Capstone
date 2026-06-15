@@ -1,3 +1,4 @@
+import '../../style/mypage.css'
 import { useEffect, useMemo, useState } from 'react'
 import { getScopes } from '../../api/scopeApi'
 import { getUserProfileImage, updateUser, uploadUserProfileImage } from '../../api/userApi'
@@ -156,7 +157,7 @@ export default function MyPage({ user, onUserUpdate }) {
         onUserUpdate(updatedUser)
       }
 
-      localStorage.setItem('user', JSON.stringify(updatedUser))
+      sessionStorage.setItem('user', JSON.stringify(updatedUser))
       alert('마이페이지 정보가 저장되었습니다.')
     } catch (error) {
       const message = error.response?.data?.message || '프로필 저장에 실패했습니다.'

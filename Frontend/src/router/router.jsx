@@ -2,34 +2,21 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import Login from '../components/auth/Login'
 import SignUp from '../components/auth/SignUp'
 import Dashboard from '../components/common/Dashboard'
+import { session } from '../utils/storageUtils'
 
-const hasAuthSession = () => Boolean(localStorage.getItem('token') && localStorage.getItem('user'))
+function GuestRoute({ children }) {
+  return session.hasAuth() ? <Navigate to="/dashboard" replace /> : children
+}
 
 function ProtectedRoute({ children }) {
-  return hasAuthSession() ? children : <Navigate to="/login" replace />
+  return session.hasAuth() ? children : <Navigate to="/login" replace />
 }
 
 const router = createBrowserRouter([
-  {
-    path: '/',
-    element: hasAuthSession() ? <Navigate to="/dashboard" replace /> : <Login />
-  },
-  {
-    path: '/login',
-    element: <Login />
-  },
-  {
-    path: '/signup',
-    element: <SignUp />
-  },
-  {
-    path: '/dashboard',
-    element: (
-      <ProtectedRoute>
-        <Dashboard />
-      </ProtectedRoute>
-    )
-  }
+  { path: '/', element: <Navigate to={session.hasAuth() ? '/dashboard' : '/login'} replace /> },
+  { path: '/login',     element: <GuestRoute><Login /></GuestRoute> },
+  { path: '/signup',    element: <GuestRoute><SignUp /></GuestRoute> },
+  { path: '/dashboard', element: <ProtectedRoute><Dashboard /></ProtectedRoute> },
 ])
 
 export default router

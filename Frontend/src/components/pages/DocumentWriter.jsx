@@ -1,3 +1,5 @@
+import '../../style/document.css'
+import '../../style/AIprompt.css'
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import {
@@ -57,6 +59,50 @@ const extractDocumentList = (payload) => {
   return []
 }
 
+const compactSummaryText = (value, maxLength = 90) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength - 1).trim()}...`
+}
+
+const createDisplaySummary = (document) => {
+  const fallback = '문서 생성이 완료되었습니다. 문서함에서 내용을 확인해 주세요.'
+  const rawSummary = String(document?.aiSummary || '').trim()
+  if (!rawSummary) return fallback
+
+  const jsonText = rawSummary
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```$/i, '')
+    .trim()
+
+  if (jsonText.startsWith('{') || jsonText.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(jsonText)
+      const plan = Array.isArray(parsed) ? { replacements: parsed } : parsed
+      const replacements = Array.isArray(plan.replacements) ? plan.replacements : []
+      const title = compactSummaryText(plan.title || document?.title || '생성된 문서', 70)
+
+      if (replacements.length > 0) {
+        const first = replacements.find(Boolean) || {}
+        const findText = compactSummaryText(first.find, 55)
+        const replaceText = compactSummaryText(first.replace, 55)
+
+        if (findText && replaceText) {
+          return `"${title}" 생성이 완료되었습니다. 총 ${replacements.length}개 항목을 수정했고, 대표적으로 "${findText}"를 "${replaceText}"로 반영했습니다.`
+        }
+        return `"${title}" 생성이 완료되었습니다. 요청에 따라 총 ${replacements.length}개 항목을 수정했습니다.`
+      }
+
+      return `"${title}" 생성이 완료되었습니다. 문서함에서 결과를 확인해 주세요.`
+    } catch (error) {
+      console.warn('AI summary JSON parse failed', error)
+    }
+  }
+
+  return rawSummary
+}
+
 export default function DocumentWriter() {
   const [openDocumentTabs, setOpenDocumentTabs] = useState(() => [createDraftDocumentTab()])
   const [activeDocumentTabId, setActiveDocumentTabId] = useState(() => null)
@@ -80,6 +126,7 @@ export default function DocumentWriter() {
   const [showFullView, setShowFullView] = useState(false)
   const [promptOpen, setPromptOpen] = useState(true)
   const [showDocumentPicker, setShowDocumentPicker] = useState(false)
+  const [generationSummary, setGenerationSummary] = useState(null)
   const [isExporting, setIsExporting] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadTitle, setUploadTitle] = useState('')
@@ -144,6 +191,12 @@ export default function DocumentWriter() {
         tab.id === activeDocumentTabId ? { ...tab, doc: generatedDocument } : tab
       )))
       setSelectedDoc(generatedDocument)
+      setGenerationSummary({
+        title: generatedDocument.title || '생성된 문서',
+        summary: createDisplaySummary(generatedDocument),
+        fileType: getFileTypeLabel(generatedDocument),
+        createdAt: generatedDocument.createdAt,
+      })
     }
 
     window.addEventListener('ang:ai-document-generated', handleGeneratedDocument)
@@ -507,6 +560,30 @@ export default function DocumentWriter() {
     setShowDocumentPicker(!tab.doc)
   }
 
+  const handleCloseDocumentTab = (e, tabId) => {
+    e.stopPropagation()
+    setOpenDocumentTabs((currentTabs) => {
+      if (currentTabs.length === 1) {
+        // 마지막 탭은 닫지 않고 빈 탭으로 초기화
+        const fresh = createDraftDocumentTab()
+        setActiveDocumentTabId(fresh.id)
+        setSelectedDoc(null)
+        setShowDocumentPicker(false)
+        return [fresh]
+      }
+      const idx = currentTabs.findIndex((t) => t.id === tabId)
+      const next = currentTabs.filter((t) => t.id !== tabId)
+      // 닫힌 탭이 활성 탭이면 인접 탭으로 포커스 이동
+      if (tabId === activeDocumentTabId) {
+        const focusTab = next[Math.min(idx, next.length - 1)]
+        setActiveDocumentTabId(focusTab.id)
+        setSelectedDoc(focusTab.doc)
+        setShowDocumentPicker(!focusTab.doc)
+      }
+      return next
+    })
+  }
+
   const handleSelectDocument = (doc) => {
     const existingTab = openDocumentTabs.find((tab) => tab.doc?.docId === doc.docId)
     if (existingTab) {
@@ -594,6 +671,7 @@ export default function DocumentWriter() {
     try {
       setAiProgressMode(mode)
       setAiProgressStep(0)
+      setGenerationSummary(null)
       await startGeneration(payload)
       if (mountedRef.current) {
         setPrompt('')
@@ -622,16 +700,23 @@ export default function DocumentWriter() {
         <div className="document-editor-pane">
           <div className="document-browser-tabs">
             {openDocumentTabs.map((tab) => (
-              <button
+              <div
                 key={tab.id}
-                type="button"
                 className={`document-browser-tab ${tab.id === activeDocumentTabId ? 'active' : ''}`}
                 onClick={() => handleActivateDocumentTab(tab)}
                 title={tab.doc?.title || '문서 선택'}
               >
                 <FiFileText />
                 <span>{tab.doc?.title || 'Untitled'}</span>
-              </button>
+                <button
+                  type="button"
+                  className="document-tab-close"
+                  onClick={(e) => handleCloseDocumentTab(e, tab.id)}
+                  title="탭 닫기"
+                >
+                  <FiX size={12} />
+                </button>
+              </div>
             ))}
             <button
               type="button"
@@ -830,6 +915,27 @@ export default function DocumentWriter() {
 
           {promptOpen && (
           <div className="prompt-input-group">
+            {generationSummary && (
+              <section className="ai-generation-summary-panel" aria-label="AI 문서 생성 요약">
+                <div className="ai-generation-summary-icon" aria-hidden="true">
+                  <FiCheck />
+                </div>
+                <div className="ai-generation-summary-content">
+                  <div className="ai-generation-summary-header">
+                    <span className="ai-generation-summary-kicker">생성 완료</span>
+                    <strong>{generationSummary.title}</strong>
+                  </div>
+                  <p>{generationSummary.summary}</p>
+                  <div className="ai-generation-summary-meta">
+                    <span>{generationSummary.fileType}</span>
+                    {generationSummary.createdAt && (
+                      <span>{new Date(generationSummary.createdAt).toLocaleString('ko-KR')}</span>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
