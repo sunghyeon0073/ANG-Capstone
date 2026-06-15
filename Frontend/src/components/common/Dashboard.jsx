@@ -52,10 +52,14 @@ const getMainCategory = (page) => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [user, setUser] = useState(null)
-  const [currentPage, setCurrentPage] = useState('home-dashboard')
+  const [user] = useState(() => session.getUser())
+  const [currentPage, setCurrentPage] = useState(
+    () => session.getDashboardPage() || 'home-dashboard'
+  )
   const [contactRequest, setContactRequest] = useState(null)
-  const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
+  const [isChatWindowOpen, setIsChatWindowOpen] = useState(
+    () => session.isChatWindowOpen()
+  )
   const [chatContactRequest, setChatContactRequest] = useState(null)
   const [chatUnreadCount, setChatUnreadCount] = useState(0)
   const [notifications, setNotifications] = useState([])
@@ -81,15 +85,20 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    const user = session.getUser()
     const token = session.getToken()
     if (!user || !token) {
       session.clear()
       navigate('/login', { replace: true })
-      return
     }
-    setUser(user)
-  }, [navigate])
+  }, [navigate, user])
+
+  useEffect(() => {
+    session.setDashboardPage(currentPage)
+  }, [currentPage])
+
+  useEffect(() => {
+    session.setChatWindowOpen(isChatWindowOpen)
+  }, [isChatWindowOpen])
 
   const handleLogout = () => {
     session.clear()
