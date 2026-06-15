@@ -276,8 +276,9 @@ public class DocumentService {
         }
 
         String aiTitle = makeAiTitle(answer);
+        String aiSummary = createAiGenerationSummary(prompt, aiTitle, answer, format);
 
-        return saveAiDocument(aiTitle, answer, user, format);
+        return saveAiDocument(aiTitle, answer, aiSummary, user, format);
     }
 
     private String callAiChat(String message) {
@@ -360,7 +361,8 @@ public class DocumentService {
         }
 
         String aiTitle = makeAiTitle(answer);
-        return saveAiDocument(aiTitle, answer, user, format);
+        String aiSummary = createAiGenerationSummary(prompt, aiTitle, answer, format);
+        return saveAiDocument(aiTitle, answer, aiSummary, user, format);
     }
 
     private String buildContentEditPrompt(String instruction, String sourceTitle, String originalContent, AiOutputFormat format) {
@@ -421,8 +423,9 @@ public class DocumentService {
                     : safeDocumentTitle(plan.title());
             String fileName = buildEditedFileName(source.originalName(), "hwp");
             AiGeneratedFile generatedFile = new AiGeneratedFile(fileName, resolveEditedContentType("hwp", response.getHeaders().getContentType()), body);
+            String aiSummary = buildAiEditSummary(prompt, title, source.title(), plan.replacements(), AiOutputFormat.HWP);
 
-            return saveAiEditedHwpDocument(title, prompt, answer, source, generatedFile, user);
+            return saveAiEditedHwpDocument(title, prompt, aiSummary, source, generatedFile, user);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read original HWP file.", e);
         }
@@ -464,8 +467,9 @@ public class DocumentService {
                     : safeDocumentTitle(plan.title());
             String fileName = buildEditedFileName(source.originalName(), "docx");
             AiGeneratedFile generatedFile = new AiGeneratedFile(fileName, AiOutputFormat.DOCX.contentType, editedBytes);
+            String aiSummary = buildAiEditSummary(prompt, title, source.title(), plan.replacements(), AiOutputFormat.DOCX);
 
-            return saveAiEditedDocxDocument(title, prompt, answer, source, generatedFile, user);
+            return saveAiEditedDocxDocument(title, prompt, aiSummary, source, generatedFile, user);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to edit original DOCX file.", e);
         }
@@ -745,7 +749,7 @@ public class DocumentService {
     private DocumentDto.Response saveAiEditedHwpDocument(
             String title,
             String prompt,
-            String aiPlan,
+            String aiSummary,
             HwpEditSource source,
             AiGeneratedFile generatedFile,
             User user) {
@@ -764,7 +768,7 @@ public class DocumentService {
                             User request:
                             %s
                             """.formatted(source.title(), prompt))
-                    .aiSummary(aiPlan)
+                    .aiSummary(aiSummary)
                     .isAiGenerated(true)
                     .build();
 
@@ -777,7 +781,7 @@ public class DocumentService {
     private DocumentDto.Response saveAiEditedDocxDocument(
             String title,
             String prompt,
-            String aiPlan,
+            String aiSummary,
             DocxEditSource source,
             AiGeneratedFile generatedFile,
             User user) {
@@ -802,7 +806,7 @@ public class DocumentService {
                             User request:
                             %s
                             """.formatted(source.title(), prompt))
-                    .aiSummary(aiPlan)
+                    .aiSummary(aiSummary)
                     .isAiGenerated(true)
                     .build();
 
@@ -914,7 +918,89 @@ public class DocumentService {
                 """.formatted(format.extension.toUpperCase(), formatInstruction, prompt);
     }
 
-    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, User user, AiOutputFormat format) {
+    private String createAiGenerationSummary(String prompt, String aiTitle, String answer, AiOutputFormat format) {
+        String content = cleanParsedContent(answer);
+        if (content.length() > 8000) {
+            content = content.substring(0, 8000);
+        }
+
+        String summaryPrompt = """
+                아래 AI 생성 문서의 생성 결과를 사용자에게 보여줄 짧은 한국어 요약으로 작성하세요.
+                반드시 3문장 이내로 답하고, 문서 목적·주요 내용·활용 포인트를 포함하세요.
+                제목이나 마크다운 헤딩은 쓰지 마세요.
+
+                생성 요청:
+                %s
+
+                문서 제목: %s
+                문서 형식: %s
+
+                문서 내용:
+                %s
+                """.formatted(prompt, aiTitle, format.extension.toUpperCase(), content);
+
+        try {
+            String summary = cleanParsedContent(callAiChat(summaryPrompt));
+            if (!summary.isBlank()) {
+                return summary.length() > 500 ? summary.substring(0, 500).strip() : summary;
+            }
+        } catch (Exception e) {
+            log.warn("AI generation summary failed, using fallback summary: {}", e.getMessage());
+        }
+        return buildFallbackSummary(aiTitle, format);
+    }
+
+    private String buildFallbackSummary(String aiTitle, AiOutputFormat format) {
+        return "%s 형식의 문서 \"%s\" 생성이 완료되었습니다. 문서함에서 내용을 확인하고 필요한 부분을 이어서 편집할 수 있습니다."
+                .formatted(format.extension.toUpperCase(), aiTitle);
+    }
+
+    private String buildAiEditSummary(
+            String prompt,
+            String title,
+            String sourceTitle,
+            List<Map<String, String>> replacements,
+            AiOutputFormat format) {
+        int replacementCount = replacements == null ? 0 : replacements.size();
+        String safeTitle = safeSummaryText(title, 80);
+        String safeSourceTitle = safeSummaryText(sourceTitle, 80);
+        String safePrompt = safeSummaryText(prompt, 120);
+
+        if (replacementCount == 0) {
+            return "%s 문서 \"%s\"를 기준으로 \"%s\" 생성이 완료되었습니다. 요청 내용은 \"%s\"이며, 문서함에서 결과를 확인할 수 있습니다."
+                    .formatted(format.extension.toUpperCase(), safeSourceTitle, safeTitle, safePrompt);
+        }
+
+        Map<String, String> firstReplacement = replacements.stream()
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(Map.of());
+        String findText = safeSummaryText(firstReplacement.getOrDefault("find", ""), 70);
+        String replaceText = safeSummaryText(firstReplacement.getOrDefault("replace", ""), 70);
+
+        if (findText.isBlank() || replaceText.isBlank()) {
+            return "%s 문서 \"%s\"를 기준으로 \"%s\" 생성이 완료되었습니다. 요청에 따라 %d개 항목을 수정했으며, 문서함에서 결과를 확인할 수 있습니다."
+                    .formatted(format.extension.toUpperCase(), safeSourceTitle, safeTitle, replacementCount);
+        }
+
+        return "%s 문서 \"%s\"를 기준으로 \"%s\" 생성이 완료되었습니다. 요청에 따라 %d개 항목을 수정했고, 대표적으로 \"%s\"를 \"%s\"로 반영했습니다."
+                .formatted(format.extension.toUpperCase(), safeSourceTitle, safeTitle, replacementCount, findText, replaceText);
+    }
+
+    private String safeSummaryText(String value, int maxLength) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value
+                .replaceAll("\\s+", " ")
+                .strip();
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, Math.max(0, maxLength - 1)).strip() + "...";
+    }
+
+    private DocumentDto.Response saveAiDocument(String aiTitle, String answer, String aiSummary, User user, AiOutputFormat format) {
         AiGeneratedFile generatedFile = createAiGeneratedFile(aiTitle, answer, format);
 
         return transactionTemplate.execute(status -> {
@@ -930,7 +1016,7 @@ public class DocumentService {
                     .owner(user)
                     .status(DocumentStatus.DRAFT)
                     .originalContent(answer)
-                    .aiSummary(answer)
+                    .aiSummary(aiSummary)
                     .isAiGenerated(true)
                     .build();
 

@@ -275,6 +275,7 @@ export default function Chat({
   contactRequest,
   onContactRequestHandled,
   onUnreadCountChange,
+  onNotification,
 }) {
   const storedUser = useMemo(() => getStoredUser(), [])
   const currentUser = user || storedUser
@@ -323,6 +324,8 @@ export default function Chat({
   const isWindowOpenRef = useRef(isWindowOpen)
   const openInvitedRoomRef = useRef(null)
   const processedContactRequestRef = useRef(null)
+  const onNotificationRef = useRef(onNotification)
+  useEffect(() => { onNotificationRef.current = onNotification }, [onNotification])
 
   const loadRooms = useCallback(async ({ showLoading = false } = {}) => {
     if (showLoading) setLoading(true)
@@ -506,6 +509,15 @@ export default function Chat({
           subscribedRoomsRef.current.clear()
           setSocketStatus('connected')
           setError('')
+
+          client.subscribe('/user/queue/notification', frame => {
+            try {
+              const notification = JSON.parse(frame.body)
+              onNotificationRef.current?.(notification)
+            } catch (err) {
+              console.error('알림 수신 실패', err)
+            }
+          }, { id: 'app-notification' })
 
           client.subscribe('/user/queue/invite', messageFrame => {
             try {
