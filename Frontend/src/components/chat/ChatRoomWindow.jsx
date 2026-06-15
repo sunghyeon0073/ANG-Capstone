@@ -13,6 +13,7 @@ import {
   FiX,
 } from 'react-icons/fi'
 
+// 서버 시간을 한국 날짜와 시간 형식으로 표시한다.
 const formatChatTime = (value) => {
   if (!value) return ''
   const date = new Date(value)
@@ -22,6 +23,7 @@ const formatChatTime = (value) => {
   }).format(date)
 }
 
+// 메시지 작성자의 직급에 맞는 프로필 색상 CSS 클래스를 반환한다.
 const getPositionAvatarClass = (position) => {
   const pos = String(position || '').replace(/\s/g, '')
   if (pos.includes('원장')) return 'position-director'
@@ -31,6 +33,7 @@ const getPositionAvatarClass = (position) => {
   return 'position-default'
 }
 
+// 멤버가 많은 방은 상단에 두 명의 이름만 표시하고 나머지는 생략한다.
 const getCompactRoomHeaderName = (room, members = [], currentEmpNo) => {
   const roomName = room?.name?.trim()
   const activeMembers = Array.isArray(members) && members.length > 0
@@ -69,6 +72,7 @@ export default function ChatRoomWindow({
   isLoadingOlder,
   isUploading,
 }) {
+  // 입력 내용, 멤버 목록, 창 고정 여부와 팝업 위치/크기를 관리한다.
   const [content, setContent] = useState('')
   const [showMembers, setShowMembers] = useState(false)
   const [isPositionLocked, setIsPositionLocked] = useState(false)
@@ -86,10 +90,12 @@ export default function ChatRoomWindow({
     name: getCompactRoomHeaderName(originalRoom, members, currentEmpNo),
   }
 
+  // 새 메시지가 추가되면 항상 가장 최근 메시지가 보이도록 아래로 이동한다.
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // 공백 메시지는 보내지 않고, 정상 전송 요청 후 입력창을 비운다.
   const submitMessage = () => {
     const trimmed = content.trim()
     if (!trimmed) return
@@ -97,6 +103,7 @@ export default function ChatRoomWindow({
     setContent('')
   }
 
+  // Enter는 전송, Shift+Enter는 줄바꿈으로 동작한다.
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -104,12 +111,14 @@ export default function ChatRoomWindow({
     }
   }
 
+  // 숨겨진 파일 입력창에서 선택한 파일을 상위 Chat 컴포넌트에 전달한다.
   const handleFileChange = (event) => {
     const file = event.target.files?.[0]
     if (file) onUploadFile(room.roomId, file)
     event.target.value = ''
   }
 
+  // 잠금 상태가 아닐 때 헤더를 드래그하여 개별 채팅방 창을 이동한다.
   const startPopupDrag = (event) => {
     if (isPositionLocked || event.button !== 0 || event.target.closest('button')) return
     event.preventDefault()
@@ -131,6 +140,7 @@ export default function ChatRoomWindow({
     window.addEventListener('mouseup', handleMouseUp)
   }
 
+  // 각 변과 모서리를 드래그하여 개별 채팅방 창 크기를 조절한다.
   const startPopupResize = (event, direction) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -159,6 +169,7 @@ export default function ChatRoomWindow({
     window.addEventListener('mouseup', handleMouseUp)
   }
 
+  // 방 관리 버튼, 메시지 목록, 파일 첨부와 메시지 입력 영역을 렌더링한다.
   return (
     <section
       ref={popupRef}
