@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from 'react'
 import { FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield, FiX, FiCheck } from 'react-icons/fi'
 import { getUserProfileImage } from '../../api/userApi'
 
-const TYPE_LABEL = { BOARD: '게시판', MAIL: '메일', APPROVAL: '전자결재', CHAT: '채팅' }
-const TYPE_COLOR = { BOARD: '#3b82f6', MAIL: '#10b981', APPROVAL: '#f59e0b', CHAT: '#8b5cf6' }
+const TYPE_LABEL = { BOARD: '게시판', MAIL: '메일', APPROVAL: '전자결재', CHAT: '채팅', AI: 'AI 예약' }
+const TYPE_COLOR = { BOARD: '#3b82f6', MAIL: '#10b981', APPROVAL: '#f59e0b', CHAT: '#8b5cf6', AI: '#ec4899' }
 
 function formatRelativeTime(dateStr) {
   if (!dateStr) return ''
-  const diff = Date.now() - new Date(dateStr).getTime()
+  const normalized = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z'
+  const diff = Date.now() - new Date(normalized).getTime()
   const m = Math.floor(diff / 60000)
   if (m < 1) return '방금 전'
   if (m < 60) return `${m}분 전`
