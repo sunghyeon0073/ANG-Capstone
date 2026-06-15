@@ -30,7 +30,7 @@ public class AuthController {
 
     @GetMapping("/scopes/tree")
     public ResponseEntity<ApiResponse<List<ScopeTreeDto>>> getScopesTree() {
-        return ResponseEntity.ok(ApiResponse.ok(scopeService.getScopeTree()));
+        return ResponseEntity.ok(ApiResponse.success(scopeService.getScopeTree()));
     }
 
     @GetMapping("/scopes")
@@ -39,23 +39,24 @@ public class AuthController {
                 .filter(s -> s.getScopeType() == ScopeType.DEPARTMENT)
                 .map(ScopeDto::from)
                 .collect(Collectors.toList());
-        return ResponseEntity.ok(ApiResponse.ok(scopes));
+        return ResponseEntity.ok(ApiResponse.success(scopes));
     }
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<Void> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<ApiResponse<Void>> register(@Valid @RequestBody RegisterRequest request) {
         authService.register(request);
-        return ApiResponse.ok("회원가입이 완료되었습니다. 관리자 승인 후 로그인 가능합니다.");
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("회원가입이 완료되었습니다. 관리자 승인 후 로그인 가능합니다.", null));
     }
 
     @PostMapping("/login")
-    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ApiResponse.ok(authService.login(request));
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(authService.login(request)));
     }
 
     @PostMapping("/refresh")
-    public ApiResponse<LoginResponse> refresh(@Valid @RequestBody com.ang.Backend.domain.auth.dto.RefreshRequest request) {
-        return ApiResponse.ok(authService.refresh(request.getRefreshToken()));
+    public ResponseEntity<ApiResponse<LoginResponse>> refresh(@Valid @RequestBody com.ang.Backend.domain.auth.dto.RefreshRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(authService.refresh(request.getRefreshToken())));
     }
 }

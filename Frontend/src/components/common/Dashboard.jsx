@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { session } from '../../utils/storageUtils'
+import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../api/notificationApi'
 import TopNavBar from './TopNavBar'
 import Home from '../pages/Home'
 import DocumentWriter from '../pages/DocumentWriter'
@@ -51,12 +53,50 @@ const getMainCategory = (page) => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [user, setUser] = useState(null)
   const [currentPage, setCurrentPage] = useState('home-dashboard')
   const [contactRequest, setContactRequest] = useState(null)
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
   const [chatContactRequest, setChatContactRequest] = useState(null)
   const [chatUnreadCount, setChatUnreadCount] = useState(0)
+
+  // 리팩토링: 알림 조회를 React Query로 전환
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const res = await getNotifications(0, 30)
+      return res.data?.data?.content || []
+    },
+    enabled: !!session.getToken()
+  })
+
+  // 리팩토링: 알림 처리를 Mutation으로 전환
+  const markReadMutation = useMutation({
+    mutationFn: (id) => markNotificationAsRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => markAllNotificationsAsRead(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
+
+  const handleNewNotification = useCallback((notification) => {
+    queryClient.setQueryData(['notifications'], (old = []) => [notification, ...old])
+  }, [queryClient])
+
+  const handleMarkRead = useCallback((id) => {
+    markReadMutation.mutate(id)
+  }, [markReadMutation])
+
+  const handleMarkAllRead = useCallback(() => {
+    markAllReadMutation.mutate()
+  }, [markAllReadMutation])
 
   useEffect(() => {
     const user = session.getUser()
@@ -87,6 +127,11 @@ export default function Dashboard() {
     } else {
       setCurrentPage(pageId)
     }
+  }
+
+  const handleNotificationNavigate = (type) => {
+    const pageMap = { BOARD: 'board', MAIL: 'mail-inbox', APPROVAL: 'esignature-waiting' }
+    handlePageChange(pageMap[type] || 'home-dashboard')
   }
 
   const openMailCompose = (contact) => {
@@ -134,6 +179,10 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
         chatUnreadCount={chatUnreadCount}
+        notifications={notifications}
+        onMarkRead={handleMarkRead}
+        onMarkAllRead={handleMarkAllRead}
+        onNotificationNavigate={handleNotificationNavigate}
       />
       <div className="dashboard-content full-width">
         <div className={`main-content${FILL_CATEGORIES.has(mainCategory) ? ' main-content--fill' : ''}`}>
@@ -149,6 +198,7 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         onCloseChatWindow={() => setIsChatWindowOpen(false)}
         onUnreadCountChange={setChatUnreadCount}
+        onNotification={handleNewNotification}
       />
       {mainCategory !== 'esignature' && (
         <FloatingMascot

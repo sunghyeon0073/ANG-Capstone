@@ -43,7 +43,7 @@ public class FileController {
     }
 
     @PostMapping("/upload")
-    public ApiResponse<FileDto.Response> uploadFile(
+    public ResponseEntity<ApiResponse<FileDto.Response>> uploadFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "targetScopeId", required = false) Integer targetScopeId,
             @AuthenticationPrincipal UserDetails userDetails) {
@@ -52,87 +52,87 @@ public class FileController {
             OwnerType ownerType = targetScopeId != null ? OwnerType.SCOPE : OwnerType.USER;
             Integer ownerId = targetScopeId != null ? targetScopeId : user.getUserId();
             FileDto.Response uploadedFile = fileService.uploadFileV2(file, user, ownerType, ownerId);
-            return ApiResponse.ok(uploadedFile);
+            return ResponseEntity.ok(ApiResponse.success(uploadedFile));
         } catch (Exception e) {
             throw new RuntimeException("파일 업로드 실패: " + e.getMessage());
         }
     }
 
     @GetMapping
-    public ApiResponse<FileDto.PagedResponse> getAllFiles(
+    public ResponseEntity<ApiResponse<FileDto.PagedResponse>> getAllFiles(
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         User user = getUser(userDetails);
-        return ApiResponse.ok(fileService.getAllActiveFiles(user, pageable));
+        return ResponseEntity.ok(ApiResponse.success(fileService.getAllActiveFiles(user, pageable)));
     }
 
     @GetMapping("/my")
-    public ApiResponse<FileDto.PagedResponse> getMyFiles(
+    public ResponseEntity<ApiResponse<FileDto.PagedResponse>> getMyFiles(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(required = false) String keyword,
             @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         User user = getUser(userDetails);
-        return ApiResponse.ok(fileService.getMyFiles(user, keyword, pageable));
+        return ResponseEntity.ok(ApiResponse.success(fileService.getMyFiles(user, keyword, pageable)));
     }
 
     @GetMapping("/department")
-    public ApiResponse<FileDto.PagedResponse> getDepartmentFiles(
+    public ResponseEntity<ApiResponse<FileDto.PagedResponse>> getDepartmentFiles(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(required = false) Integer scopeId,
             @RequestParam(required = false) String keyword,
             @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         User user = getUser(userDetails);
-        return ApiResponse.ok(fileService.getDepartmentFiles(user, scopeId, keyword, pageable));
+        return ResponseEntity.ok(ApiResponse.success(fileService.getDepartmentFiles(user, scopeId, keyword, pageable)));
     }
 
     @GetMapping("/trash")
-    public ApiResponse<FileDto.PagedResponse> getTrashFiles(
+    public ResponseEntity<ApiResponse<FileDto.PagedResponse>> getTrashFiles(
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 20, sort = "deletedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         User user = getUser(userDetails);
-        return ApiResponse.ok(fileService.getTrashFiles(user, pageable));
+        return ResponseEntity.ok(ApiResponse.success(fileService.getTrashFiles(user, pageable)));
     }
 
     @GetMapping("/favorites")
-    public ApiResponse<FileDto.PagedResponse> getFavoriteFiles(
+    public ResponseEntity<ApiResponse<FileDto.PagedResponse>> getFavoriteFiles(
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         User user = getUser(userDetails);
-        return ApiResponse.ok(fileService.getFavoriteFiles(user, pageable));
+        return ResponseEntity.ok(ApiResponse.success(fileService.getFavoriteFiles(user, pageable)));
     }
 
     @PostMapping("/{id}/favorite")
-    public ApiResponse<Boolean> toggleFavorite(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Boolean>> toggleFavorite(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         User user = getUser(userDetails);
-        return ApiResponse.ok(fileService.toggleFavorite(id, user));
+        return ResponseEntity.ok(ApiResponse.success(fileService.toggleFavorite(id, user)));
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> deleteToTrash(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Void>> deleteToTrash(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         User user = getUser(userDetails);
         fileService.deleteToTrash(id, user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @DeleteMapping("/{id}/permanent")
-    public ApiResponse<Void> permanentDelete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Void>> permanentDelete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         User user = getUser(userDetails);
         fileService.permanentDelete(id, user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PutMapping("/{id}/restore")
-    public ApiResponse<Void> restoreFromTrash(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Void>> restoreFromTrash(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         User user = getUser(userDetails);
         fileService.restoreFromTrash(id, user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<Void> renameFile(@PathVariable Long id, @RequestBody java.util.Map<String, String> body, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Void>> renameFile(@PathVariable Long id, @RequestBody java.util.Map<String, String> body, @AuthenticationPrincipal UserDetails userDetails) {
         User user = getUser(userDetails);
         fileService.renameFile(id, body.get("title"), user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     // 파일 다운로드 기능
@@ -141,29 +141,22 @@ public class FileController {
         Resource resource = fileService.loadFileAsResource(fileId);
         FileItem fileItem = fileService.getFileItem(fileId);
         
-        String encodedFileName = URLEncoder.encode(fileItem.getOriginalFileName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
-        String contentDisposition = "attachment; filename=\"" + encodedFileName + "\"";
-        
+        String encodedFileName = URLEncoder.encode(fileItem.getOriginalFileName(), StandardCharsets.UTF_8)
+                .replaceAll("\\+", "%20");
+
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + encodedFileName + "\"; filename*=UTF-8''" + encodedFileName)
                 .body(resource);
     }
 
     @GetMapping("/preview/{fileId}")
-    public ResponseEntity<Resource> previewFile(@PathVariable Long fileId) {
+    public ResponseEntity<Resource> getFilePreview(@PathVariable Long fileId) {
         Resource resource = fileService.loadFileAsResource(fileId);
         FileItem fileItem = fileService.getFileItem(fileId);
 
-        String encodedFileName = URLEncoder.encode(fileItem.getOriginalFileName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
-        String contentDisposition = "inline; filename=\"" + encodedFileName + "\"";
-        MediaType mediaType = fileItem.getContentType() != null
-                ? MediaType.parseMediaType(fileItem.getContentType())
-                : MediaType.APPLICATION_PDF;
-
         return ResponseEntity.ok()
-                .contentType(mediaType)
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .contentType(MediaType.parseMediaType(fileItem.getContentType()))
                 .body(resource);
     }
 }
