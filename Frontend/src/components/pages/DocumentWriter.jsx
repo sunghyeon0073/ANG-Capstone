@@ -1,3 +1,5 @@
+import '../../style/document.css'
+import '../../style/AIprompt.css'
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import {

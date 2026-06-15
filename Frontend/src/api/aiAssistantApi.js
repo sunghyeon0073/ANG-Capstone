@@ -1,6 +1,5 @@
 import api from './axios'
-
-const unwrap = response => response.data?.data ?? response.data
+import { unwrap } from '../utils/responseUtils'
 
 export const previewAiSchedule = async prompt => {
   const response = await api.post('/ai-assistant/schedule', { prompt, confirm: false })

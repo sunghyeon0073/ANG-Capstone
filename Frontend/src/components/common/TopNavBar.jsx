@@ -1,3 +1,4 @@
+import '../../style/navigation.css'
 import { useEffect, useState } from 'react'
 import { FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield } from 'react-icons/fi'
 import { getUserProfileImage } from '../../api/userApi'
