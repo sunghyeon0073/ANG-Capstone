@@ -93,8 +93,10 @@ public class ApprovalDocService {
         return ApprovalDocDto.Response.from(doc);
     }
 
+    @Transactional
     public ApprovalDocDto.Response getDoc(Long docId, User user) {
         ApprovalDoc doc = findDocAndCheckAccess(docId, user);
+        notificationService.deleteByTarget(user, docId, NotificationType.APPROVAL);
         return ApprovalDocDto.Response.from(doc);
     }
 
