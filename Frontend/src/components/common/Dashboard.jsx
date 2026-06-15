@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { session } from '../../utils/storageUtils'
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../api/notificationApi'
 import TopNavBar from './TopNavBar'
@@ -53,61 +52,53 @@ const getMainCategory = (page) => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const [user, setUser] = useState(null)
-  const [currentPage, setCurrentPage] = useState('home-dashboard')
+  const [user] = useState(() => session.getUser())
+  const [currentPage, setCurrentPage] = useState(
+    () => session.getDashboardPage() || 'home-dashboard'
+  )
   const [contactRequest, setContactRequest] = useState(null)
-  const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
+  const [isChatWindowOpen, setIsChatWindowOpen] = useState(
+    () => session.isChatWindowOpen()
+  )
   const [chatContactRequest, setChatContactRequest] = useState(null)
   const [chatUnreadCount, setChatUnreadCount] = useState(0)
-
-  // 리팩토링: 알림 조회를 React Query로 전환
-  const { data: notifications = [] } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: async () => {
-      const res = await getNotifications(0, 30)
-      return res.data?.data?.content || []
-    },
-    enabled: !!session.getToken()
-  })
-
-  // 리팩토링: 알림 처리를 Mutation으로 전환
-  const markReadMutation = useMutation({
-    mutationFn: (id) => markNotificationAsRead(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    }
-  })
-
-  const markAllReadMutation = useMutation({
-    mutationFn: () => markAllNotificationsAsRead(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    }
-  })
-
-  const handleNewNotification = useCallback((notification) => {
-    queryClient.setQueryData(['notifications'], (old = []) => [notification, ...old])
-  }, [queryClient])
-
-  const handleMarkRead = useCallback((id) => {
-    markReadMutation.mutate(id)
-  }, [markReadMutation])
-
-  const handleMarkAllRead = useCallback(() => {
-    markAllReadMutation.mutate()
-  }, [markAllReadMutation])
+  const [notifications, setNotifications] = useState([])
 
   useEffect(() => {
-    const user = session.getUser()
+    getNotifications(0, 30)
+      .then(res => setNotifications(res.data?.data?.content || []))
+      .catch(() => {})
+  }, [])
+
+  const handleNewNotification = useCallback((notification) => {
+    setNotifications(prev => [notification, ...prev])
+  }, [])
+
+  const handleMarkRead = useCallback(async (id) => {
+    await markNotificationAsRead(id).catch(() => {})
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }, [])
+
+  const handleMarkAllRead = useCallback(async () => {
+    await markAllNotificationsAsRead().catch(() => {})
+    setNotifications([])
+  }, [])
+
+  useEffect(() => {
     const token = session.getToken()
     if (!user || !token) {
       session.clear()
       navigate('/login', { replace: true })
-      return
     }
-    setUser(user)
-  }, [navigate])
+  }, [navigate, user])
+
+  useEffect(() => {
+    session.setDashboardPage(currentPage)
+  }, [currentPage])
+
+  useEffect(() => {
+    session.setChatWindowOpen(isChatWindowOpen)
+  }, [isChatWindowOpen])
 
   const handleLogout = () => {
     session.clear()
