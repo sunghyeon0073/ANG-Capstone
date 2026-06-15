@@ -10,6 +10,7 @@ import com.ang.Backend.domain.user.repository.UserRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -26,61 +27,61 @@ public class ScheduleController {
     private final UserRepository userRepository;
 
     @GetMapping
-    public ApiResponse<List<ScheduleDto.Response>> getSchedules(
+    public ResponseEntity<ApiResponse<List<ScheduleDto.Response>>> getSchedules(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         User user = resolveUser(userDetails);
-        return ApiResponse.ok(scheduleService.getSchedules(user, startDate, endDate));
+        return ResponseEntity.ok(ApiResponse.success(scheduleService.getSchedules(user, startDate, endDate)));
     }
 
     @GetMapping("/ai-recommendations")
-    public ApiResponse<List<ScheduleDto.AiRecommendationResponse>> getAiRecommendations(
+    public ResponseEntity<ApiResponse<List<ScheduleDto.AiRecommendationResponse>>> getAiRecommendations(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         User user = resolveUser(userDetails);
-        return ApiResponse.ok(scheduleService.getAiRecommendations(user, startDate, endDate));
+        return ResponseEntity.ok(ApiResponse.success(scheduleService.getAiRecommendations(user, startDate, endDate)));
     }
 
     @PostMapping
-    public ApiResponse<List<ScheduleDto.Response>> create(
+    public ResponseEntity<ApiResponse<List<ScheduleDto.Response>>> create(
             @Valid @RequestBody ScheduleDto.SaveRequest request,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         User user = resolveUser(userDetails);
-        return ApiResponse.ok(scheduleService.create(request, user));
+        return ResponseEntity.ok(ApiResponse.success(scheduleService.create(request, user)));
     }
 
     @PatchMapping("/{scheduleId}/complete")
-    public ApiResponse<ScheduleDto.Response> toggleComplete(
+    public ResponseEntity<ApiResponse<ScheduleDto.Response>> toggleComplete(
             @PathVariable Long scheduleId,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         User user = resolveUser(userDetails);
-        return ApiResponse.ok(scheduleService.toggleComplete(scheduleId, user));
+        return ResponseEntity.ok(ApiResponse.success(scheduleService.toggleComplete(scheduleId, user)));
     }
 
     @PutMapping("/{scheduleId}")
-    public ApiResponse<ScheduleDto.Response> update(
+    public ResponseEntity<ApiResponse<ScheduleDto.Response>> update(
             @PathVariable Long scheduleId,
             @Valid @RequestBody ScheduleDto.SaveRequest request,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         User user = resolveUser(userDetails);
-        return ApiResponse.ok(scheduleService.update(scheduleId, request, user));
+        return ResponseEntity.ok(ApiResponse.success(scheduleService.update(scheduleId, request, user)));
     }
 
     @DeleteMapping("/{scheduleId}")
-    public ApiResponse<Void> delete(
+    public ResponseEntity<ApiResponse<Void>> delete(
             @PathVariable Long scheduleId,
             @AuthenticationPrincipal UserDetails userDetails
     ) {
         User user = resolveUser(userDetails);
         scheduleService.delete(scheduleId, user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     private User resolveUser(UserDetails userDetails) {

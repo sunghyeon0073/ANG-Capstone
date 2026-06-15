@@ -35,27 +35,31 @@ export function AiGenerationProvider({ children }) {
 
     try {
       const response = await api.post('/documents/ai-generate', payload)
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || 'AI 문서 생성에 실패했습니다.')
+      const resData = response.data
+
+      if (!resData?.success) {
+        throw new Error(resData?.message || 'AI 문서 생성에 실패했습니다.')
       }
 
-      const generatedDocument = response.data.data
+      const generatedDocument = resData.data
       setLastResult(generatedDocument)
 
       window.dispatchEvent(new CustomEvent('ang:ai-document-generated', {
         detail: { document: generatedDocument, task },
       }))
 
-      notifyMascot('문서 초안이 완성됐어요. 문서함에서 확인해 주세요!', 'idle')
+      notifyMascot('문서가 완성되었습니다! 내용을 확인해 보세요.', 'celebrate')
       return generatedDocument
     } catch (error) {
+      console.error('AI generation process error:', error)
+      const apiError = error.response?.data?.message || error.message
       setLastError(error)
-      notifyMascot('문서 생성이 잠깐 막혔어요. 연결 상태를 확인하고 다시 시도해 주세요.', 'idle')
+      notifyMascot(apiError || '문서 생성이 잠깐 막혔어요. 연결 상태를 확인하고 다시 시도해 주세요.', 'idle')
       throw error
     } finally {
-      activeTaskRef.current = null
-      setCurrentTask(null)
       setIsGenerating(false)
+      setCurrentTask(null)
+      activeTaskRef.current = null
     }
   }, [])
 

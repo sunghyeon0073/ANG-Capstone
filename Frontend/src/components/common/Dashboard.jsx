@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { session } from '../../utils/storageUtils'
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../api/notificationApi'
 import TopNavBar from './TopNavBar'
@@ -52,6 +53,7 @@ const getMainCategory = (page) => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [user] = useState(() => session.getUser())
   const [currentPage, setCurrentPage] = useState(
     () => session.getDashboardPage() || 'home-dashboard'
@@ -62,27 +64,45 @@ export default function Dashboard() {
   )
   const [chatContactRequest, setChatContactRequest] = useState(null)
   const [chatUnreadCount, setChatUnreadCount] = useState(0)
-  const [notifications, setNotifications] = useState([])
 
-  useEffect(() => {
-    getNotifications(0, 30)
-      .then(res => setNotifications(res.data?.data?.content || []))
-      .catch(() => {})
-  }, [])
+  // 알림 목록 조회 (React Query)
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const res = await getNotifications(0, 30)
+      return res.data?.data?.content || []
+    },
+    enabled: !!session.getToken(),
+    refetchInterval: 60000, // 1분마다 자동 갱신
+  })
+
+  // 알림 읽음 처리 (Mutation)
+  const markReadMutation = useMutation({
+    mutationFn: (id) => markNotificationAsRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => markAllNotificationsAsRead(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
 
   const handleNewNotification = useCallback((notification) => {
-    setNotifications(prev => [notification, ...prev])
-  }, [])
+    // 새 알림 수신 시 캐시 데이터 업데이트
+    queryClient.setQueryData(['notifications'], (old = []) => [notification, ...old])
+  }, [queryClient])
 
-  const handleMarkRead = useCallback(async (id) => {
-    await markNotificationAsRead(id).catch(() => {})
-    setNotifications(prev => prev.filter(n => n.id !== id))
-  }, [])
+  const handleMarkRead = useCallback((id) => {
+    markReadMutation.mutate(id)
+  }, [markReadMutation])
 
-  const handleMarkAllRead = useCallback(async () => {
-    await markAllNotificationsAsRead().catch(() => {})
-    setNotifications([])
-  }, [])
+  const handleMarkAllRead = useCallback(() => {
+    markAllReadMutation.mutate()
+  }, [markAllReadMutation])
 
   useEffect(() => {
     const token = session.getToken()

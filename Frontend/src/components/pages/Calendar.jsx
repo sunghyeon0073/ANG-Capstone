@@ -421,11 +421,14 @@ export default function Calendar({ showSidebar = true }) {
 
   const handleDeleteSchedule = async (e, schedule) => {
     if (e) e.stopPropagation()
-    if (schedule.isAiRecommendation) return
+    // AI 추천 일정은 삭제 대상이 아님 (DB에 저장이 안 되어 있을 수 있음)
+    if (schedule.isAiRecommendation || schedule.isAi) return
     if (!window.confirm('이 일정을 삭제하시겠습니까?')) return
 
     try {
-      await deleteSchedule(schedule.id)
+      // schedule.id 또는 schedule.scheduleId 중 존재하는 것을 사용
+      const id = schedule.id || schedule.scheduleId
+      await deleteSchedule(id)
       setPopoverAnchor(null)
       setSelectedSchedule(null)
       fetchCalendarData()
