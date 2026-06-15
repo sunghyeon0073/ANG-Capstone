@@ -1,3 +1,4 @@
+import '../../style/mypage.css'
 import { useEffect, useMemo, useState } from 'react'
 import { getScopes } from '../../api/scopeApi'
 import { getUserProfileImage, updateUser, uploadUserProfileImage } from '../../api/userApi'
