@@ -38,7 +38,7 @@ const DEFAULT_SUB_PAGES = {
   esignature: 'esignature-waiting',
   file: 'file-my',
   board: 'board',
-  mail: 'mail-compose',
+  mail: 'mail-inbox',
   org: 'org-all',
   admin: 'admin-approval',
 }
