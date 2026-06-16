@@ -430,43 +430,56 @@ public class DocumentService {
 
     private DocumentDto.Response editDocxWithAi(String prompt, User user, DocxEditSource source) {
         byte[] originalBytes;
-        List<DocxTextBlock> blocks;
         try {
             Resource resource = fileService.loadFileAsResource(source.fileId());
             originalBytes = resource.getInputStream().readAllBytes();
-            blocks = extractDocxTextBlocks(originalBytes);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read original DOCX file.", e);
         }
 
-        String finalPrompt = buildDocxEditPrompt(prompt, source, blocks);
-        log.info("AI DOCX edit plan started: sourceDocId={}, blocks={}, promptChars={}", source.docId(), blocks.size(), finalPrompt.length());
+        // 객체의 참조를 유지하기 위해 전체 수정 프로세스를 하나의 문서 객체 스코프 내에서 처리합니다.
+        try (XWPFDocument document = openDocxDocument(originalBytes)) {
+            
+            // 1. POI 객체 보존용 ID 매핑 맵 (동시성 방지를 위해 지역변수로 생성)
+            Map<String, Object> elementMap = new HashMap<>();
+            
+            // 2. 문서 구조 및 텍스트 추출 [Method 1]
+            String structuredXml = extractDocxTextBlocks(document, elementMap);
 
-        Map<String, String> aiRequest = Map.of("message", finalPrompt);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> aiResponse = restTemplate.postForObject(
-                aiBaseUrl + "/chat",
-                aiRequest,
-                Map.class
-        );
+            // 3. AI 프롬프트 생성 (JSON 응답 강제) [Method 2]
+            String finalPrompt = buildDocxEditPrompt(prompt, source, structuredXml);
+            log.info("AI DOCX edit plan started: sourceDocId={}, promptChars={}", source.docId(), finalPrompt.length());
 
-        String answer = aiResponse != null && aiResponse.get("reply") != null
-                ? aiResponse.get("reply").toString()
-                : "";
-        AiTextEditPlan plan = parseAiTextEditPlan(answer);
-        log.info("AI DOCX edit plan finished: sourceDocId={}, replacements={}", source.docId(), plan.replacements().size());
-        log.info("AI DOCX replacements: {}", plan.replacements());
+            // 4. AI 서버 호출
+            Map<String, String> aiRequest = Map.of("message", finalPrompt);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> aiResponse = restTemplate.postForObject(
+                    aiBaseUrl + "/chat",
+                    aiRequest,
+                    Map.class
+            );
+            
+            String answer = aiResponse != null && aiResponse.get("reply") != null
+                    ? aiResponse.get("reply").toString()
+                    : "[]";
+            log.info("AI DOCX JSON patch received.");
 
-        try {
-            byte[] editedBytes = applyDocxReplacements(originalBytes, plan.replacements());
-            String title = plan.title().isBlank()
-                    ? safeDocumentTitle(source.title() + "-AI edited")
-                    : safeDocumentTitle(plan.title());
+            // 5. AI가 응답한 JSON을 파싱하여 기존 객체에 덮어쓰기 [Method 3]
+            applyDocxReplacements(answer, document, elementMap);
+
+            // 6. 결과물을 Byte 배열로 변환하여 파일 저장 준비
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            document.write(bos);
+            byte[] editedBytes = bos.toByteArray();
+
+            String title = safeDocumentTitle(source.title() + "-AI edited");
             String fileName = buildEditedFileName(source.originalName(), "docx");
             AiGeneratedFile generatedFile = new AiGeneratedFile(fileName, AiOutputFormat.DOCX.contentType, editedBytes);
 
             return saveAiEditedDocxDocument(title, prompt, answer, source, generatedFile, user);
-        } catch (IOException e) {
+
+        } catch (Exception e) {
+            log.error("DOCX edit failed", e);
             throw new IllegalStateException("Failed to edit original DOCX file.", e);
         }
     }
@@ -1642,201 +1655,80 @@ public class DocumentService {
         spacer.setSpacingAfter(120);
     }
 
-    private byte[] applyDocxReplacements(byte[] originalBytes, List<Map<String, String>> replacements) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        int applied = 0;
-        int[] blockCounter = {0};
+    private void applyDocxReplacements(String aiResponseJson, XWPFDocument document, Map<String, Object> elementMap) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<Map<String, String>> replacements;
 
-        try (XWPFDocument document = openDocxDocument(originalBytes)) {
-            applied += applyDocxParagraphReplacements(document.getParagraphs(), replacements, blockCounter);
-            applied += applyDocxTableReplacements(document.getTables(), replacements, blockCounter);
-
-            for (var header : document.getHeaderList()) {
-                applied += applyDocxParagraphReplacements(header.getParagraphs(), replacements, blockCounter);
-                applied += applyDocxTableReplacements(header.getTables(), replacements, blockCounter);
-            }
-            for (var footer : document.getFooterList()) {
-                applied += applyDocxParagraphReplacements(footer.getParagraphs(), replacements, blockCounter);
-                applied += applyDocxTableReplacements(footer.getTables(), replacements, blockCounter);
-            }
-
-            document.write(out);
-        }
-
-        if (applied == 0) {
-            throw new IllegalStateException("No DOCX replacement text matched the original document.");
-        }
-        return out.toByteArray();
-    }
-
-    private int applyDocxTableReplacements(List<XWPFTable> tables, List<Map<String, String>> replacements, int[] blockCounter) {
-        int applied = 0;
-        for (XWPFTable table : tables) {
-            for (XWPFTableRow row : table.getRows()) {
-                for (XWPFTableCell cell : row.getTableCells()) {
-                    applied += applyDocxParagraphReplacements(cell.getParagraphs(), replacements, blockCounter);
-                    applied += applyDocxTableReplacements(cell.getTables(), replacements, blockCounter);
+        try {
+            // 방어 로직: AI가 마크다운 코드 블록을 포함해 응답했을 경우 전처리
+            String cleanJson = aiResponseJson.trim();
+            if (cleanJson.startsWith("```")) {
+                int firstNewline = cleanJson.indexOf('\n');
+                int lastBackticks = cleanJson.lastIndexOf("```");
+                if (firstNewline != -1 && lastBackticks > firstNewline) {
+                    cleanJson = cleanJson.substring(firstNewline + 1, lastBackticks).trim();
                 }
             }
+
+            // Jackson TypeReference를 사용하여 안전하게 파싱
+            replacements = objectMapper.readValue(
+                    cleanJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, String>>>() {}
+            );
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse AI JSON response: {}", aiResponseJson, e);
+            throw new IllegalStateException("AI 응답 파싱 실패. 올바른 JSON 형식이 아닙니다.", e);
         }
-        return applied;
-    }
-
-    private int applyDocxParagraphReplacements(List<XWPFParagraph> paragraphs, List<Map<String, String>> replacements, int[] blockCounter) {
-        int applied = 0;
-        for (XWPFParagraph paragraph : paragraphs) {
-            String paraText = normalizeDocxBlockText(paragraph.getText());
-            if (paraText.isBlank()) {
-                continue; // 추출 로직과 동일하게 빈 단락은 건너뜀
-            }
-            String blockId = nextDocxBlockId(blockCounter);
-            List<Map<String, String>> blockReplacements = replacementsForBlock(replacements, blockId, paraText);
-            if (blockReplacements.isEmpty()) {
-                continue;
-            }
-            int runApplied = replaceDocxRunsInPlace(paragraph, blockReplacements);
-            applied += runApplied > 0 ? runApplied : replaceDocxParagraphFallback(paragraph, blockReplacements);
-        }
-        return applied;
-    }
-
-    private List<Map<String, String>> replacementsForBlock(List<Map<String, String>> replacements, String blockId, String normalizedParaText) {
-        return replacements.stream()
-                .filter(replacement -> {
-                    String rid = replacement.getOrDefault("blockId", "").strip();
-                    String find = replacement.getOrDefault("find", "").strip();
-                    // blockId 일치, 또는 blockId 없음, 또는 find 텍스트가 이 단락에 포함된 경우 모두 허용
-                    if (rid.isBlank() || rid.equals(blockId)) return true;
-                    return !find.isBlank() && normalizedParaText.contains(find);
-                })
-                .toList();
-    }
-
-    private String nextDocxBlockId(int[] blockCounter) {
-        blockCounter[0]++;
-        return "B%03d".formatted(blockCounter[0]);
-    }
-
-    private String normalizeDocxBlockText(String text) {
-        return text == null ? "" : text.replaceAll("\\s+", " ").strip();
-    }
-
-    private int replaceDocxRunsInPlace(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
-        List<XWPFRun> runs = paragraph.getRuns();
-        if (runs.isEmpty()) return 0;
-
-        // 모든 run의 텍스트를 이어붙여 전체 단락 텍스트와 각 run의 시작 위치를 구함
-        StringBuilder stitched = new StringBuilder();
-        int[] runStartPositions = new int[runs.size()];
-        for (int i = 0; i < runs.size(); i++) {
-            runStartPositions[i] = stitched.length();
-            String t = runs.get(i).getText(0);
-            if (t != null) stitched.append(t);
-        }
-
-        String fullText = stitched.toString();
-        int applied = 0;
 
         for (Map<String, String> replacement : replacements) {
-            String find = replacement.getOrDefault("find", "").strip();
-            if (find.isBlank()) continue;
-            String replace = replacement.getOrDefault("replace", "");
+            String id = replacement.get("id");
+            String newText = replacement.get("new_text");
 
-            int matchPos = fullText.indexOf(find);
-            if (matchPos < 0) continue;
+            if (id == null || newText == null) continue;
 
-            int matchEnd = matchPos + find.length();
-            boolean firstRunUpdated = false;
+            Object element = elementMap.get(id);
+            if (element == null) {
+                log.warn("ID {} 에 매핑된 요소를 찾을 수 없습니다. 무시합니다.", id);
+                continue; // 존재하지 않는 ID 무시
+            }
 
-            for (int i = 0; i < runs.size(); i++) {
-                int runStart = runStartPositions[i];
-                String runText = runs.get(i).getText(0);
-                int runLen = runText != null ? runText.length() : 0;
-                int runEnd = runStart + runLen;
-
-                if (runEnd <= matchPos || runStart >= matchEnd) continue; // 범위 밖
-
-                if (!firstRunUpdated) {
-                    // 매칭 영역의 첫 번째 run: before + replace + after(잔여) 설정
-                    String before = fullText.substring(runStart, matchPos);
-                    String after = runEnd > matchEnd ? fullText.substring(matchEnd, runEnd) : "";
-                    setRunText(runs.get(i), before + replace + after);
-                    firstRunUpdated = true;
+            if (element instanceof XWPFParagraph paragraph) {
+                replaceTextInParagraph(paragraph, newText);
+            } else if (element instanceof XWPFTableCell cell) {
+                List<XWPFParagraph> cellParagraphs = cell.getParagraphs();
+                if (cellParagraphs != null && !cellParagraphs.isEmpty()) {
+                    // 셀의 첫 번째 문단에만 새 텍스트 할당
+                    replaceTextInParagraph(cellParagraphs.get(0), newText);
+                    // 서식 보존을 위해 나머지 문단들은 빈 문자열로 초기화
+                    for (int i = 1; i < cellParagraphs.size(); i++) {
+                        replaceTextInParagraph(cellParagraphs.get(i), "");
+                    }
                 } else {
-                    // 매칭 영역에 걸친 이후 run: 매칭 범위 내 부분을 빈 문자열로
-                    if (runEnd <= matchEnd) {
-                        setRunText(runs.get(i), "");
-                    } else {
-                        setRunText(runs.get(i), fullText.substring(matchEnd, runEnd));
-                    }
+                    // 셀이 완전히 비어있을 경우 새로 생성 후 주입
+                    cell.addParagraph().createRun().setText(newText, 0);
                 }
             }
-
-            if (firstRunUpdated) {
-                // 이후 replacement를 위해 stitched 텍스트 갱신
-                fullText = fullText.substring(0, matchPos) + replace + fullText.substring(matchEnd);
-                // runStartPositions 재계산 (delta 적용)
-                int delta = replace.length() - find.length();
-                for (int i = 0; i < runs.size(); i++) {
-                    if (runStartPositions[i] > matchPos) {
-                        runStartPositions[i] += delta;
-                    }
-                }
-                applied++;
-            }
         }
-        return applied;
     }
 
-    private int replaceDocxParagraphFallback(XWPFParagraph paragraph, List<Map<String, String>> replacements) {
-        String normText = normalizeDocxBlockText(paragraph.getText());
-        if (normText.isEmpty()) {
-            return 0;
-        }
-
-        String replaced = normText;
-        int applied = 0;
-        for (Map<String, String> replacement : replacements) {
-            String find = replacement.getOrDefault("find", "").strip();
-            if (find.isBlank()) {
-                continue;
+    // Helper: 서식 유지를 위해 첫 번째 Run만 수정하고 나머지는 비우는 메서드
+    private void replaceTextInParagraph(XWPFParagraph paragraph, String newText) {
+        List<XWPFRun> runs = paragraph.getRuns();
+        if (runs == null || runs.isEmpty()) {
+            if (newText != null && !newText.isEmpty()) {
+                paragraph.createRun().setText(newText, 0);
             }
-            String replace = replacement.getOrDefault("replace", "");
-            if (replaced.contains(find)) {
-                replaced = replaced.replace(find, replace);
-                applied++;
-            }
+            return;
         }
 
-        if (applied == 0 || replaced.equals(normText)) {
-            return 0;
-        }
+        // 기존 폰트 사이즈, 색상, 정렬 등 서식 유지를 위해 첫 번째 Run의 텍스트만 덮어씀
+        XWPFRun firstRun = runs.get(0);
+        firstRun.setText(newText, 0);
 
-        var firstRunProperties = paragraph.getRuns().isEmpty()
-                ? null
-                : paragraph.getRuns().get(0).getCTR().getRPr();
-        var copiedProperties = firstRunProperties != null
-                ? (org.openxmlformats.schemas.wordprocessingml.x2006.main.CTRPr) firstRunProperties.copy()
-                : null;
-
-        for (int i = paragraph.getRuns().size() - 1; i >= 0; i--) {
-            paragraph.removeRun(i);
-        }
-
-        XWPFRun run = paragraph.createRun();
-        if (copiedProperties != null) {
-            run.getCTR().setRPr(copiedProperties);
-        }
-        setRunText(run, replaced);
-        return applied;
-    }
-
-    private void setRunText(XWPFRun run, String text) {
-        String[] lines = text.split("\\R", -1);
-        run.setText(lines.length > 0 ? lines[0] : "", 0);
-        for (int i = 1; i < lines.length; i++) {
-            run.addBreak();
-            run.setText(lines[i]);
+        // 나머지 Run은 삭제(removeRun) 시 인덱스 충돌이나 의존 객체 파손 우려가 있으므로,
+        // 빈 문자열을 넣어 화면에서 숨기고 서식 뼈대만 남깁니다.
+        for (int i = 1; i < runs.size(); i++) {
+            runs.get(i).setText("", 0);
         }
     }
 
