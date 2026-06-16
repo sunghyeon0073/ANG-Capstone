@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { session } from '../../utils/storageUtils'
+import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../api/notificationApi'
 import TopNavBar from './TopNavBar'
 import Home from '../pages/Home'
 import DocumentWriter from '../pages/DocumentWriter'
@@ -51,23 +53,72 @@ const getMainCategory = (page) => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [user, setUser] = useState(null)
-  const [currentPage, setCurrentPage] = useState('home-dashboard')
+  const queryClient = useQueryClient()
+  const [user] = useState(() => session.getUser())
+  const [currentPage, setCurrentPage] = useState(
+    () => session.getDashboardPage() || 'home-dashboard'
+  )
   const [contactRequest, setContactRequest] = useState(null)
-  const [isChatWindowOpen, setIsChatWindowOpen] = useState(false)
+  const [isChatWindowOpen, setIsChatWindowOpen] = useState(
+    () => session.isChatWindowOpen()
+  )
   const [chatContactRequest, setChatContactRequest] = useState(null)
   const [chatUnreadCount, setChatUnreadCount] = useState(0)
 
+  // 알림 목록 조회 (React Query)
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const res = await getNotifications(0, 30)
+      return res.data?.data?.content || []
+    },
+    enabled: !!session.getToken(),
+    refetchInterval: 60000, // 1분마다 자동 갱신
+  })
+
+  // 알림 읽음 처리 (Mutation)
+  const markReadMutation = useMutation({
+    mutationFn: (id) => markNotificationAsRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => markAllNotificationsAsRead(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
+
+  const handleNewNotification = useCallback((notification) => {
+    // 새 알림 수신 시 캐시 데이터 업데이트
+    queryClient.setQueryData(['notifications'], (old = []) => [notification, ...old])
+  }, [queryClient])
+
+  const handleMarkRead = useCallback((id) => {
+    markReadMutation.mutate(id)
+  }, [markReadMutation])
+
+  const handleMarkAllRead = useCallback(() => {
+    markAllReadMutation.mutate()
+  }, [markAllReadMutation])
+
   useEffect(() => {
-    const user = session.getUser()
     const token = session.getToken()
     if (!user || !token) {
       session.clear()
       navigate('/login', { replace: true })
-      return
     }
-    setUser(user)
-  }, [navigate])
+  }, [navigate, user])
+
+  useEffect(() => {
+    session.setDashboardPage(currentPage)
+  }, [currentPage])
+
+  useEffect(() => {
+    session.setChatWindowOpen(isChatWindowOpen)
+  }, [isChatWindowOpen])
 
   const handleLogout = () => {
     session.clear()
@@ -87,6 +138,11 @@ export default function Dashboard() {
     } else {
       setCurrentPage(pageId)
     }
+  }
+
+  const handleNotificationNavigate = (type) => {
+    const pageMap = { BOARD: 'board', MAIL: 'mail-inbox', APPROVAL: 'esignature-waiting' }
+    handlePageChange(pageMap[type] || 'home-dashboard')
   }
 
   const openMailCompose = (contact) => {
@@ -134,6 +190,10 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         isChatWindowOpen={isChatWindowOpen}
         chatUnreadCount={chatUnreadCount}
+        notifications={notifications}
+        onMarkRead={handleMarkRead}
+        onMarkAllRead={handleMarkAllRead}
+        onNotificationNavigate={handleNotificationNavigate}
       />
       <div className="dashboard-content full-width">
         <div className={`main-content${FILL_CATEGORIES.has(mainCategory) ? ' main-content--fill' : ''}`}>
@@ -149,6 +209,7 @@ export default function Dashboard() {
         onOpenChatWindow={() => setIsChatWindowOpen(true)}
         onCloseChatWindow={() => setIsChatWindowOpen(false)}
         onUnreadCountChange={setChatUnreadCount}
+        onNotification={handleNewNotification}
       />
       {mainCategory !== 'esignature' && (
         <FloatingMascot

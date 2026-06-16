@@ -4,7 +4,7 @@ const TZ = 'Asia/Seoul'
 const parse = (value) => {
   if (!value) return null
   const d = typeof value === 'string'
-    ? new Date(value.includes('T') || value.includes('Z') ? value : value + 'Z')
+    ? new Date(value.includes('Z') || value.includes('+') ? value : value + 'Z')
     : new Date(value)
   return isNaN(d.getTime()) ? null : d
 }

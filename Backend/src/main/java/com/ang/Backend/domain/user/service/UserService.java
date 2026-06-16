@@ -176,6 +176,8 @@ public class UserService {
         if (position != null && !position.isEmpty()) {
             membership.setPosition(position);
             userMembershipRepository.save(membership);
+            user.setPosition(position);
+            userRepository.save(user);
         }
 
         if (roleLevel != null) {

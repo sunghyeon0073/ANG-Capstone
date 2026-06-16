@@ -22,7 +22,7 @@ public class UserController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<UserDto>>> getAllUsers() {
-        return ResponseEntity.ok(ApiResponse.ok(userService.getAllUsers()));
+        return ResponseEntity.ok(ApiResponse.success(userService.getAllUsers()));
     }
 
     // 이름 또는 사번으로 사용자 검색 (메일 수신자 선택용)
@@ -30,18 +30,18 @@ public class UserController {
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<UserDto.RecipientSearchResult>>> searchUsers(
             @RequestParam String q) {
-        return ResponseEntity.ok(ApiResponse.ok(userService.searchUsers(q)));
+        return ResponseEntity.ok(ApiResponse.success(userService.searchUsers(q)));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<UserDto>> getUser(@PathVariable Integer id) {
-        return ResponseEntity.ok(ApiResponse.ok(userService.getUser(id)));
+        return ResponseEntity.ok(ApiResponse.success(userService.getUser(id)));
     }
 
     @PatchMapping("/{id}")
     public ResponseEntity<ApiResponse<UserDto>> updateUser(@PathVariable Integer id,
                                                            @RequestBody UserUpdateRequest req) {
-        return ResponseEntity.ok(ApiResponse.ok(userService.updateUser(id, req)));
+        return ResponseEntity.ok(ApiResponse.success(userService.updateUser(id, req)));
     }
 
     @GetMapping("/{id}/profile-image")
@@ -54,14 +54,14 @@ public class UserController {
 
     @DeleteMapping("/{id}/profile-image")
     public ResponseEntity<ApiResponse<UserDto>> deleteProfileImage(@PathVariable Integer id) {
-        return ResponseEntity.ok(ApiResponse.ok(userService.deleteProfileImage(id)));
+        return ResponseEntity.ok(ApiResponse.success(userService.deleteProfileImage(id)));
     }
 
     @PostMapping(value = "/{id}/profile-image", consumes = "multipart/form-data")
     public ResponseEntity<ApiResponse<UserDto>> uploadProfileImage(
             @PathVariable Integer id,
             @RequestPart("file") MultipartFile file) {
-        return ResponseEntity.ok(ApiResponse.ok(userService.uploadProfileImage(id, file)));
+        return ResponseEntity.ok(ApiResponse.success(userService.uploadProfileImage(id, file)));
     }
 
     @PostMapping("/{id}/approve")
@@ -69,12 +69,12 @@ public class UserController {
             @PathVariable Integer id,
             @RequestBody com.ang.Backend.domain.user.dto.UserApproveRequest req) {
         userService.approveUser(id, req.getRoleLevel(), req.getPosition());
-        return ResponseEntity.ok(ApiResponse.ok("사용자 가입이 승인되었습니다."));
+        return ResponseEntity.ok(ApiResponse.success("사용자 가입이 승인되었습니다.", null));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable Integer id) {
         userService.anonymize(id);
-        return ResponseEntity.ok(ApiResponse.ok("회원 탈퇴 처리되었습니다."));
+        return ResponseEntity.ok(ApiResponse.success("회원 탈퇴 처리되었습니다.", null));
     }
 }

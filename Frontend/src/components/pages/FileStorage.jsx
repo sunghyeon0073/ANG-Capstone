@@ -30,7 +30,7 @@ import { getApprovalTemplates } from '../../api/approvalApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
 // 리뷰 반영: 공통 유틸리티 사용
 import { formatDate, formatDateTime } from '../../utils/dateUtils';
-import { formatFileSize } from '../../utils/fileUtils';
+import { formatFileSize, getBaseName, getExtension } from '../../utils/fileUtils';
 import FilePreviewModal from '../file/FilePreviewModal';
 
 const getFileIcon = (doc) => {
@@ -65,7 +65,7 @@ export default function FileStorage() {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'uploadedAt', direction: 'desc' });
   const [previewDoc, setPreviewDoc] = useState(null);
   // Pagination State
   const [currentPage, setCurrentPage] = useState(0); // Backend is 0-indexed
@@ -78,17 +78,22 @@ export default function FileStorage() {
     queryKey: ['files', activeTab, targetScopeId, currentPage, sortConfig.key, sortConfig.direction, searchQuery],
     queryFn: async () => {
       let res;
+      const isImportantTab = activeTab === 'important';
       const params = {
         page: currentPage,
         size: itemsPerPage,
-        sort: `${sortConfig.key},${sortConfig.direction}`,
+        sort: `${isImportantTab ? 'createdAt' : sortConfig.key},${sortConfig.direction}`,
         keyword: searchQuery
       };
 
       if (activeTab === 'trash') {
         res = await getTrashFiles(params);
       } else if (activeTab === 'shared') {
-        res = await getDepartmentFiles({ ...params, scopeId: targetScopeId });
+        const sharedParams = { ...params };
+        if (targetScopeId && targetScopeId !== 'all') {
+          sharedParams.scopeId = targetScopeId;
+        }
+        res = await getDepartmentFiles(sharedParams);
       } else if (activeTab === 'important') {
         res = await getFavoriteFiles(params);
       } else if (activeTab === 'template') {
@@ -211,8 +216,13 @@ export default function FileStorage() {
 
   const handleRename = (e) => {
     e.preventDefault();
-    if (!selectedDocId || !renameTitle.trim()) return;
-    renameMutation.mutate({ id: selectedDocId, data: { title: renameTitle } });
+    if (!selectedDocId || !renameTitle.trim() || !selectedDoc) return;
+    
+    // 원래 확장자를 가져와서 새 이름에 붙여줍니다.
+    const ext = getExtension(selectedDoc.title);
+    const finalTitle = renameTitle.trim() + ext;
+    
+    renameMutation.mutate({ id: selectedDocId, data: { title: finalTitle } });
   };
 
   const handleSort = (key) => {
@@ -481,7 +491,7 @@ export default function FileStorage() {
                   {getFileIcon(doc)}
                   </div>
                   <div className="file-card-info">
-                  <div className="file-card-name" title={doc.title}>{doc.title}</div>
+                  <div className="file-card-name" title={doc.title}>{getBaseName(doc.title)}</div>
                   <div className="file-card-meta">{formatFileSize(doc.fileSize)}</div>
                   </div>
                   </div>
@@ -524,7 +534,7 @@ export default function FileStorage() {
                   <td>
                     <div className="file-table-name-cell">
                       <span style={{ fontSize: '30px' }}>{getFileIcon(doc)}</span>
-                      <span style={{ fontSize: '15px' }}>{doc.title}</span>
+                      <span style={{ fontSize: '15px' }}>{getBaseName(doc.title)}</span>
                     </div>
                   </td>
 
@@ -577,7 +587,7 @@ export default function FileStorage() {
                   <div className="detail-preview">
                   {getFileIcon(selectedDoc)}
                   </div>
-                  <div className="detail-title">{selectedDoc.title}</div>
+                  <div className="detail-title">{getBaseName(selectedDoc.title)}</div>
 
                   <div className="detail-info-list">
                   <div className="detail-info-item">
@@ -636,7 +646,7 @@ export default function FileStorage() {
                   className="btn btn-secondary" 
                   style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                   onClick={() => {
-                    setRenameTitle(selectedDoc.title);
+                    setRenameTitle(getBaseName(selectedDoc.title));
                     setShowRenameModal(true);
                   }}
                   >
@@ -706,7 +716,7 @@ export default function FileStorage() {
                   onChange={e => {
                     const file = e.target.files[0];
                     setUploadFile(file);
-                    if (file && !uploadTitle) setUploadTitle(file.name.split('.').slice(0, -1).join('.'));
+                    if (file && !uploadTitle) setUploadTitle(getBaseName(file.name));
                   }}
                   required
                   style={{ display: 'none' }}
@@ -741,7 +751,7 @@ export default function FileStorage() {
           onRename={(doc) => {
             setPreviewDoc(null);
             setSelectedDocId(doc.docId);
-            setRenameTitle(doc.title);
+            setRenameTitle(getBaseName(doc.title));
             setShowRenameModal(true);
           }}
           onShare={() => {}}

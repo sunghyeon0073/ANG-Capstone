@@ -48,8 +48,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("Unhandled exception: ", e);
+        String message = "서버 내부 오류가 발생했습니다: " + e.getMessage();
         return ResponseEntity
                 .status(ErrorCode.INTERNAL_SERVER_ERROR.getHttpStatus())
-                .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR.getHttpStatus().value(), ErrorCode.INTERNAL_SERVER_ERROR.getMessage()));
+                .body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR.getHttpStatus().value(), message));
     }
 }

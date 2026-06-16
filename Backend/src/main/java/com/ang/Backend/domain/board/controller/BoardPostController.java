@@ -29,7 +29,7 @@ public class BoardPostController {
             @RequestParam(required = false) String type,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(boardPostService.getPosts(type, user)));
+        return ResponseEntity.ok(ApiResponse.success(boardPostService.getPosts(type, user)));
     }
 
     @PostMapping
@@ -37,7 +37,7 @@ public class BoardPostController {
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestBody BoardPostDto.CreateRequest request) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(boardPostService.createPost(user, request)));
+        return ResponseEntity.ok(ApiResponse.success(boardPostService.createPost(user, request)));
     }
 
     @PutMapping("/{id}")
@@ -46,7 +46,7 @@ public class BoardPostController {
             @PathVariable Long id,
             @RequestBody BoardPostDto.UpdateRequest request) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(boardPostService.updatePost(user, id, request)));
+        return ResponseEntity.ok(ApiResponse.success(boardPostService.updatePost(user, id, request)));
     }
 
     @DeleteMapping("/{id}")
@@ -55,12 +55,12 @@ public class BoardPostController {
             @PathVariable Long id) {
         User user = resolveUser(userDetails);
         boardPostService.deletePost(user, id);
-        return ResponseEntity.ok(ApiResponse.ok(null));
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PostMapping("/{id}/views")
     public ResponseEntity<ApiResponse<BoardPostDto.Response>> incrementViews(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.ok(boardPostService.incrementViews(id)));
+        return ResponseEntity.ok(ApiResponse.success(boardPostService.incrementViews(id)));
     }
 
     @PostMapping("/{id}/attachments")
@@ -69,7 +69,7 @@ public class BoardPostController {
             @PathVariable Long id,
             @RequestParam("file") MultipartFile file) {
         User user = resolveUser(userDetails);
-        return ResponseEntity.ok(ApiResponse.ok(boardPostService.uploadAttachment(id, file, user)));
+        return ResponseEntity.ok(ApiResponse.success(boardPostService.uploadAttachment(id, file, user)));
     }
 
     @GetMapping("/attachments/{attachmentId}/download")
@@ -83,7 +83,7 @@ public class BoardPostController {
             @PathVariable Long attachmentId) {
         User user = resolveUser(userDetails);
         boardPostService.deleteAttachment(attachmentId, user);
-        return ResponseEntity.ok(ApiResponse.ok(null));
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     private User resolveUser(UserDetails userDetails) {

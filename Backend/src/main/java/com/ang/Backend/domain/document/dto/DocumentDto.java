@@ -66,6 +66,7 @@ public class DocumentDto {
         private boolean canDelete;
         @JsonProperty("isFavorite")
         private boolean isFavorite;
+        private List<ChangeItem> changes;
 
         public static Response fromEntity(DocumentEntity entity) {
             return Response.builder()
@@ -73,6 +74,7 @@ public class DocumentDto {
                     .title(entity.getTitle())
                     .status(entity.getStatus())
                     .originalContent(entity.getOriginalContent())
+                    .aiSummary(entity.getAiSummary())
                     .originalFileName(entity.getFile() != null ? entity.getFile().getOriginalFileName() : null)
                     .fileId(entity.getFile() != null ? entity.getFile().getFileId() : null)
                     .fileContentType(entity.getFile() != null ? entity.getFile().getContentType() : null)
@@ -94,6 +96,7 @@ public class DocumentDto {
                     .docId(entity.getDocId())
                     .title(entity.getTitle())
                     .status(entity.getStatus())
+                    .aiSummary(entity.getAiSummary())
                     .originalFileName(entity.getFile() != null ? entity.getFile().getOriginalFileName() : null)
                     .fileId(entity.getFile() != null ? entity.getFile().getFileId() : null)
                     .fileContentType(entity.getFile() != null ? entity.getFile().getContentType() : null)
@@ -117,6 +120,17 @@ public class DocumentDto {
         public void setFavorite(boolean favorite) {
             this.isFavorite = favorite;
         }
+
+        public void setChanges(List<ChangeItem> changes) {
+            this.changes = changes;
+        }
+    }
+
+    @Getter @Builder
+    public static class ChangeItem {
+        private String blockId;
+        private String find;
+        private String replace;
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder

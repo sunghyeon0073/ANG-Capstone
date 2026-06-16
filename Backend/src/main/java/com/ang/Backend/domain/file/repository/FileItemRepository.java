@@ -27,6 +27,11 @@ public interface FileItemRepository extends JpaRepository<FileItem, Long> {
     Page<FileItem> findByOwnerTypeAndOwnerIdAndOriginalFileNameContainingIgnoreCaseAndDeletedAtIsNull(OwnerType ownerType, Integer ownerId, String keyword, Pageable pageable);
     
     Page<FileItem> findByOwnerTypeAndOwnerIdAndDeletedAtIsNotNull(OwnerType ownerType, Integer ownerId, Pageable pageable);
+
+    @Query("SELECT f FROM FileItem f WHERE f.deletedAt IS NOT NULL AND " +
+           "((f.ownerType = 'USER' AND f.ownerId = :userId) OR " +
+           "(f.ownerType = 'SCOPE' AND f.ownerId IN :scopeIds))")
+    Page<FileItem> findTrashFiles(@Param("userId") Integer userId, @Param("scopeIds") List<Integer> scopeIds, Pageable pageable);
     
     @Query("SELECT f FROM FileItem f WHERE f.ownerType = 'SCOPE' AND f.ownerId IN :scopeIds AND f.deletedAt IS NULL AND (:keyword IS NULL OR LOWER(f.originalFileName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<FileItem> findDepartmentFiles(@Param("scopeIds") List<Integer> scopeIds, @Param("keyword") String keyword, Pageable pageable);

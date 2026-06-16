@@ -227,11 +227,17 @@ public class ScopeService {
             throw new CustomException(ErrorCode.ALREADY_MEMBER);
         }
 
+        String resolvedPosition = position != null && !position.trim().isEmpty() ? position : "사원";
         userMembershipRepository.save(UserMembership.builder()
                 .user(targetUser)
                 .scope(targetScope)
-                .position(position != null && !position.trim().isEmpty() ? position : "사원")
+                .position(resolvedPosition)
                 .build());
+
+        if (targetUser.getPosition() == null || targetUser.getPosition().isBlank()) {
+            targetUser.setPosition(resolvedPosition);
+            userRepository.save(targetUser);
+        }
 
         Role defaultRole = roleRepository.findByRoleLevel(1)
                 .orElseThrow(() -> new CustomException(ErrorCode.ROLE_NOT_FOUND));
@@ -260,7 +266,10 @@ public class ScopeService {
 
         membership.setPosition(position);
         userMembershipRepository.save(membership);
-        
+
+        targetUser.setPosition(position);
+        userRepository.save(targetUser);
+
         log.info("User {} position in scope {} updated to {} by manager {}", targetUser.getEmpNo(), targetScope.getScopeCode(), position, requester.getEmpNo());
     }
 
