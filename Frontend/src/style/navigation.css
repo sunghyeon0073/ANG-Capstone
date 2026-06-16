@@ -631,3 +631,41 @@
 .sidebar-toggle-icon::after { transform: translate(-50%, -50%) rotate(-45deg); }
 .sidebar-toggle-icon.collapsed::before { transform: translate(-50%, -50%) rotate(-45deg); }
 .sidebar-toggle-icon.collapsed::after { transform: translate(-50%, -50%) rotate(45deg); }
+
+@media (max-width: 1366px) {
+  .topnavbar {
+    height: 60px;
+    padding: 0 var(--space-md);
+  }
+
+  .topnavbar-logo {
+    margin-right: 22px;
+  }
+
+  .topnavbar-menu {
+    gap: 2px;
+  }
+
+  .topnavbar-menu-item {
+    gap: 5px;
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .topnavbar-right {
+    gap: 8px;
+  }
+
+  .topnavbar-search input {
+    min-width: 150px;
+  }
+
+  .topnavbar-chat-button,
+  .topnavbar-notification {
+    padding: 8px 12px;
+  }
+
+  .topnavbar-profile-button {
+    padding: 5px 10px 5px 5px;
+  }
+}
