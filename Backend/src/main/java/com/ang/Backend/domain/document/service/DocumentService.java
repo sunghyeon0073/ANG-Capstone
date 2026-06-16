@@ -444,7 +444,7 @@ public class DocumentService {
             Map<String, Object> elementMap = new HashMap<>();
             
             // 2. 문서 구조 및 텍스트 추출 [Method 1]
-            String structuredXml = extractDocxTextBlocks(document, elementMap);
+            List<DocxTextBlock> structuredXml = extractDocxTextBlocks(document, elementMap);
 
             // 3. AI 프롬프트 생성 (JSON 응답 강제) [Method 2]
             String finalPrompt = buildDocxEditPrompt(prompt, source, structuredXml);
@@ -646,37 +646,37 @@ public class DocumentService {
                 """.formatted(source.title(), content, prompt);
     }
 
-    private List<DocxTextBlock> extractDocxTextBlocks(byte[] bytes) throws IOException {
+    private List<DocxTextBlock> extractDocxTextBlocks(XWPFDocument document, Map<String, Object> elementMap) {
         List<DocxTextBlock> blocks = new ArrayList<>();
         int[] blockCounter = {0};
-        try (XWPFDocument document = openDocxDocument(bytes)) {
-            collectDocxParagraphBlocks(document.getParagraphs(), blocks, blockCounter);
-            collectDocxTableBlocks(document.getTables(), blocks, blockCounter);
+        
+        collectDocxParagraphBlocks(document.getParagraphs(), blocks, blockCounter, elementMap);
+        collectDocxTableBlocks(document.getTables(), blocks, blockCounter, elementMap);
 
-            for (var header : document.getHeaderList()) {
-                collectDocxParagraphBlocks(header.getParagraphs(), blocks, blockCounter);
-                collectDocxTableBlocks(header.getTables(), blocks, blockCounter);
-            }
-            for (var footer : document.getFooterList()) {
-                collectDocxParagraphBlocks(footer.getParagraphs(), blocks, blockCounter);
-                collectDocxTableBlocks(footer.getTables(), blocks, blockCounter);
-            }
+        for (var header : document.getHeaderList()) {
+            collectDocxParagraphBlocks(header.getParagraphs(), blocks, blockCounter, elementMap);
+            collectDocxTableBlocks(header.getTables(), blocks, blockCounter, elementMap);
         }
+        for (var footer : document.getFooterList()) {
+            collectDocxParagraphBlocks(footer.getParagraphs(), blocks, blockCounter, elementMap);
+            collectDocxTableBlocks(footer.getTables(), blocks, blockCounter, elementMap);
+        }
+        
         return blocks;
     }
 
-    private void collectDocxTableBlocks(List<XWPFTable> tables, List<DocxTextBlock> blocks, int[] blockCounter) {
+    private void collectDocxTableBlocks(List<XWPFTable> tables, List<DocxTextBlock> blocks, int[] blockCounter, Map<String, Object> elementMap) {
         for (XWPFTable table : tables) {
             for (XWPFTableRow row : table.getRows()) {
                 for (XWPFTableCell cell : row.getTableCells()) {
-                    collectDocxParagraphBlocks(cell.getParagraphs(), blocks, blockCounter);
-                    collectDocxTableBlocks(cell.getTables(), blocks, blockCounter);
+                    collectDocxParagraphBlocks(cell.getParagraphs(), blocks, blockCounter, elementMap);
+                    collectDocxTableBlocks(cell.getTables(), blocks, blockCounter, elementMap);
                 }
             }
         }
     }
 
-    private void collectDocxParagraphBlocks(List<XWPFParagraph> paragraphs, List<DocxTextBlock> blocks, int[] blockCounter) {
+    private void collectDocxParagraphBlocks(List<XWPFParagraph> paragraphs, List<DocxTextBlock> blocks, int[] blockCounter, Map<String, Object> elementMap) {
         for (XWPFParagraph paragraph : paragraphs) {
             String text = normalizeDocxBlockText(paragraph.getText());
             if (text.isBlank()) {
@@ -684,7 +684,18 @@ public class DocumentService {
             }
             String blockId = nextDocxBlockId(blockCounter);
             blocks.add(new DocxTextBlock(blockId, text));
+            elementMap.put(blockId, paragraph);
         }
+    }
+
+    private String normalizeDocxBlockText(String text) {
+        if (text == null) return "";
+        return text.trim();
+    }
+
+    private String nextDocxBlockId(int[] blockCounter) {
+        blockCounter[0]++;
+        return String.format("B%03d", blockCounter[0]);
     }
 
     private String formatDocxBlocksForPrompt(List<DocxTextBlock> blocks) {

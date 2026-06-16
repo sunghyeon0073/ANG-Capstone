@@ -49,7 +49,8 @@ public class DocumentController {
         Integer scopeId = (targetScopeId != null && !targetScopeId.isEmpty())
                 ? Integer.parseInt(targetScopeId) : null;
 
-        return ResponseEntity.ok(ApiResponse.success(documentService.create(title, file, user, scopeId)));
+        Long docId = documentService.create(title, file, user, scopeId);
+        return ResponseEntity.ok(ApiResponse.success(documentService.getDocument(docId, user)));
     }
 
     @GetMapping
