@@ -52,6 +52,9 @@ public class AiAssistantAskService {
     @Value("${ollama.secretary-model:ang-secretary:latest}")
     private String secretaryModel;
 
+    @Value("${ollama.mock:false}")
+    private boolean ollamaMock;
+
     private static final int MAX_RESULTS = 5;
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("M월 d일");
 
@@ -97,6 +100,10 @@ public class AiAssistantAskService {
 
     @SuppressWarnings("unchecked")
     private IntentResult classifyWithLLM(String prompt) {
+        if (ollamaMock) {
+            log.debug("Ollama Mock Mode Enabled: Skipping LLM classification.");
+            return null;
+        }
         try {
             Map<String, Object> body = Map.of(
                     "model", secretaryModel,
@@ -449,6 +456,10 @@ public class AiAssistantAskService {
 
     @SuppressWarnings("unchecked")
     private String callSecretaryLLM(String userPrompt, String dataContext) {
+        if (ollamaMock) {
+            log.debug("Ollama Mock Mode Enabled: Returning mock answer.");
+            return "[Local Mock Mode] 실제 LLM이 꺼져 있어서 가상 응답을 보냅니다.\n\n사용자 질문: " + userPrompt + "\n\n검색된 데이터:\n" + dataContext;
+        }
         try {
             String fullPrompt = "업무 데이터를 보고 사용자 질문에 자연스러운 한국어로 답변하세요.\n\n"
                     + "반드시 지킬 것:\n"

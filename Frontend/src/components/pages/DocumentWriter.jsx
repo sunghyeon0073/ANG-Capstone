@@ -1,267 +1,51 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import React, { useEffect, useRef, useState } from 'react'
 import '../../style/document.css'
 import '../../style/AIprompt.css'
-import { useState, useEffect, useRef, useMemo } from 'react'
-// 리뷰 반영: 불필요한 axios import 제거
-import {
-  getMyDocuments,
-  getDepartmentDocuments,
-  deleteDocument,
-  updateDocument,
-  uploadDocument
-} from '../../api/documentApi'
-// 리뷰 반영: fileApi의 downloadFile 사용
-import { getFilePreview, downloadFile } from '../../api/fileApi'
-import { getMyScopes } from '../../api/scopeApi'
-// 리뷰 반영: 공통 유틸리티 사용
-import { formatDate, formatDateTime } from '../../utils/dateUtils'
-import { getBaseName, getExtension } from '../../utils/fileUtils'
-// removed mock data imports - use backend APIs only
-import {
-  getDocumentPreviewKind,
-  getFileTypeLabel,
-  ACCEPTED_UPLOAD_TYPES,
-  inferContentType,
-  isImageDocument,
-} from '../../utils/documentFileUtils'
 import DocumentFilePreview from './DocumentFilePreview'
-import { FiCheck, FiChevronRight, FiEdit3, FiFileText, FiPlus, FiX } from 'react-icons/fi'
-import { useAiGeneration } from '../../contexts/useAiGeneration'
-// use backend download endpoint instead of frontend export logic
-
-const parseCsvToTable = (text) => {
-  const lines = text.trim().split('\n').filter(Boolean)
-  if (lines.length < 2) return null
-
-  const headers = lines[0].split(',').map((cell) => cell.trim())
-  const rows = lines.slice(1).map((line) => line.split(',').map((cell) => cell.trim()))
-  return { headers, rows }
-}
-
-const AI_PROGRESS_STEPS = {
-  create: [
-    { label: '요청 내용 분석 중', description: '작성 의도와 참조 문서를 확인하고 있습니다.', percent: 25 },
-    { label: '문서 초안 구성 중', description: '기획서 흐름과 핵심 문장을 정리하고 있습니다.', percent: 55 },
-    { label: '문서 파일 생성 중', description: '작성 결과를 문서 파일로 저장하고 있습니다.', percent: 82 },
-    { label: '문서 목록에 반영 중', description: '완성된 문서를 불러오는 중입니다.', percent: 94 },
-  ],
-  edit: [
-    { label: '원본 문서 분석 중', description: '선택한 문서와 수정 요청을 확인하고 있습니다.', percent: 25 },
-    { label: '수정 내용 반영 중', description: '원본 구조를 기준으로 내용을 고치고 있습니다.', percent: 55 },
-    { label: '수정본 저장 중', description: '수정된 문서를 파일로 저장하고 있습니다.', percent: 82 },
-    { label: '문서 목록에 반영 중', description: '완성된 수정본을 불러오는 중입니다.', percent: 94 },
-  ],
-}
-
-const createDraftDocumentTab = () => ({
-  id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  doc: null,
-})
-
-const extractDocumentList = (payload) => {
-  if (Array.isArray(payload)) return payload
-  if (Array.isArray(payload?.content)) return payload.content
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload?.data?.content)) return payload.data.content
-  return []
-}
-
-const compactSummaryText = (value, maxLength = 90) => {
-  const text = String(value || '').replace(/\s+/g, ' ').trim()
-  if (text.length <= maxLength) return text
-  return `${text.slice(0, maxLength - 1).trim()}...`
-}
-
-const createDisplaySummary = (document) => {
-  const fallback = '문서 생성이 완료되었습니다. 문서함에서 내용을 확인해 주세요.'
-  const rawSummary = String(document?.aiSummary || '').trim()
-  if (!rawSummary) return fallback
-
-  const jsonText = rawSummary
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```$/i, '')
-    .trim()
-
-  if (jsonText.startsWith('{') || jsonText.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(jsonText)
-      const plan = Array.isArray(parsed) ? { replacements: parsed } : parsed
-      const replacements = Array.isArray(plan.replacements) ? plan.replacements : []
-      const title = compactSummaryText(plan.title || document?.title || '생성된 문서', 70)
-
-      if (replacements.length > 0) {
-        const first = replacements.find(Boolean) || {}
-        const findText = compactSummaryText(first.find, 55)
-        const replaceText = compactSummaryText(first.replace, 55)
-
-        if (findText && replaceText) {
-          return `"${title}" 생성이 완료되었습니다. 총 ${replacements.length}개 항목을 수정했고, 대표적으로 "${findText}"를 "${replaceText}"로 반영했습니다.`
-        }
-        return `"${title}" 생성이 완료되었습니다. 요청에 따라 총 ${replacements.length}개 항목을 수정했습니다.`
-      }
-
-      return `"${title}" 생성이 완료되었습니다. 문서함에서 결과를 확인해 주세요.`
-    } catch (error) {
-      console.warn('AI summary JSON parse failed', error)
-    }
-  }
-
-  return rawSummary
-}
+import DraftStudioSidebar from '../document/DraftStudioSidebar'
+import FileStorage from './FileStorage'
+import DraftStudioConfig from '../document/DraftStudioConfig'
+import UploadModal from '../document/UploadModal'
+import DocumentViewerPane from '../document/DocumentViewerPane'
+import { useDocumentWorkspace } from '../../hooks/useDocumentWorkspace'
+import { uploadDocument } from '../../api/documentApi'
+import { getFilePreview, downloadFile } from '../../api/fileApi'
+import { getDocumentPreviewKind, getFileTypeLabel } from '../../utils/documentFileUtils'
+import { getBaseName, getExtension } from '../../utils/fileUtils'
+import { generateTemplate } from '../../api/documentApi'
 
 export default function DocumentWriter() {
-  const queryClient = useQueryClient()
-  const [openDocumentTabs, setOpenDocumentTabs] = useState(() => [createDraftDocumentTab()])
-  const [activeDocumentTabId, setActiveDocumentTabId] = useState(() => null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedDoc, setSelectedDoc] = useState(null)
-  
-  // 리팩토링: React Query 도입. 기존 loading, error, documents useState 제거
-  const [prompt, setPrompt] = useState('')
-  const [attachedDocs, setAttachedDocs] = useState([])
-  const [category, setCategory] = useState('my')
-  const [sortOrder, setSortOrder] = useState('newest')
+  const { state, actions } = useDocumentWorkspace()
+  const {
+    category, selectedScopeId, searchTerm, sortOrder, myScopes,
+    openDocumentTabs, activeDocumentTabId, selectedDoc,
+    prompt, attachedDocs, targetFormat, generationSummary, aiProgressMode, aiProgressStep,
+    docxEditInstructions, docxEditMode, titleEditMode, titleDraft, isTitleSaving,
+    showFullView, showUploadModal, isExporting,
+    filteredDocuments, loading, aiLoading
+  } = state
+
   const [previewUrl, setPreviewUrl] = useState(null)
   const [previewData, setPreviewData] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
-  const [isUploading, setIsUploading] = useState(false)
-  const [myScopes, setMyScopes] = useState([])
-  const [selectedScopeId, setSelectedScopeId] = useState('all')
-  const [showFullView, setShowFullView] = useState(false)
-  const [promptOpen, setPromptOpen] = useState(true)
-  const [showDocumentPicker, setShowDocumentPicker] = useState(false)
-  const [generationSummary, setGenerationSummary] = useState(null)
-  const [isExporting, setIsExporting] = useState(false)
-  const [showUploadModal, setShowUploadModal] = useState(false)
+
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadTargetScopeId, setUploadTargetScopeId] = useState('')
-  const [aiProgressMode, setAiProgressMode] = useState(null)
-  const [aiProgressStep, setAiProgressStep] = useState(0)
-  const [docxEditInstructions, setDocxEditInstructions] = useState([])
-  const [docxEditMode, setDocxEditMode] = useState(false)
-  const [titleEditMode, setTitleEditMode] = useState(false)
-  const [titleDraft, setTitleDraft] = useState('')
-  
-  const fileInputRef = useRef(null)
-  const mountedRef = useRef(true)
-  const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
-
-  // 리팩토링: React Query의 useQuery를 사용하여 데이터 패칭 로직 간소화
-  const { data: documents = [], isLoading: loading, isError: isFetchError } = useQuery({
-    queryKey: ['documents', category, selectedScopeId],
-    queryFn: async () => {
-      let response
-      if (category === 'my') {
-        response = await getMyDocuments({ size: 1000 })
-      } else {
-        const scopeParam = selectedScopeId === 'all' ? null : selectedScopeId
-        response = await getDepartmentDocuments({ keyword: null, scopeId: scopeParam, size: 1000 })
-      }
-      return extractDocumentList(response.data?.data) // 백엔드에서 규격화된 데이터를 그대로 매핑
-    }
-  })
-
-  // 리팩토링: 삭제 로직을 useMutation으로 교체 및 캐시 무효화 적용
-  const deleteMutation = useMutation({
-    mutationFn: (docId) => deleteDocument(docId),
-    onSuccess: (_, docId) => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] })
-      setOpenDocumentTabs(prev => prev.map(tab => (
-        tab.doc?.docId === docId ? { ...tab, doc: null } : tab
-      )))
-      if (selectedDoc?.docId === docId) setSelectedDoc(null)
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: '문서를 휴지통으로 보냈어요.' },
-      }))
-    },
-    onError: (err) => {
-      alert('삭제 실패: ' + (err.response?.data?.message || '오류가 발생했습니다.'))
-    }
-  })
-
-  // 리팩토링: 수정 로직을 useMutation으로 교체 및 캐시 무효화 적용
-  const updateMutation = useMutation({
-    mutationFn: ({ docId, nextTitle }) => updateDocument(docId, { title: nextTitle }),
-    onSuccess: (_, { docId, nextTitle }) => {
-      queryClient.invalidateQueries({ queryKey: ['documents'] })
-      const applyTitle = doc => doc.docId === docId ? { ...doc, title: nextTitle } : doc
-      setSelectedDoc(prev => prev ? { ...prev, title: nextTitle } : prev)
-      setAttachedDocs(prev => prev.map(applyTitle))
-      setOpenDocumentTabs(prev => prev.map(tab => (
-        tab.doc?.docId === docId ? { ...tab, doc: applyTitle(tab.doc) } : tab
-      )))
-      setTitleEditMode(false)
-    },
-    onError: (err) => {
-      alert(err.response?.data?.message || err.message || '문서 제목 수정에 실패했습니다.')
-    }
-  })
-
-  // 검색어 필터링 및 정렬 (documents가 변경될 때마다 자동 수행)
-  const filteredDocuments = useMemo(() => {
-    const filtered = documents.filter((doc) => {
-      const matchSearch = searchTerm
-        ? (doc.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           (doc.ownerName && doc.ownerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-           (doc.originalContent && doc.originalContent.toLowerCase().includes(searchTerm.toLowerCase())))
-        : true
-      return matchSearch
-    })
-
-    return [...filtered].sort((a, b) => {
-      if (sortOrder === 'newest') return new Date(b.createdAt) - new Date(a.createdAt)
-      if (sortOrder === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt)
-      if (sortOrder === 'title') return (a.title || "").localeCompare(b.title || "")
-      return 0
-    })
-  }, [documents, searchTerm, sortOrder])
-
-  useEffect(() => {
-    setActiveDocumentTabId((currentId) => currentId || openDocumentTabs[0]?.id || null)
-  }, [openDocumentTabs])
-
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    const fetchScopes = async () => {
-      try {
-        const res = await getMyScopes()
-        const scopes = res.data?.data || []
-        setMyScopes(scopes)
-      } catch (err) {
-        console.error('소속 부서 로드 실패', err)
-        setMyScopes([])
-      }
-    }
-    fetchScopes()
-  }, [])
-
-  useEffect(() => {
-    setDocxEditInstructions([])
-    setDocxEditMode(false)
-  }, [selectedDoc?.docId])
+  const [isUploading, setIsUploading] = useState(false)
+  const [showReferenceModal, setShowReferenceModal] = useState(false)
 
   useEffect(() => {
     const handleGeneratedDocument = (event) => {
       const generatedDocument = event.detail?.document
       if (!generatedDocument) return
 
-      queryClient.invalidateQueries({ queryKey: ['documents'] })
-
-      setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
-        tab.id === activeDocumentTabId ? { ...tab, doc: generatedDocument } : tab
-      )))
-      setSelectedDoc(generatedDocument)
-      setGenerationSummary({
+      actions.queryClient.invalidateQueries({ queryKey: ['documents'] })
+      actions.handleSelectDocument(generatedDocument)
+      actions.setGenerationSummary({
         title: generatedDocument.title || '생성된 문서',
-        summary: createDisplaySummary(generatedDocument),
+        summary: "생성 완료",
         fileType: getFileTypeLabel(generatedDocument),
         createdAt: generatedDocument.createdAt,
       })
@@ -272,20 +56,6 @@ export default function DocumentWriter() {
   }, [activeDocumentTabId, category])
 
   useEffect(() => {
-    if (!aiLoading || !aiProgressMode) return undefined
-
-    setAiProgressStep(0)
-    const timer = window.setInterval(() => {
-      setAiProgressStep((currentStep) => {
-        const lastStep = AI_PROGRESS_STEPS[aiProgressMode].length - 1
-        return currentStep >= lastStep ? currentStep : currentStep + 1
-      })
-    }, 1400)
-
-    return () => window.clearInterval(timer)
-  }, [aiLoading, aiProgressMode])
-
-  useEffect(() => {
     let objectUrl = null
 
     const loadPreview = async () => {
@@ -294,46 +64,18 @@ export default function DocumentWriter() {
       setPreviewError(null)
 
       if (!selectedDoc) return
-
       const previewKind = getDocumentPreviewKind(selectedDoc)
-
       if (previewKind === 'text') return
 
-      if (
-        !selectedDoc.fileId &&
-        !selectedDoc.previewFileId &&
-        (
-          (previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) ||
-          (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent))
-        )
-      ) {
-        return
-      }
+      if (!selectedDoc.fileId && !selectedDoc.previewFileId && ((previewKind === 'word' && (selectedDoc.mockPreviewHtml || selectedDoc.originalContent)) || (previewKind === 'excel' && (selectedDoc.mockTableData || selectedDoc.originalContent)))) return
 
       const shouldRenderOriginal = ['word', 'excel', 'hwp', 'hwpx'].includes(previewKind)
-      const previewFileId = shouldRenderOriginal
-        ? selectedDoc.fileId
-        : selectedDoc.previewFileId || selectedDoc.fileId
-      const canPreviewBlob = previewFileId && (
-        shouldRenderOriginal ||
-        Boolean(selectedDoc.previewFileId) ||
-        previewKind === 'pdf' ||
-        previewKind === 'image' ||
-        selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
-      )
+      const previewFileId = shouldRenderOriginal ? selectedDoc.fileId : selectedDoc.previewFileId || selectedDoc.fileId
+      const canPreviewBlob = previewFileId && (shouldRenderOriginal || Boolean(selectedDoc.previewFileId) || previewKind === 'pdf' || previewKind === 'image' || selectedDoc.previewFileContentType?.toLowerCase().includes('pdf'))
 
-      if (!canPreviewBlob) {
-        return
-      }
-
-      if (selectedDoc.mockPreviewUrl) {
-        setPreviewUrl(selectedDoc.mockPreviewUrl)
-        return
-      }
-
-      if (String(previewFileId).startsWith('mock-') || String(previewFileId).startsWith('local-')) {
-        return
-      }
+      if (!canPreviewBlob) return
+      if (selectedDoc.mockPreviewUrl) { setPreviewUrl(selectedDoc.mockPreviewUrl); return }
+      if (String(previewFileId).startsWith('mock-') || String(previewFileId).startsWith('local-')) return
 
       try {
         setPreviewLoading(true)
@@ -345,10 +87,7 @@ export default function DocumentWriter() {
           return
         }
 
-        const previewType =
-          selectedDoc.previewFileId || previewKind === 'pdf' || selectedDoc.previewFileContentType?.toLowerCase().includes('pdf')
-            ? 'application/pdf'
-            : selectedDoc.fileContentType || blob?.type || 'image/*'
+        const previewType = selectedDoc.previewFileId || previewKind === 'pdf' || selectedDoc.previewFileContentType?.toLowerCase().includes('pdf') ? 'application/pdf' : selectedDoc.fileContentType || blob?.type || 'image/*'
         objectUrl = URL.createObjectURL(new Blob([blob], { type: previewType }))
         setPreviewUrl(objectUrl)
       } catch (err) {
@@ -361,107 +100,36 @@ export default function DocumentWriter() {
 
     loadPreview()
 
-    return () => {
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl)
-      }
-    }
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [selectedDoc])
-
-  useEffect(() => {
-    if (!showFullView) return undefined
-
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setShowFullView(false)
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [showFullView])
-
-  useEffect(() => {
-    setTitleEditMode(false)
-    setTitleDraft(selectedDoc?.title || '')
-  }, [selectedDoc?.docId, selectedDoc?.title])
-
-  const startTitleEdit = () => {
-    if (!selectedDoc) return
-    setTitleDraft(getBaseName(selectedDoc.title) || '')
-    setTitleEditMode(true)
-  }
-
-  const cancelTitleEdit = () => {
-    setTitleDraft(getBaseName(selectedDoc?.title) || '')
-    setTitleEditMode(false)
-  }
-
-  const saveTitleEdit = async () => {
-    if (!selectedDoc || isTitleSaving) return
-    const baseName = titleDraft.trim()
-    if (!baseName) {
-      alert('문서 제목을 입력해 주세요.')
-      return
-    }
-    
-    // 원래 확장자를 가져와서 새 이름에 붙여줍니다.
-    const ext = getExtension(selectedDoc.title)
-    const nextTitle = baseName + ext
-
-    if (nextTitle === selectedDoc.title) {
-      setTitleEditMode(false)
-      return
-    }
-
-    try {
-      setIsTitleSaving(true)
-      await updateMutation.mutateAsync({ docId: selectedDoc.docId, nextTitle })
-    } catch (err) {
-      // Error handled by mutation onError
-    } finally {
-      setIsTitleSaving(false)
-    }
-  }
 
   const handleExport = async () => {
     if (!selectedDoc || !selectedDoc.fileId) return
-
     try {
-      setIsExporting(true)
+      actions.setIsExporting(true)
       const res = await downloadFile(selectedDoc.fileId)
 
       const disposition = res.headers['content-disposition']
       let filename = selectedDoc.originalFileName || selectedDoc.title || 'document'
       if (disposition) {
         const match = disposition.match(/filename\*=UTF-8''(.+)|filename="?([^;\\"]+)"?/) 
-        if (match) {
-          filename = decodeURIComponent(match[1] || match[2])
-        }
+        if (match) filename = decodeURIComponent(match[1] || match[2])
       }
 
-      // 1. Try modern File System Access API (showSaveFilePicker)
       if ('showSaveFilePicker' in window) {
         try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: filename,
-          })
+          const handle = await window.showSaveFilePicker({ suggestedName: filename })
           const writable = await handle.createWritable()
           await writable.write(res.data)
           await writable.close()
 
-          window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-            detail: { message: '파일을 원하는 위치에 저장했어요!' },
-          }))
-          return // Exit after successful modern save
+          window.dispatchEvent(new CustomEvent('ang:mascot-alert', { detail: { message: '파일을 원하는 위치에 저장했어요!' } }))
+          return
         } catch (pickerErr) {
-          // User cancelled or other error - if cancelled, just return
           if (pickerErr.name === 'AbortError') return
-          console.warn('File picker failed, falling back to traditional download:', pickerErr)
         }
       }
 
-      // 2. Fallback to traditional <a> tag download
       const url = window.URL.createObjectURL(new Blob([res.data]))
       const link = document.createElement('a')
       link.href = url
@@ -471,18 +139,13 @@ export default function DocumentWriter() {
       link.remove()
       window.URL.revokeObjectURL(url)
 
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: '문서를 다운로드했어요!' },
-      }))
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', { detail: { message: '문서를 다운로드했어요!' } }))
     } catch (err) {
-      console.error('문서다운로드 실패:', err)
       alert(err.response?.data?.message || err.message || '문서다운로드에 실패했습니다.')
     } finally {
-      setIsExporting(false)
+      actions.setIsExporting(false)
     }
   }
-
-  // file preview generation removed; rely on backend-provided documents
 
   const handleModalUpload = async (e) => {
     e.preventDefault()
@@ -490,646 +153,205 @@ export default function DocumentWriter() {
 
     try {
       setIsUploading(true)
-      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-        detail: { message: '파일을 업로드 중입니다...' },
-      }))
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', { detail: { message: '파일을 업로드 중입니다...' } }))
       const formData = new FormData()
       formData.append('file', uploadFile)
       formData.append('title', uploadTitle)
-      if (uploadTargetScopeId) {
-        formData.append('targetScopeId', uploadTargetScopeId)
-      }
+      if (uploadTargetScopeId) formData.append('targetScopeId', uploadTargetScopeId)
       
       const response = await uploadDocument(formData)
 
       if (response.data?.success) {
         const newDoc = { ...response.data.data, source: 'uploaded' }
-        queryClient.invalidateQueries({ queryKey: ['documents'] })
-        
-        setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
-          tab.id === activeDocumentTabId ? { ...tab, doc: newDoc } : tab
-        )))
-        setSelectedDoc(newDoc)
-        setShowUploadModal(false)
+        actions.queryClient.invalidateQueries({ queryKey: ['documents'] })
+        actions.handleSelectDocument(newDoc)
+        actions.setShowUploadModal(false)
         setUploadTitle('')
         setUploadFile(null)
         setUploadTargetScopeId('')
-        window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
-          detail: { message: '파일이 업로드되었어요!' },
-        }))
+        window.dispatchEvent(new CustomEvent('ang:mascot-alert', { detail: { message: '파일이 업로드되었어요!' } }))
       } else {
         throw new Error(response.data?.message || '파일 업로드에 실패했습니다.')
       }
     } catch (err) {
-      console.error('파일 업로드 실패:', err)
       alert(err.response?.data?.message || err.message || '파일 업로드에 실패했습니다.')
     } finally {
       setIsUploading(false)
     }
   }
 
-  const handleDelete = async (e, docId) => {
-    e.stopPropagation()
-    if (!window.confirm('정말 삭제하시겠습니까? 삭제된 문서는 휴지통으로 이동합니다.')) return
-    deleteMutation.mutate(docId)
-  }
-
-  const handleAddToPrompt = () => {
-    if (selectedDoc && !attachedDocs.some((doc) => doc.docId === selectedDoc.docId)) {
-      setAttachedDocs([...attachedDocs, selectedDoc])
-    }
-  }
-
-  const handleRemoveAttachedDoc = (docId) => {
-    setAttachedDocs(attachedDocs.filter((doc) => doc.docId !== docId))
-  }
-
-  const handleAddDocxEditInstruction = (instruction) => {
-    setDocxEditInstructions((current) => [...current, instruction])
-  }
-
-  const handleRemoveDocxEditInstruction = (instructionId) => {
-    setDocxEditInstructions((current) => current.filter((instruction) => instruction.id !== instructionId))
-  }
-
-  const handleOpenNewDocumentTab = () => {
-    const nextTab = createDraftDocumentTab()
-    setOpenDocumentTabs((currentTabs) => [...currentTabs, nextTab])
-    setActiveDocumentTabId(nextTab.id)
-    setSelectedDoc(null)
-    setShowDocumentPicker(false)
-  }
-
-  const handleActivateDocumentTab = (tab) => {
-    setActiveDocumentTabId(tab.id)
-    setSelectedDoc(tab.doc)
-    setShowDocumentPicker(!tab.doc)
-  }
-
-  const handleCloseDocumentTab = (e, tabId) => {
-    e.stopPropagation()
-    setOpenDocumentTabs((currentTabs) => {
-      if (currentTabs.length === 1) {
-        // 마지막 탭은 닫지 않고 빈 탭으로 초기화
-        const fresh = createDraftDocumentTab()
-        setActiveDocumentTabId(fresh.id)
-        setSelectedDoc(null)
-        setShowDocumentPicker(false)
-        return [fresh]
-      }
-      const idx = currentTabs.findIndex((t) => t.id === tabId)
-      const next = currentTabs.filter((t) => t.id !== tabId)
-      // 닫힌 탭이 활성 탭이면 인접 탭으로 포커스 이동
-      if (tabId === activeDocumentTabId) {
-        const focusTab = next[Math.min(idx, next.length - 1)]
-        setActiveDocumentTabId(focusTab.id)
-        setSelectedDoc(focusTab.doc)
-        setShowDocumentPicker(!focusTab.doc)
-      }
-      return next
-    })
-  }
-
-  const handleSelectDocument = (doc) => {
-    const existingTab = openDocumentTabs.find((tab) => tab.doc?.docId === doc.docId)
-    if (existingTab) {
-      setActiveDocumentTabId(existingTab.id)
-      setSelectedDoc(existingTab.doc)
-      setShowDocumentPicker(false)
-      return
-    }
-
-    setOpenDocumentTabs((currentTabs) => currentTabs.map((tab) => (
-      tab.id === activeDocumentTabId ? { ...tab, doc } : tab
-    )))
-    setSelectedDoc(doc)
-    setShowDocumentPicker(false)
-  }
-
-  const handleAiGenerate = async (mode = 'create') => {
-    const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
-    const hasDocxEditInstructions = mode === 'edit' && selectedKind === 'word' && docxEditInstructions.length > 0
-
-    if (!prompt.trim() && !hasDocxEditInstructions) {
-      alert('프롬프트를 입력하세요.')
-      return
-    }
-
-    const editOutputFormat =
-      selectedKind === 'hwp' || selectedKind === 'hwpx'
-        ? 'hwp'
-        : selectedKind === 'word'
-          ? 'docx'
-          : selectedKind === 'excel'
-            ? 'xlsx'
-            : selectedKind === 'pdf'
-              ? 'pdf'
-              : selectedKind === 'text'
-                ? 'txt'
-                : null
-
-    // 새 문서 작성 시에는 선택된 문서의 형식을 그대로 따라간다 (hwp 선택 → hwp 생성, xlsx 선택 → xlsx 생성 등).
-    const createOutputFormat =
-      selectedKind === 'hwp' || selectedKind === 'hwpx'
-        ? 'hwp'
-        : selectedKind === 'excel'
-          ? 'xlsx'
-          : selectedKind === 'pdf'
-            ? 'pdf'
-            : 'docx'
-
-    if (mode === 'edit' && !selectedDoc) {
-      alert('수정할 문서를 선택하세요.')
-      return
-    }
-
-    if (mode === 'edit' && !editOutputFormat) {
-      alert('이미지 형식은 AI 수정을 지원하지 않습니다.')
-      return
-    }
-
-    const scopedEditPrompt = docxEditInstructions
-      .map((instruction, index) => [
-        `${index + 1}. blockId: ${instruction.blockId}`,
-        `selectedText: ${instruction.selectedText}`,
-        `instruction: ${instruction.instruction}`,
-      ].join('\n'))
-      .join('\n\n')
-
-    const finalPrompt = hasDocxEditInstructions
-      ? [
-        prompt.trim(),
-        '아래 DOCX 블록별 수정 요청은 사용자가 미리보기에서 직접 지정한 위치입니다. 반드시 각 요청의 blockId를 유지하고, selectedText를 find 값으로 우선 사용해 주세요. instruction에 해당하는 내용만 replace에 반영하고, 요청하지 않은 문단은 수정하지 마세요. selectedText가 비어 있으면 해당 blockId 근처 문맥에서 instruction만 반영할 최소 find/replace를 만드세요.',
-        scopedEditPrompt,
-      ].filter(Boolean).join('\n\n')
-      : prompt
-
-    const payload = {
-      prompt: finalPrompt,
-      mode,
-      outputFormat: mode === 'edit' ? editOutputFormat : createOutputFormat,
-      sourceDocId: mode === 'edit' ? selectedDoc.docId : null,
-      attachedDocIds: attachedDocs
-        .filter((doc) => mode !== 'edit' || doc.docId !== selectedDoc.docId)
-        .map((doc) => doc.docId),
-    }
-
+  const handleAiGenerate = async (mode = 'create', templatePayload = null) => {
     try {
-      setAiProgressMode(mode)
-      setAiProgressStep(0)
-      setGenerationSummary(null)
-      await startGeneration(payload)
-      if (mountedRef.current) {
-        setPrompt('')
-        setAttachedDocs([])
-        setDocxEditInstructions([])
+      actions.setAiProgressMode(mode)
+      actions.setAiProgressStep(0)
+      actions.setGenerationSummary(null)
+
+      if (mode === 'template' && templatePayload) {
+        actions.setAiProgressStep(1)
+        const { blob, filename } = await generateTemplate(
+          templatePayload.templateFile,
+          templatePayload.formData,
+          templatePayload.title
+        )
+        
+        actions.setAiProgressStep(2)
+        const file = new File([blob], filename, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+        const formData = new FormData()
+        formData.append('title', getBaseName(filename))
+        formData.append('file', file)
+        if (selectedScopeId && selectedScopeId !== 'all') {
+          formData.append('targetScopeId', selectedScopeId)
+        }
+
+        const uploadResponse = await uploadDocument(formData)
+        const generatedDocument = uploadResponse.data?.data
+
+        actions.setAiProgressStep(3)
+        if (generatedDocument) {
+          actions.queryClient.invalidateQueries({ queryKey: ['documents'] })
+          actions.handleSelectDocument(generatedDocument)
+          actions.setGenerationSummary({
+            title: generatedDocument.title || '생성된 문서',
+            summary: "생성 완료",
+            fileType: getFileTypeLabel(generatedDocument),
+            createdAt: generatedDocument.createdAt,
+          })
+          window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+            detail: { message: '문서가 완성되었습니다! 내용을 확인해 보세요.', animation: 'celebrate' }
+          }))
+        }
+      } else {
+        const p = prompt.trim()
+        const selectedKind = selectedDoc ? getDocumentPreviewKind(selectedDoc) : null
+        const hasDocxEditInstructions = mode === 'edit' && selectedKind === 'word' && docxEditInstructions.length > 0
+        if (!p && !hasDocxEditInstructions) return alert("프롬프트를 입력하세요.")
+
+        const editOutputFormat = selectedKind === 'hwp' || selectedKind === 'hwpx' ? 'hwp' : selectedKind === 'word' ? 'docx' : selectedKind === 'excel' ? 'xlsx' : selectedKind === 'pdf' ? 'pdf' : selectedKind === 'text' ? 'txt' : null
+        const createOutputFormat = selectedKind === 'hwp' || selectedKind === 'hwpx' ? 'hwp' : selectedKind === 'excel' ? 'xlsx' : selectedKind === 'pdf' ? 'pdf' : 'docx'
+
+        if (mode === 'edit' && !selectedDoc) return alert('수정할 문서를 선택하세요.')
+        if (mode === 'edit' && !editOutputFormat) return alert('이 확장자는 AI 수정을 지원하지 않습니다.')
+
+        const payload = {
+          prompt: p,
+          mode: 'create', // Always create a draft in Draft Studio
+          outputFormat: targetFormat,
+          sourceDocId: null, // RAG uses attachedDocIds
+          attachedDocIds: attachedDocs.map((doc) => doc.docId),
+        }
+
+        if (hasDocxEditInstructions) {
+          payload.docxEditInstructions = docxEditInstructions
+        }
+
+        await actions.startGeneration(payload)
+        actions.setPrompt('')
+        actions.setAttachedDocs([])
+        actions.setDocxEditInstructions([])
+        actions.setDocxEditMode(false)
       }
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
-      if (mountedRef.current) {
-        alert(err.response?.data?.message || err.message || 'AI 문서 생성에 실패했습니다.')
-      }
+      window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+        detail: { message: '문서 생성이 잠깐 막혔어요. 연결 상태를 확인하고 다시 시도해 주세요.', animation: 'idle' }
+      }))
     } finally {
-      if (mountedRef.current) {
-        setAiProgressMode(null)
-        setAiProgressStep(0)
-      }
+      actions.setAiProgressMode(null)
+      actions.setAiProgressStep(0)
     }
   }
 
-  const aiProgressSteps = aiProgressMode ? AI_PROGRESS_STEPS[aiProgressMode] : []
-  const currentAiProgress = aiProgressSteps[aiProgressStep] || aiProgressSteps[0]
-
   return (
-    <div className="document-writer-container">
-      <div className={`document-main ${promptOpen ? '' : 'document-main--prompt-collapsed'}`}>
-        <div className="document-editor-pane">
-          <div className="document-browser-tabs">
-            {openDocumentTabs.map((tab) => (
-              <div
-                key={tab.id}
-                className={`document-browser-tab ${tab.id === activeDocumentTabId ? 'active' : ''}`}
-                onClick={() => handleActivateDocumentTab(tab)}
-                title={tab.doc?.title || '문서 선택'}
-              >
-                <FiFileText />
-                <span>{getBaseName(tab.doc?.title) || 'Untitled'}</span>
-                <button
-                  type="button"
-                  className="document-tab-close"
-                  onClick={(e) => handleCloseDocumentTab(e, tab.id)}
-                  title="탭 닫기"
-                >
-                  <FiX size={12} />
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="document-browser-add"
-              onClick={handleOpenNewDocumentTab}
-              aria-label="새 문서 탭"
-              title="새 문서 탭"
-            >
-              <FiPlus />
-            </button>
-          </div>
-
-          <div className="document-content">
-          {selectedDoc ? (
-            <div className="selected-document">
-              <div className="doc-viewer-header">
-                <div className="doc-viewer-header-left">
-                  <div className={`document-title-editor ${titleEditMode ? 'is-editing' : ''}`}>
-                    {titleEditMode ? (
-                      <>
-                        <input
-                          className="document-title-input"
-                          value={titleDraft}
-                          onChange={(event) => setTitleDraft(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') saveTitleEdit()
-                            if (event.key === 'Escape') cancelTitleEdit()
-                          }}
-                          autoFocus
-                          disabled={isTitleSaving}
-                          aria-label="문서 제목"
-                        />
-                        <button
-                          type="button"
-                          className="document-title-icon-button"
-                          onClick={saveTitleEdit}
-                          disabled={isTitleSaving}
-                          aria-label="제목 저장"
-                          title="제목 저장"
-                        >
-                          <FiCheck />
-                        </button>
-                        <button
-                          type="button"
-                          className="document-title-icon-button"
-                          onClick={cancelTitleEdit}
-                          disabled={isTitleSaving}
-                          aria-label="제목 수정 취소"
-                          title="제목 수정 취소"
-                        >
-                          <FiX />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <h2 className="selected-document-title">{getBaseName(selectedDoc.title)}</h2>
-                        <button
-                          type="button"
-                          className="document-title-icon-button"
-                          onClick={startTitleEdit}
-                          aria-label="제목 수정"
-                          title="제목 수정"
-                        >
-                          <FiEdit3 />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(selectedDoc)}`}>
-                    {getFileTypeLabel(selectedDoc)}
-                  </span>
-                  {getDocumentPreviewKind(selectedDoc) === 'word' && (
-                    <button
-                      type="button"
-                      className={`doc-edit-mode-toggle ${docxEditMode ? 'active' : ''}`}
-                      onClick={() => setDocxEditMode((enabled) => !enabled)}
-                    >
-                      {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
-                    </button>
-                  )}
-                  {selectedDoc.scopeName && (
-                    <span className={`doc-scope-badge ${selectedDoc.scopeName === 'N/A' ? 'doc-scope-badge--personal' : ''}`}>
-                      {selectedDoc.scopeName === 'N/A' ? '개인 문서' : selectedDoc.scopeName}
-                    </span>
-                  )}
-                  <span className="doc-meta-item">
-                    작성일: {new Date(selectedDoc.createdAt).toLocaleString('ko-KR', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: false
-                    })}
-                  </span>
-                  {selectedDoc.originalFileName && (
-                    <span className="doc-meta-item">파일명: {selectedDoc.originalFileName}</span>
-                  )}
-                </div>
-                <div className="doc-viewer-header-actions">
-                  <button
-                    type="button"
-                    className="btn-viewer-action"
-                    onClick={() => setShowFullView(true)}
-                  >
-                    전체보기
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-viewer-action btn-viewer-action--primary"
-                    onClick={handleExport}
-                    disabled={isExporting}
-                  >
-                    {isExporting ? '다운로드 중...' : '다운로드'}
-                  </button>
-                </div>
-              </div>
-
-              <DocumentFilePreview
-                doc={selectedDoc}
-                previewUrl={previewUrl}
-                previewData={previewData}
-                previewLoading={previewLoading}
-                previewError={previewError}
-                docxEditInstructions={docxEditInstructions}
-                onAddDocxEditInstruction={handleAddDocxEditInstruction}
-                docxEditEnabled={docxEditMode}
-              />
-            </div>
-          ) : (
-            <div className="empty-content">
-              <p>빈 탭입니다. 이 탭에서 오른쪽 AI에게 새 문서 작성을 요청하거나 탭을 눌러 문서를 선택하세요.</p>
-            </div>
-          )}
-          </div>
-        </div>
-
-        <div className="ai-prompt-section">
-          <div className="prompt-tabs">
-            <button
-              type="button"
-              className={`prompt-toggle-compact prompt-toggle-left ${promptOpen ? 'open' : ''}`}
-              onClick={() => setPromptOpen((open) => !open)}
-              aria-expanded={promptOpen}
-              aria-label={promptOpen ? '프롬프트 닫기' : '프롬프트 열기'}
-              title={promptOpen ? '프롬프트 닫기' : '프롬프트 열기'}
-            >
-              <FiChevronRight />
-            </button>
-            {attachedDocs.map((doc) => (
-              <div key={doc.docId} className="prompt-tab prompt-tab-added">
-                <button
-                  type="button"
-                  className="tab-remove-btn"
-                  onClick={() => handleRemoveAttachedDoc(doc.docId)}
-                  title="제거"
-                >
-                  ×
-                </button>
-                <span className="tab-name">{getBaseName(doc.title)}</span>
-              </div>
-            ))}
-
-            {docxEditInstructions.map((instruction) => (
-              <div key={instruction.id} className="prompt-tab prompt-tab-docx-edit">
-                <button
-                  type="button"
-                  className="tab-remove-btn"
-                  onClick={() => handleRemoveDocxEditInstruction(instruction.id)}
-                  title="삭제"
-                >
-                  ×
-                </button>
-                <span className="tab-name">{instruction.blockId} 수정 요청</span>
-              </div>
-            ))}
-
-            {selectedDoc && !attachedDocs.some((doc) => doc.docId === selectedDoc.docId) && (
-              <div
-                className="prompt-tab prompt-tab-pending"
-                onClick={handleAddToPrompt}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    handleAddToPrompt()
-                  }
-                }}
-              >
-                <span className="tab-add-btn">+</span>
-                <span className="tab-name">{getBaseName(selectedDoc.title)}</span>
-              </div>
-            )}
-          </div>
-
-          {promptOpen && (
-          <div className="prompt-input-group">
-            {generationSummary && (
-              <section className="ai-generation-summary-panel" aria-label="AI 문서 생성 요약">
-                <div className="ai-generation-summary-icon" aria-hidden="true">
-                  <FiCheck />
-                </div>
-                <div className="ai-generation-summary-content">
-                  <div className="ai-generation-summary-header">
-                    <span className="ai-generation-summary-kicker">생성 완료</span>
-                    <strong>{getBaseName(generationSummary.title)}</strong>
-                  </div>
-                  <p>{generationSummary.summary}</p>
-                  <div className="ai-generation-summary-meta">
-                    <span>{generationSummary.fileType}</span>
-                    {generationSummary.createdAt && (
-                      <span>{new Date(generationSummary.createdAt).toLocaleString('ko-KR')}</span>
-                    )}
-                  </div>
-                </div>
-              </section>
-            )}
-
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="프롬프트를 입력하세요..."
-              className="prompt-textarea"
-              disabled={aiLoading}
-            />
-
-            {aiLoading && currentAiProgress && (
-              <div className="ai-progress-panel" role="status" aria-live="polite">
-                <div className="ai-progress-copy">
-                  <strong>{currentAiProgress.label}</strong>
-                  <span>{currentAiProgress.description}</span>
-                </div>
-                <div className="ai-progress-track" aria-hidden="true">
-                  <div
-                    className="ai-progress-fill"
-                    style={{ width: `${currentAiProgress.percent}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="prompt-actions">
-              <div className="prompt-actions-left">
-                <button
-                  type="button"
-                  onClick={() => handleAiGenerate('create')}
-                  className="btn-generate btn-generate--create"
-                  disabled={aiLoading}
-                >
-                  {aiLoading ? '생성 중...' : '새 문서 작성'}
-                </button>
-              </div>
-
-              <div className="prompt-actions-right">
-                <button
-                  type="button"
-                  onClick={() => handleAiGenerate('edit')}
-                  className="btn-generate btn-generate--edit"
-                  disabled={aiLoading || !selectedDoc}
-                >
-                  <FiEdit3 />
-                  <span>{aiLoading ? '수정 중...' : '선택 문서 수정'}</span>
-                </button>
-                {selectedDoc && getDocumentPreviewKind(selectedDoc) === 'word' && (
-                  <button
-                    type="button"
-                    className={`btn-generate btn-generate--docx-edit ${docxEditMode ? 'active' : ''}`}
-                    onClick={() => setDocxEditMode((enabled) => !enabled)}
-                    disabled={aiLoading}
-                  >
-                    {docxEditMode ? 'DOCX 편집 끄기' : 'DOCX 편집'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-          )}
-        </div>
+    <div className="document-writer-container" style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+      
+      {/* 1. Left Panel: AI Config (Full Width now) */}
+      <div style={{ width: '400px', flexShrink: 0, borderRight: '1px solid #eef1f4', display: 'flex', flexDirection: 'column', background: '#f8fafc', overflow: 'hidden' }}>
+        <DraftStudioConfig
+          attachedDocs={attachedDocs} 
+          clearAttachedDocs={actions.clearAttachedDocs} 
+          toggleAttachedDoc={actions.toggleAttachedDoc}
+          targetFormat={targetFormat} 
+          setTargetFormat={actions.setTargetFormat}
+          prompt={prompt} 
+          setPrompt={actions.setPrompt}
+          generationSummary={generationSummary}
+          aiLoading={aiLoading} 
+          aiProgressMode={aiProgressMode} 
+          aiProgressStep={aiProgressStep}
+          handleAiGenerate={handleAiGenerate}
+          onOpenReferenceModal={() => setShowReferenceModal(true)}
+        />
       </div>
 
-      {showDocumentPicker && (
-        <div className="modal-overlay document-picker-overlay" onClick={() => setShowDocumentPicker(false)}>
-          <div
-            className="document-picker-modal"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="document-picker-title"
-          >
-            <div className="document-picker-header">
-              <h3 id="document-picker-title">문서 선택</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setShowDocumentPicker(false)}
-                aria-label="닫기"
-              >
-                ×
+      {/* 2. Main Pane: Result Viewer */}
+      <div className="document-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <DocumentViewerPane
+          selectedDoc={selectedDoc}
+          titleEditMode={titleEditMode}
+          titleDraft={titleDraft}
+          setTitleDraft={actions.setTitleDraft}
+          saveTitleEdit={actions.saveTitleEdit}
+          cancelTitleEdit={() => actions.setTitleEditMode(false)}
+          startTitleEdit={() => { actions.setTitleDraft(getBaseName(selectedDoc.title)); actions.setTitleEditMode(true); }}
+          docxEditMode={docxEditMode}
+          setDocxEditMode={actions.setDocxEditMode}
+          setShowFullView={actions.setShowFullView}
+          isExporting={isExporting}
+          handleExport={handleExport}
+          previewUrl={previewUrl}
+          previewData={previewData}
+          previewLoading={previewLoading}
+          previewError={previewError}
+          docxEditInstructions={docxEditInstructions}
+          handleAddDocxEditInstruction={(inst) => actions.setDocxEditInstructions(curr => [...curr, inst])}
+        />
+      </div>
+
+      <UploadModal
+        showUploadModal={showUploadModal} setShowUploadModal={actions.setShowUploadModal}
+        uploadTitle={uploadTitle} setUploadTitle={setUploadTitle}
+        uploadFile={uploadFile} setUploadFile={setUploadFile}
+        uploadTargetScopeId={uploadTargetScopeId} setUploadTargetScopeId={setUploadTargetScopeId}
+        isUploading={isUploading} handleModalUpload={handleModalUpload}
+        myScopes={myScopes}
+      />
+
+      {/* Reference Modal */}
+      {showReferenceModal && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease' }}>
+          <div className="modal-content" style={{ background: '#fff', borderRadius: '16px', width: '90vw', maxWidth: '1400px', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' }}>
+            <div className="modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>파일함에서 참조 문서 가져오기</h3>
+                <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>파일함에서 템플릿에 추가할 참조 문서를 선택하세요.</p>
+              </div>
+              <button onClick={() => setShowReferenceModal(false)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#94a3b8', padding: '4px', lineHeight: '1' }}>&times;</button>
+            </div>
+            
+            <div className="modal-body" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+              <FileStorage 
+                isPickerMode={true} 
+                attachedDocs={attachedDocs} 
+                toggleAttachedDoc={actions.toggleAttachedDoc} 
+              />
+            </div>
+            
+            <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button type="button" onClick={() => setShowReferenceModal(false)} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: '600', cursor: 'pointer' }}>
+                닫기
               </button>
-            </div>
-
-            <div className="document-picker-controls">
-              <div className="category-tabs">
-                <button
-                  type="button"
-                  className={`category-tab ${category === 'my' ? 'active' : ''}`}
-                  onClick={() => setCategory('my')}
-                >
-                  내 문서
-                </button>
-                <button
-                  type="button"
-                  className={`category-tab ${category === 'dept' ? 'active' : ''}`}
-                  onClick={() => setCategory('dept')}
-                >
-                  공유 문서
-                </button>
-              </div>
-
-              {category === 'dept' && myScopes.length > 0 && (
-                <div className="scope-filter">
-                  <select
-                    className="scope-select"
-                    value={selectedScopeId}
-                    onChange={(e) => setSelectedScopeId(e.target.value)}
-                  >
-                    <option value="all">전체 공유 문서보기</option>
-                    {myScopes.map((scope) => (
-                      <option key={scope.id} value={scope.id}>{scope.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="search-with-filter">
-                <input
-                  type="text"
-                  placeholder="문서 검색..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="search-input"
-                />
-                <button
-                  type="button"
-                  className="sort-toggle-btn"
-                  onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
-                  title={sortOrder === 'newest' ? '최신순 (오래된순으로 변경)' : '오래된순 (최신순으로 변경)'}
-                >
-                  {sortOrder === 'newest' ? '↓' : '↑'}
-                </button>
-              </div>
-            </div>
-
-            <div className="document-list document-picker-list">
-              {loading ? (
-                <div className="loading">로딩 중...</div>
-              ) : isFetchError ? (
-                <div className="error">문서 목록을 불러올 수 없습니다.</div>
-              ) : filteredDocuments.length === 0 ? (
-                <div className="empty-state">
-                  {documents.length === 0 ? '문서가 없습니다.' : '검색 결과가 없습니다.'}
-                </div>
-              ) : (
-                filteredDocuments.map((doc) => (
-                  <div
-                    key={doc.docId}
-                    className={`document-item ${selectedDoc?.docId === doc.docId ? 'active' : ''}`}
-                    onClick={() => handleSelectDocument(doc)}
-                  >
-                    <div className="document-item-row">
-                      <div className="doc-title">{getBaseName(doc.title)}</div>
-                      <div className="document-item-actions">
-                        <span className={`doc-type-tag doc-type-tag--${getDocumentPreviewKind(doc)}`}>
-                          {getFileTypeLabel(doc)}
-                        </span>
-                        {doc.canDelete && (
-                          <button
-                            className="btn-delete-doc"
-                            onClick={(e) => handleDelete(e, doc.docId)}
-                            title="삭제"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                      {category === 'dept' && doc.scopeName && (
-                        <span className={`doc-scope-tag ${doc.scopeName === 'N/A' ? 'doc-scope-tag--personal' : ''}`}>
-                          {doc.scopeName === 'N/A' ? '개인 문서' : doc.scopeName}
-                        </span>
-                      )}
-                    </div>
-                    <div className="doc-date">
-                      {formatDate(doc.createdAt)}
-                    </div>
-                  </div>
-                ))
-              )}
+              <button type="button" onClick={() => setShowReferenceModal(false)} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--color-primary)', color: '#fff', fontWeight: '600', cursor: 'pointer' }}>
+                완료 ({attachedDocs.length}개 선택됨)
+              </button>
             </div>
           </div>
         </div>
       )}
-
+      
       {showFullView && selectedDoc && (
         <div
           className="modal-overlay doc-fullview-overlay"
-          onClick={() => setShowFullView(false)}
+          onClick={() => actions.setShowFullView(false)}
           role="presentation"
         >
           <div
@@ -1151,59 +373,11 @@ export default function DocumentWriter() {
             <button
               type="button"
               className="modal-close"
-              onClick={() => setShowFullView(false)}
+              onClick={() => actions.setShowFullView(false)}
               aria-label="닫기"
             >
               ×
             </button>
-          </div>
-        </div>
-      )}
-
-      {showUploadModal && (
-        <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ minWidth: 360, padding: 24, background: '#fff', borderRadius: 8 }}>
-            <h3 style={{ marginBottom: 16 }}>파일 업로드</h3>
-            <form onSubmit={handleModalUpload} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input
-                value={uploadTitle}
-                onChange={e => setUploadTitle(e.target.value)}
-                placeholder="문서 제목"
-                required
-                style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
-              />
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 13, color: '#666' }}>저장 위치 (미선택 시 개인 보관함)</label>
-                <select 
-                  value={uploadTargetScopeId} 
-                  onChange={e => setUploadTargetScopeId(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #ddd' }}
-                >
-                  <option value="">개인 문서함</option>
-                  {myScopes.map(scope => (
-                    <option key={scope.id} value={scope.id}>{scope.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={e => {
-                  const file = e.target.files[0];
-                  setUploadFile(file);
-                  if (file && !uploadTitle) setUploadTitle(file.name);
-                }}
-                required
-              />
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)}>취소</button>
-                <button type="submit" className="btn btn-primary" disabled={isUploading}>
-                  {isUploading ? '업로드 중...' : '업로드'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

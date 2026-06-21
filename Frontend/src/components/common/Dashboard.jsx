@@ -11,11 +11,10 @@ import Calendar from '../pages/Calendar'
 import FileStorage from '../pages/FileStorage'
 import Board from '../pages/Board'
 import Mail from '../pages/Mail'
-import Chat from '../pages/Chat'
 import Organization from '../pages/Organization'
 import MyPage from '../pages/MyPage'
 import Admin from '../pages/Admin'
-import FloatingMascot from './FloatingMascot'
+
 
 const PAGE_COMPONENTS = {
   home: Home,
@@ -25,7 +24,6 @@ const PAGE_COMPONENTS = {
   file: FileStorage,
   board: Board,
   mail: Mail,
-  chat: Chat,
   org: Organization,
   organization: Organization,
   mypage: MyPage,
@@ -59,11 +57,6 @@ export default function Dashboard() {
     () => session.getDashboardPage() || 'home-dashboard'
   )
   const [contactRequest, setContactRequest] = useState(null)
-  const [isChatWindowOpen, setIsChatWindowOpen] = useState(
-    () => session.isChatWindowOpen()
-  )
-  const [chatContactRequest, setChatContactRequest] = useState(null)
-  const [chatUnreadCount, setChatUnreadCount] = useState(0)
 
   // 알림 목록 조회 (React Query)
   const { data: notifications = [] } = useQuery({
@@ -116,10 +109,6 @@ export default function Dashboard() {
     session.setDashboardPage(currentPage)
   }, [currentPage])
 
-  useEffect(() => {
-    session.setChatWindowOpen(isChatWindowOpen)
-  }, [isChatWindowOpen])
-
   const handleLogout = () => {
     session.clear()
     alert('로그아웃되었습니다.')
@@ -127,7 +116,7 @@ export default function Dashboard() {
   }
 
   const handlePageChange = (pageId) => {
-    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization', 'admin']
+    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'organization', 'admin']
 
     if (topNavMenuIds.includes(pageId)) {
       const incomingCategory = pageId === 'organization' ? 'org' : pageId
@@ -150,11 +139,6 @@ export default function Dashboard() {
     setCurrentPage('mail-compose')
   }
 
-  const openPrivateChat = (contact) => {
-    setChatContactRequest({ contact, requestId: Date.now() })
-    setIsChatWindowOpen(true)
-  }
-
   const renderPage = () => {
     const mainCategory = getMainCategory(currentPage)
     const Component = PAGE_COMPONENTS[mainCategory]
@@ -170,7 +154,6 @@ export default function Dashboard() {
         contactRequest={contactRequest}
         onContactRequestHandled={() => setContactRequest(null)}
         onSendMail={openMailCompose}
-        onStartChat={openPrivateChat}
         onSubPageChange={handlePageChange}
       />
     )
@@ -187,9 +170,6 @@ export default function Dashboard() {
         onLogout={handleLogout}
         currentPage={currentPage}
         onPageChange={handlePageChange}
-        onOpenChatWindow={() => setIsChatWindowOpen(true)}
-        isChatWindowOpen={isChatWindowOpen}
-        chatUnreadCount={chatUnreadCount}
         notifications={notifications}
         onMarkRead={handleMarkRead}
         onMarkAllRead={handleMarkAllRead}
@@ -200,23 +180,6 @@ export default function Dashboard() {
           {renderPage()}
         </div>
       </div>
-      <Chat
-        user={user}
-        windowMode
-        isWindowOpen={isChatWindowOpen}
-        contactRequest={chatContactRequest}
-        onContactRequestHandled={() => setChatContactRequest(null)}
-        onOpenChatWindow={() => setIsChatWindowOpen(true)}
-        onCloseChatWindow={() => setIsChatWindowOpen(false)}
-        onUnreadCountChange={setChatUnreadCount}
-        onNotification={handleNewNotification}
-      />
-      {mainCategory !== 'esignature' && (
-        <FloatingMascot
-          mode={mainCategory === 'document' ? 'ai' : 'default'}
-          onSubPageChange={handlePageChange}
-        />
-      )}
     </div>
   )
 }

@@ -22,6 +22,7 @@ services:
       HWP_EDIT_BASE_URL: ${HWP_EDIT_BASE_URL:-http://10.30.4.178:8877}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
+      OLLAMA_MOCK: ${OLLAMA_MOCK:-true}
 
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
@@ -46,11 +47,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     container_name: ang-ai
-    # ports:
-    #   - "8888:8888"
-    network_mode: host
-
+    ports:
+      - "8888:8888"
+    
     environment:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
-      # OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MOCK: ${OLLAMA_MOCK:-true}
+      DOCKER_CONTAINER: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

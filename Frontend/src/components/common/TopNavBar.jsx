@@ -24,9 +24,6 @@ export default function TopNavBar({
   onLogout,
   currentPage,
   onPageChange,
-  onOpenChatWindow,
-  isChatWindowOpen,
-  chatUnreadCount = 0,
   notifications = [],
   onMarkRead,
   onMarkAllRead,
@@ -154,20 +151,6 @@ export default function TopNavBar({
       </div>
 
       <div className="topnavbar-right">
-        <button
-          type="button"
-          className={`topnavbar-chat-button ${(currentMainCategory === 'chat' || isChatWindowOpen) ? 'active' : ''}`}
-          onClick={onOpenChatWindow}
-        >
-          <FiMessageCircle className="notification-icon" />
-          <span>채팅</span>
-          {chatUnreadCount > 0 && (
-            <span className="chat-unread-badge">
-              {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-            </span>
-          )}
-        </button>
-
         <div className="topnavbar-notification-container">
           <button
             ref={notificationBtnRef}

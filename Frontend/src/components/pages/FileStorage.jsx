@@ -51,7 +51,12 @@ const getFileIcon = (doc) => {
   }
 };
 
-export default function FileStorage() {
+export default function FileStorage({
+  isPickerMode = false,
+  allowedExtensions = [],
+  attachedDocs = [],
+  toggleAttachedDoc = () => {}
+}) {
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
   const [activeTab, setActiveTab] = useState('my'); // 'my', 'shared', 'template', 'important', 'trash'
@@ -121,11 +126,17 @@ export default function FileStorage() {
       const pagedRes = res.data?.data;
       if (pagedRes && Array.isArray(pagedRes.content)) {
         return {
-          content: pagedRes.content.map(item => ({
-            ...item,
-            docId: item.fileId,
-            fileId: item.fileId,
-          })),
+          content: pagedRes.content
+            .map(item => ({
+              ...item,
+              docId: item.fileId,
+              fileId: item.fileId,
+            }))
+            .filter(item => {
+              if (allowedExtensions.length === 0) return true;
+              const ext = getExtension(item.title).toLowerCase();
+              return allowedExtensions.includes(`.${ext}`) || allowedExtensions.includes(ext);
+            }),
           totalPages: pagedRes.totalPages
         };
       }
@@ -321,7 +332,7 @@ export default function FileStorage() {
   };
 
   return (
-    <div className="file-page" onClick={e => e.stopPropagation()}>
+    <div className="file-page" onClick={e => e.stopPropagation()} style={isPickerMode ? { height: '100%', minHeight: 0 } : {}}>
       {/* Left Sidebar */}
       <aside className="file-sidebar" onClick={e => e.stopPropagation()}>
         <div style={{ padding: '0 24px 20px' }}>
@@ -479,7 +490,17 @@ export default function FileStorage() {
                     e.stopPropagation();
                     setSelectedDocId(prev => prev === doc.docId ? null : doc.docId);
                   }}
+                  style={{ position: 'relative' }}
                   >
+                  {isPickerMode && (
+                    <input 
+                      type="checkbox" 
+                      checked={attachedDocs.some(d => d.docId === doc.docId)}
+                      onChange={() => toggleAttachedDoc(doc)}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ position: 'absolute', top: '12px', left: '12px', transform: 'scale(1.3)', cursor: 'pointer', zIndex: 10 }}
+                    />
+                  )}
                   <div className="file-card-star" onClick={(e) => handleToggleFavorite(e, doc.docId)}>
                   {doc.isFavorite ? (
                     <FaStar className="file-star-icon active" />
@@ -501,6 +522,7 @@ export default function FileStorage() {
                   <table className="file-table" onClick={e => e.stopPropagation()}>
                   <thead>
                   <tr>
+                  {isPickerMode && <th style={{ width: '40px', textAlign: 'center' }}>선택</th>}
                   <th className="file-table-star-cell"></th>
                   <th onClick={() => handleSort('originalFileName')} style={{ cursor: 'pointer' }}>
                   이름 {sortConfig.key === 'originalFileName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -524,6 +546,16 @@ export default function FileStorage() {
                     setSelectedDocId(prev => prev === doc.docId ? null : doc.docId);
                   }}
                   >
+                  {isPickerMode && (
+                    <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <input 
+                        type="checkbox" 
+                        checked={attachedDocs.some(d => d.docId === doc.docId)}
+                        onChange={() => toggleAttachedDoc(doc)}
+                        style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                      />
+                    </td>
+                  )}
                   <td className="file-table-star-cell" onClick={(e) => handleToggleFavorite(e, doc.docId)}>
                     {doc.isFavorite ? (
                       <FaStar className="file-star-icon active" />

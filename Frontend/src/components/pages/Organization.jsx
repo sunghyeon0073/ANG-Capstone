@@ -1,6 +1,6 @@
 import '../../style/organization.css'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FiMail, FiMessageSquare, FiList, FiUsers } from 'react-icons/fi';
+import { FiMail, FiList, FiUsers } from 'react-icons/fi';
 import { getScopes, getScopeMembers } from '../../api/scopeApi';
 
 const positionOrder = { '원장': 1, '센터장': 2, '본부장': 3, '팀장': 4, '팀원': 5 };
@@ -187,7 +187,7 @@ const ORG_NAV = [
 
 /* ── 메인 컴포넌트 ── */
 
-export default function Organization({ currentSubPage = 'org-all', onSendMail, onStartChat, onSubPageChange }) {
+export default function Organization({ currentSubPage = 'org-all', onSendMail, onSubPageChange }) {
   const [localSubPage, setLocalSubPage] = useState(currentSubPage);
   const [scopes, setScopes] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -456,15 +456,6 @@ export default function Organization({ currentSubPage = 'org-all', onSendMail, o
             </div>
             <div className="org-modal-actions">
               <div className="org-modal-left">
-                <button
-                  type="button"
-                  onClick={() => { onStartChat?.(selectedMember.member); setSelectedMember(null); }}
-                  className="org-modal-btn org-modal-btn-chat"
-                  title="1:1 채팅"
-                >
-                  <FiMessageSquare />
-                  채팅
-                </button>
                 <button
                   type="button"
                   onClick={() => onSendMail?.(selectedMember.member)}

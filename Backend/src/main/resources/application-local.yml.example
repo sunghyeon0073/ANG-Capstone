@@ -56,6 +56,7 @@ hwp:
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
   model: ${OLLAMA_MODEL:ang-ai:latest}
+  mock: ${OLLAMA_MOCK:false}
   timeout: 120
 
 server:
