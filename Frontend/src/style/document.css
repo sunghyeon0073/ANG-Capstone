@@ -1389,6 +1389,22 @@
   color: #d32f2f;
 }
 
+.doc-preview-txt {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 20px 24px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  color: #1e2a32;
+  background: #fff;
+  box-sizing: border-box;
+}
+
 .document-list .loading,
 .document-list .error,
 .document-list .empty-state {

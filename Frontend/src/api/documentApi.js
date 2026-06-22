@@ -28,3 +28,5 @@ export const toggleFavorite = (docId) => api.post(`/documents/${docId}/favorite`
 
 export const getFavoriteDocuments = (params) => api.get('/documents/favorites', { params });
 
+export const getDocumentOriginalContent = (docId) => api.get(`/documents/${docId}/original-content`);
+

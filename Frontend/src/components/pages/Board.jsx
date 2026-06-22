@@ -270,7 +270,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
           {Array.from({ length: maxItems }).map((_, i) => {
             const post = pagedList[i]
             if (post) return (
-              <div key={post.id} className="board-dash-item" onClick={() => handleOpenPost(post)}>
+              <div key={post.id} className="board-dash-item" onClick={() => onSubPageChange?.(post.type === 'notice' ? 'board-notice' : 'board')}>
                 <span className="board-dash-col board-dash-col--no">
                   {post.pinned ? <FiFlag size={10} className="board-dash-pin" /> : <span className="board-dash-no-num">{displayList.length - i}</span>}
                 </span>
