@@ -103,7 +103,7 @@
 }
 
 .board-toolbar-total {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-muted);
 }
@@ -128,7 +128,7 @@
 }
 .board-search {
   height: 36px;
-  padding: 0 30px 0 12px;
+  padding: 0 30px 0 34px;
   border: none;
   border-radius: 9px;
   background: var(--input-bg);
@@ -219,7 +219,7 @@
 .board-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 15px;
+  font-size: 14px;
   table-layout: fixed;
 }
 
@@ -228,16 +228,17 @@
 }
 
 .board-table th {
-  padding: 15px 16px;
+  padding: 11px 16px;
   text-align: left;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-muted);
   background: var(--color-surface-muted);
   white-space: nowrap;
 }
 .board-table th:first-child { padding-left: 28px; }
-.board-table th:nth-child(2) { text-align: center; }
 .board-table th:last-child  { padding-right: 28px; text-align: center; }
 
 .board-tr {
@@ -250,7 +251,7 @@
 .board-tr--pinned:hover { background: var(--color-primary-soft); }
 
 .board-table td {
-  padding: 17px 16px;
+  padding: 14px 16px;
   vertical-align: middle;
   color: var(--color-text);
 }
@@ -260,7 +261,7 @@
   text-align: center;
 }
 .board-td-num {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
@@ -312,19 +313,19 @@
 }
 
 .board-td-author {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--color-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .board-td-date {
-  font-size: 14px;
+  font-size: 12.5px;
   color: var(--color-text-muted);
   white-space: nowrap;
 }
 .board-td-views {
-  font-size: 14px;
+  font-size: 12.5px;
   color: var(--color-text-muted);
   text-align: center;
   padding-right: 28px !important;
@@ -400,6 +401,7 @@
   flex: 1;
   overflow-y: auto;
   padding: 32px 40px 48px;
+  max-width: 860px;
 }
 
 .board-detail-head {
@@ -519,6 +521,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  max-width: 860px;
 }
 
 .board-compose-row {
@@ -708,7 +711,7 @@
 
 .board-dash-tab {
   padding: 18px 14px 16px;
-  font-size: 20px;
+  font-size: 13.5px;
   border: none;
   background: none;
   font-size: 12px;
@@ -778,7 +781,6 @@
 
 .board-dash-col--no     { width: 36px; justify-content: center; }
 .board-dash-col--title  { flex: 1; gap: 5px; overflow: hidden; }
-.board-dash-col-header .board-dash-col--title { justify-content: center; }
 .board-dash-col--author { width: 56px; justify-content: center; font-size: 12px; color: var(--color-text-secondary); }
 .board-dash-col--date   { width: 48px; justify-content: center; font-size: 12px; color: var(--color-text-muted); }
 .board-dash-col--views  { width: 32px; justify-content: center; font-size: 12px; color: var(--color-text-muted); }
@@ -957,11 +959,3 @@
   min-height: 120px;
 }
 .board-dash-compose-textarea:focus { outline: none; background: #fff; box-shadow: var(--shadow-focus-glow); }
-
-/* board attachment extras */
-.board-file-item { cursor: pointer; }
-.board-file-download-icon { margin-left: auto; color: var(--color-text-muted); flex-shrink: 0; }
-.board-file-item:hover .board-file-download-icon { color: var(--color-primary); }
-
-.board-compose-saved-files { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
-.board-compose-file-label { font-size: 12px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 2px; }
