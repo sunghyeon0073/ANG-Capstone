@@ -530,6 +530,7 @@ export default function DocumentFilePreview({
   const isWord = previewKind === 'word'
   const isExcel = previewKind === 'excel'
   const isHwp = previewKind === 'hwp' || previewKind === 'hwpx'
+  const isText = previewKind === 'text'
   const hasGeneratedPdfPreview = Boolean(doc?.previewFileId)
 
   const previewClassName = [
@@ -547,7 +548,7 @@ export default function DocumentFilePreview({
     return <ExtractedContentPreview content={doc?.originalContent || '내용이 없습니다.'} />
   }
 
-  if (!hasGeneratedPdfPreview && !hasInlineFilePreview(doc) && !isHwp && !doc?.mockPreviewHtml && !doc?.mockTableData) {
+  if (!hasGeneratedPdfPreview && !hasInlineFilePreview(doc) && !isHwp && !isText && !doc?.mockPreviewHtml && !doc?.mockTableData) {
     return (
       <div className="doc-preview-unsupported">
         <p>{doc.originalFileName || doc.title} 파일은 브라우저에서 직접 미리보기를 지원하지 않습니다.</p>
@@ -600,6 +601,8 @@ export default function DocumentFilePreview({
         <ExcelTablePreview tableData={doc.mockTableData} />
       ) : isExcel && doc.originalContent ? (
         <ExtractedContentPreview content={doc.originalContent} className="doc-preview-word doc-preview-word--text" />
+      ) : isText && previewData ? (
+        <pre className="doc-preview-txt">{new TextDecoder().decode(previewData)}</pre>
       ) : (
         <div className="doc-preview-state">미리보기 데이터를 불러올 수 없습니다.</div>
       )}

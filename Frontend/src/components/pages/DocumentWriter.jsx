@@ -10,7 +10,8 @@ import {
   getDepartmentDocuments,
   deleteDocument,
   updateDocument,
-  uploadDocument
+  uploadDocument,
+  getDocumentOriginalContent,
 } from '../../api/documentApi'
 // 리뷰 반영: fileApi의 downloadFile 사용
 import { getFilePreview, downloadFile } from '../../api/fileApi'
@@ -299,7 +300,21 @@ export default function DocumentWriter() {
 
       const previewKind = getDocumentPreviewKind(selectedDoc)
 
-      if (previewKind === 'text') return
+      if (previewKind === 'text') {
+        if (!selectedDoc.docId) return
+        try {
+          setPreviewLoading(true)
+          const res = await getDocumentOriginalContent(selectedDoc.docId)
+          const content = res.data?.data ?? ''
+          setPreviewData(new TextEncoder().encode(content).buffer)
+        } catch (err) {
+          console.error('텍스트 미리보기 로드 실패:', err)
+          setPreviewError('텍스트를 불러올 수 없습니다.')
+        } finally {
+          setPreviewLoading(false)
+        }
+        return
+      }
 
       if (
         !selectedDoc.fileId &&
