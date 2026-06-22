@@ -1,19 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
-  FiDownload,
-  FiEdit2,
-  FiFile,
-  FiLock,
-  FiLogOut,
-  FiPaperclip,
-  FiSend,
-  FiUnlock,
-  FiUserPlus,
-  FiUsers,
-  FiX,
+  FiDownload, FiEdit2, FiFile, FiFolder, FiLock, FiLogOut, FiMonitor,
+  FiPaperclip, FiSearch, FiSend, FiStar, FiUnlock, FiUserPlus, FiUsers, FiX,
 } from 'react-icons/fi'
+import {
+  FaFileAlt, FaFileCsv, FaFileExcel, FaFileImage, FaFilePdf, FaFilePowerpoint, FaFileWord,
+} from 'react-icons/fa'
+import { getMyFiles, getDepartmentFiles, getFavoriteFiles, downloadFile } from '../../api/fileApi'
+import { formatFileSize } from '../../utils/fileUtils'
+import { formatDate } from '../../utils/dateUtils'
+import { showAlert } from '../../utils/alertUtils'
 
-// 서버 시간을 한국 날짜와 시간 형식으로 표시한다.
 const formatChatTime = (value) => {
   if (!value) return ''
   const date = new Date(value)
@@ -23,7 +21,6 @@ const formatChatTime = (value) => {
   }).format(date)
 }
 
-// 메시지 작성자의 직급에 맞는 프로필 색상 CSS 클래스를 반환한다.
 const getPositionAvatarClass = (position) => {
   const pos = String(position || '').replace(/\s/g, '')
   if (pos.includes('원장')) return 'position-director'
@@ -33,7 +30,6 @@ const getPositionAvatarClass = (position) => {
   return 'position-default'
 }
 
-// 멤버가 많은 방은 상단에 두 명의 이름만 표시하고 나머지는 생략한다.
 const getCompactRoomHeaderName = (room, members = [], currentEmpNo) => {
   const roomName = room?.name?.trim()
   const activeMembers = Array.isArray(members) && members.length > 0
@@ -52,6 +48,183 @@ const getCompactRoomHeaderName = (room, members = [], currentEmpNo) => {
 }
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
+const getChatFileIcon = (title) => {
+  const ext = (title || '').split('.').pop().toLowerCase()
+  if (ext === 'pdf') return <FaFilePdf style={{ color: '#e74c3c' }} />
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) return <FaFileImage style={{ color: '#2ecc71' }} />
+  if (['xlsx', 'xls'].includes(ext)) return <FaFileExcel style={{ color: '#27ae60' }} />
+  if (ext === 'csv') return <FaFileCsv style={{ color: '#27ae60' }} />
+  if (['doc', 'docx'].includes(ext)) return <FaFileWord style={{ color: '#2980b9' }} />
+  if (['ppt', 'pptx'].includes(ext)) return <FaFilePowerpoint style={{ color: '#e67e22' }} />
+  return <FaFileAlt style={{ color: '#95a5a6' }} />
+}
+
+const PICKER_TABS = [
+  { id: 'my',        label: '내 파일',    icon: <FiFolder /> },
+  { id: 'shared',    label: '공유 문서함', icon: <FiUsers /> },
+  { id: 'important', label: '중요 문서',   icon: <FiStar /> },
+]
+
+function InlinePicker({ onClose, onFilePicked }) {
+  const [tab, setTab] = useState('my')
+  const [search, setSearch] = useState('')
+  const [selectedId, setSelectedId] = useState(null)
+  const [downloading, setDownloading] = useState(false)
+
+  const { data: files = [], isLoading } = useQuery({
+    queryKey: ['chat-inline-picker', tab],
+    queryFn: async () => {
+      if (tab === 'my') {
+        const res = await getMyFiles({ page: 0, size: 100 })
+        return res.data?.data?.content ?? []
+      }
+      if (tab === 'shared') {
+        const res = await getDepartmentFiles({ page: 0, size: 100 })
+        return res.data?.data?.content ?? []
+      }
+      if (tab === 'important') {
+        const res = await getFavoriteFiles({ page: 0, size: 100, sort: 'createdAt,desc' })
+        return res.data?.data?.content ?? []
+      }
+      return []
+    },
+  })
+
+  const filtered = files.filter(f =>
+    !search || (f.title || f.originalFileName || '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  const handleConfirm = async () => {
+    if (!selectedId) return
+    setDownloading(true)
+    try {
+      const info = files.find(f => f.fileId === selectedId)
+      const res = await downloadFile(selectedId)
+      const blob = new Blob([res.data])
+      const filename = info?.originalFileName || info?.title || `file_${selectedId}`
+      const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' })
+      onFilePicked(file)
+    } catch {
+      showAlert('파일을 불러오는 데 실패했습니다.', 'error')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderTop: '1px solid #eee' }}>
+      {/* Tabs + close */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #eee', background: '#fafafa' }}>
+        {PICKER_TABS.map(t => (
+          <button
+            type="button"
+            key={t.id}
+            onClick={() => { setTab(t.id); setSelectedId(null) }}
+            style={{
+              flex: 1, padding: '7px 4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+              borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent',
+              color: tab === t.id ? '#1a73e8' : '#666',
+              fontWeight: tab === t.id ? 600 : 400,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={onClose}
+          style={{ padding: '7px 10px', background: 'none', border: 'none', cursor: 'pointer', color: '#999', flexShrink: 0, borderBottom: '2px solid transparent' }}
+          title="닫기"
+        >
+          <FiX size={14} />
+        </button>
+      </div>
+
+      {/* Search */}
+      <div style={{ padding: '6px 10px', borderBottom: '1px solid #f0f0f0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f0f0f0', borderRadius: 6, padding: '4px 8px' }}>
+          <FiSearch style={{ color: '#aaa', flexShrink: 0, fontSize: 11 }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="파일 검색..."
+            style={{ border: 'none', background: 'none', outline: 'none', fontSize: 12, width: '100%' }}
+          />
+        </div>
+      </div>
+
+      {/* File list */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {isLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 60, color: '#888', fontSize: 12 }}>
+            불러오는 중...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 70, color: '#bbb', fontSize: 12, gap: 6 }}>
+            <FiFolder size={22} />
+            {search ? '검색 결과 없음' : '파일이 없습니다'}
+          </div>
+        ) : filtered.map(f => {
+          const id = f.fileId
+          const isSelected = selectedId === id
+          return (
+            <div
+              key={id}
+              onClick={() => setSelectedId(id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+                cursor: 'pointer', fontSize: 12,
+                background: isSelected ? '#e8f0fe' : 'transparent',
+                borderLeft: isSelected ? '3px solid #1a73e8' : '3px solid transparent',
+                transition: 'background 0.1s',
+              }}
+              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f5f5f5' }}
+              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{ fontSize: 16, flexShrink: 0 }}>{getChatFileIcon(f.title || f.originalFileName)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#222' }}>
+                  {f.title || f.originalFileName}
+                </div>
+                <div style={{ color: '#999', fontSize: 11, marginTop: 1 }}>
+                  {formatFileSize(f.fileSize)} · {formatDate(f.createdAt || f.uploadedAt)}
+                </div>
+              </div>
+              {isSelected && <span style={{ color: '#1a73e8', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>✓</span>}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: '7px 10px', borderTop: '1px solid #eee', display: 'flex', gap: 6, justifyContent: 'flex-end', background: '#fafafa' }}>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #ddd', borderRadius: 4, background: '#fff', cursor: 'pointer', color: '#555' }}
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={!selectedId || downloading}
+          style={{
+            padding: '4px 12px', fontSize: 12, border: 'none', borderRadius: 4,
+            background: selectedId && !downloading ? '#1a73e8' : '#c5c5c5',
+            color: '#fff', cursor: selectedId && !downloading ? 'pointer' : 'not-allowed',
+            transition: 'background 0.15s',
+          }}
+        >
+          {downloading ? '불러오는 중...' : '첨부'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function ChatRoomWindow({
   room: originalRoom,
@@ -72,30 +245,29 @@ export default function ChatRoomWindow({
   isLoadingOlder,
   isUploading,
 }) {
-  // 입력 내용, 멤버 목록, 창 고정 여부와 팝업 위치/크기를 관리한다.
   const [content, setContent] = useState('')
   const [showMembers, setShowMembers] = useState(false)
   const [isPositionLocked, setIsPositionLocked] = useState(false)
+  const [showSourceMenu, setShowSourceMenu] = useState(false)
+  const [showStoragePicker, setShowStoragePicker] = useState(false)
   const [position, setPosition] = useState(() => ({
     x: Math.max(24, window.innerWidth - 400 - index * 28),
     y: Math.max(24, window.innerHeight - 570 - index * 24),
   }))
   const [size, setSize] = useState({ width: 350, height: 520 })
   const popupRef = useRef(null)
-  const fileInputRef = useRef(null)
   const messageEndRef = useRef(null)
+  const fileInputRef = useRef(null)
   const room = {
     ...originalRoom,
     originalName: originalRoom?.name,
     name: getCompactRoomHeaderName(originalRoom, members, currentEmpNo),
   }
 
-  // 새 메시지가 추가되면 항상 가장 최근 메시지가 보이도록 아래로 이동한다.
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // 공백 메시지는 보내지 않고, 정상 전송 요청 후 입력창을 비운다.
   const submitMessage = () => {
     const trimmed = content.trim()
     if (!trimmed) return
@@ -103,7 +275,6 @@ export default function ChatRoomWindow({
     setContent('')
   }
 
-  // Enter는 전송, Shift+Enter는 줄바꿈으로 동작한다.
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -111,14 +282,18 @@ export default function ChatRoomWindow({
     }
   }
 
-  // 숨겨진 파일 입력창에서 선택한 파일을 상위 Chat 컴포넌트에 전달한다.
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0]
+  const handleComputerFile = (e) => {
+    const file = e.target.files?.[0]
     if (file) onUploadFile(room.roomId, file)
-    event.target.value = ''
+    e.target.value = ''
+    setShowSourceMenu(false)
   }
 
-  // 잠금 상태가 아닐 때 헤더를 드래그하여 개별 채팅방 창을 이동한다.
+  const handleStorageFilePicked = (file) => {
+    onUploadFile(room.roomId, file)
+    setShowStoragePicker(false)
+  }
+
   const startPopupDrag = (event) => {
     if (isPositionLocked || event.button !== 0 || event.target.closest('button')) return
     event.preventDefault()
@@ -140,7 +315,6 @@ export default function ChatRoomWindow({
     window.addEventListener('mouseup', handleMouseUp)
   }
 
-  // 각 변과 모서리를 드래그하여 개별 채팅방 창 크기를 조절한다.
   const startPopupResize = (event, direction) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -169,7 +343,6 @@ export default function ChatRoomWindow({
     window.addEventListener('mouseup', handleMouseUp)
   }
 
-  // 방 관리 버튼, 메시지 목록, 파일 첨부와 메시지 입력 영역을 렌더링한다.
   return (
     <section
       ref={popupRef}
@@ -207,45 +380,102 @@ export default function ChatRoomWindow({
         </div>
       )}
 
-      <div className="chat-message-list">
-        {hasOlderMessages && (
-          <button type="button" className="chat-load-older" onClick={() => onLoadOlder(room.roomId)} disabled={isLoadingOlder}>
-            {isLoadingOlder ? '불러오는 중...' : '이전 메시지 더보기'}
+      {/* 파일함 피커 — 메시지 목록 영역을 대체 */}
+      {showStoragePicker ? (
+        <InlinePicker
+          onClose={() => setShowStoragePicker(false)}
+          onFilePicked={handleStorageFilePicked}
+        />
+      ) : showSourceMenu ? (
+        /* 파일 소스 선택 화면 — 메시지 목록 영역을 대체 */
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 16, padding: '20px 16px', borderTop: '1px solid #eee',
+        }}>
+          <span style={{ fontSize: 13, color: '#555', fontWeight: 500 }}>파일을 어디서 가져올까요?</span>
+          <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+            <label
+              style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                padding: '18px 10px', border: '2px dashed #d0d0d0', borderRadius: 8, cursor: 'pointer',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#1a73e8'; e.currentTarget.style.background = '#f0f4ff' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#d0d0d0'; e.currentTarget.style.background = 'transparent' }}
+            >
+              <FiMonitor size={26} style={{ color: '#1a73e8' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>내 컴퓨터</span>
+              <input type="file" hidden ref={fileInputRef} onChange={handleComputerFile} />
+            </label>
+            <button
+              type="button"
+              style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                padding: '18px 10px', border: '2px dashed #d0d0d0', borderRadius: 8, cursor: 'pointer',
+                background: 'none', transition: 'border-color 0.15s, background 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#1a73e8'; e.currentTarget.style.background = '#f0f4ff' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#d0d0d0'; e.currentTarget.style.background = 'transparent' }}
+              onClick={() => { setShowSourceMenu(false); setShowStoragePicker(true) }}
+            >
+              <FiFolder size={26} style={{ color: '#1a73e8' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>파일함</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSourceMenu(false)}
+            style={{ fontSize: 12, color: '#999', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            취소
           </button>
-        )}
-        {messages.length === 0 ? (
-          <div className="chat-empty-small">아직 대화가 없습니다.</div>
-        ) : (
-          messages.map((message) => {
-            const isMine = message.senderEmpNo === currentEmpNo
-            const isSystem = message.messageType === 'SYSTEM'
-            const isFile = message.messageType === 'FILE' || message.fileUrl
-            const senderPosition = members.find((m) => m.empNo === message.senderEmpNo)?.position
-            if (isSystem) return <div className="chat-system-message" key={message.messageId}>{message.content}</div>
-            return (
-              <div className={`chat-bubble-row ${isMine ? 'mine' : 'theirs'}`} key={message.messageId}>
-                {!isMine && <span className={`chat-avatar ${getPositionAvatarClass(senderPosition)}`}>{message.senderName?.[0] || '?'}</span>}
-                <div className="chat-bubble-wrap">
-                  {!isMine && <span className="chat-sender">{message.senderName || '알 수 없음'}</span>}
-                  <div className={`chat-bubble ${isMine ? 'mine' : 'theirs'}`}>
-                    {isFile ? (
-                      <button type="button" className="chat-file-message" onClick={() => onDownloadFile(message.fileUrl, message.fileName)}>
-                        <FiFile /><span>{message.fileName || '첨부 파일'}</span><FiDownload />
-                      </button>
-                    ) : message.content}
+        </div>
+      ) : (
+        <div className="chat-message-list">
+          {hasOlderMessages && (
+            <button type="button" className="chat-load-older" onClick={() => onLoadOlder(room.roomId)} disabled={isLoadingOlder}>
+              {isLoadingOlder ? '불러오는 중...' : '이전 메시지 더보기'}
+            </button>
+          )}
+          {messages.length === 0 ? (
+            <div className="chat-empty-small">아직 대화가 없습니다.</div>
+          ) : (
+            messages.map((message) => {
+              const isMine = message.senderEmpNo === currentEmpNo
+              const isSystem = message.messageType === 'SYSTEM'
+              const isFile = message.messageType === 'FILE' || message.fileUrl
+              const senderPosition = members.find((m) => m.empNo === message.senderEmpNo)?.position
+              if (isSystem) return <div className="chat-system-message" key={message.messageId}>{message.content}</div>
+              return (
+                <div className={`chat-bubble-row ${isMine ? 'mine' : 'theirs'}`} key={message.messageId}>
+                  {!isMine && <span className={`chat-avatar ${getPositionAvatarClass(senderPosition)}`}>{message.senderName?.[0] || '?'}</span>}
+                  <div className="chat-bubble-wrap">
+                    {!isMine && <span className="chat-sender">{message.senderName || '알 수 없음'}</span>}
+                    <div className={`chat-bubble ${isMine ? 'mine' : 'theirs'}`}>
+                      {isFile ? (
+                        <button type="button" className="chat-file-message" onClick={() => onDownloadFile(message.fileUrl, message.fileName)}>
+                          <FiFile /><span>{message.fileName || '첨부 파일'}</span><FiDownload />
+                        </button>
+                      ) : message.content}
+                    </div>
+                    <span className="chat-time">{formatChatTime(message.sentAt)}</span>
                   </div>
-                  <span className="chat-time">{formatChatTime(message.sentAt)}</span>
                 </div>
-              </div>
-            )
-          })
-        )}
-        <div ref={messageEndRef} />
-      </div>
+              )
+            })
+          )}
+          <div ref={messageEndRef} />
+        </div>
+      )}
 
       <footer className="chat-input-area">
-        <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
-        <button type="button" className="chat-icon-button" onClick={() => fileInputRef.current?.click()} disabled={!isConnected || isUploading} title={isUploading ? '파일 업로드 중' : '파일 첨부'}>
+        <button
+          type="button"
+          className="chat-icon-button"
+          onClick={() => { setShowStoragePicker(false); setShowSourceMenu(true) }}
+          disabled={!isConnected || isUploading}
+          title={isUploading ? '파일 업로드 중' : '파일 첨부'}
+        >
           <FiPaperclip />
         </button>
         <textarea value={content} onChange={(e) => setContent(e.target.value)} onKeyDown={handleKeyDown} placeholder={isConnected ? '메시지를 입력하세요.' : '실시간 연결 중입니다.'} rows={1} />

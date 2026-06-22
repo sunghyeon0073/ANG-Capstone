@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import HomeCalendar from './HomeCalendar'
 import Board from './Board'
 import { reserveScheduledSend, getAiSchedules, cancelAiSchedule, updateAiSchedule } from '../../api/aiAssistantApi'
+import { showAlert } from '../../utils/alertUtils'
 import { searchUsers } from '../../api/userApi'
 import { getMyDocuments } from '../../api/documentApi'
 import {
@@ -547,7 +548,7 @@ function ReserveList({ onSubPageChange }) {
       await cancelAiSchedule(id)
       setItems(prev => prev.map(it => it.id === id ? { ...it, status: 'CANCELLED' } : it))
     } catch (err) {
-      alert(err.response?.data?.message || '취소에 실패했습니다.')
+      showAlert(err.response?.data?.message || '취소에 실패했습니다.', 'error')
     } finally {
       setCancelling(null)
     }

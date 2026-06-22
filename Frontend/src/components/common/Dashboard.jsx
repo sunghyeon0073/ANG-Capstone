@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { session } from '../../utils/storageUtils'
+import { showAlert } from '../../utils/alertUtils'
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '../../api/notificationApi'
 import TopNavBar from './TopNavBar'
 import Home from '../pages/Home'
@@ -122,7 +123,7 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     session.clear()
-    alert('로그아웃되었습니다.')
+    showAlert('로그아웃되었습니다.', 'success')
     navigate('/login', { replace: true })
   }
 

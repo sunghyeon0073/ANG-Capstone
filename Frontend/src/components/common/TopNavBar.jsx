@@ -131,7 +131,7 @@ export default function TopNavBar({
   return (
     <div className="topnavbar">
       <div className="topnavbar-left">
-        <button className="topnavbar-logo" onClick={() => onPageChange('home')}>ANG</button>
+        <button className="topnavbar-logo" onClick={() => onPageChange('home-dashboard')}>ANG</button>
       </div>
 
       <div className="topnavbar-center">
