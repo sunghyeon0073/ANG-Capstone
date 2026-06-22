@@ -836,7 +836,7 @@ export default function Calendar({ showSidebar = true }) {
                       {todayAiSchedules.map((schedule) => (
                         <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
                           <div className="calendar-ai-label">
-                            {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : '다가오는 일정'}
+                            {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : schedule.aiType === 'llm' ? 'AI 업무 추천' : '다가오는 일정'}
                           </div>
                           <div className="calendar-ai-message">{schedule.title}</div>
                           <div className="calendar-ai-meta">{schedule.description}</div>

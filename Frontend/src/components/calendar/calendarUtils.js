@@ -246,7 +246,9 @@ export const toAiSchedule = (recommendation) => ({
       ? `기준 일정: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`
       : recommendation.type === 'pattern'
         ? `분석된 주기 기반 추천: ${recommendation.sourceTitle}`
-        : `예정일: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`,
+        : recommendation.type === 'llm'
+          ? `참고: ${recommendation.sourceTitle}`
+          : `예정일: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`,
   isAiRecommendation: true,
   aiType: recommendation.type,
   sourceTitle: recommendation.sourceTitle,

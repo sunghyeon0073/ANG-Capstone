@@ -30,6 +30,7 @@ public class ScheduleService {
     private final com.ang.Backend.domain.memo.repository.MemoRepository memoRepository;
     private final com.ang.Backend.domain.file.repository.FileItemRepository fileItemRepository;
     private final com.ang.Backend.domain.scope.repository.UserMembershipRepository userMembershipRepository;
+    private final ScheduleAiRecommendationService scheduleAiRecommendationService;
     private final JdbcTemplate jdbcTemplate;
 
     @PostConstruct
@@ -119,6 +120,7 @@ public class ScheduleService {
         List<ScheduleDto.AiRecommendationResponse> recommendations = new ArrayList<>();
         recommendations.addAll(buildLastYearRecommendations(owner, scopeId, rangeStart, rangeEnd));
         recommendations.addAll(buildPatternRecommendations(owner, scopeId, rangeStart, rangeEnd));
+        recommendations.addAll(buildLlmRecommendations(owner, scopeId, rangeStart, rangeEnd));
 
         // 각 추천 항목에 대해 연관 문서/메모 탐색
         recommendations.forEach(rec -> rec.getAssociatedItems().addAll(findAssociatedItems(owner, rec.getSourceTitle())));
@@ -172,6 +174,12 @@ public class ScheduleService {
         });
 
         return results;
+    }
+
+    private List<ScheduleDto.AiRecommendationResponse> buildLlmRecommendations(User owner, Integer scopeId, LocalDate rangeStart, LocalDate rangeEnd) {
+        List<Schedule> history = scheduleRepository.findByOwnerOrScopeAndStartDateBetween(
+                owner, scopeId, LocalDate.now().minusMonths(12), LocalDate.now());
+        return scheduleAiRecommendationService.recommend(owner, history, rangeStart, rangeEnd);
     }
 
     private long calculateAverageInterval(List<Schedule> schedules) {
