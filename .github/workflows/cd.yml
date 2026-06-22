@@ -35,6 +35,10 @@ jobs:
             git checkout "${{ github.ref_name }}"
             git reset --hard "origin/${{ github.ref_name }}"
 
+            echo "===== OLLAMA MODEL UPDATE ====="
+            ollama create ang-ai -f AI/Modelfile
+            ollama create ang-secretary -f AI/Modelfile_secretary
+
             echo "===== DOCKER DOWN ====="
             docker compose down
 
