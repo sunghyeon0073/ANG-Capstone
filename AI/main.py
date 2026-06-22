@@ -75,6 +75,7 @@ def chat(req: ChatRequest):
                     "content": message,
                 }
             ],
+            think=False,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Ollama request failed: {exc}") from exc
