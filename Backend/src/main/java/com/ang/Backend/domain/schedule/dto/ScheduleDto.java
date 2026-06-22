@@ -116,6 +116,13 @@ public class ScheduleDto {
         private LocalTime sourceEndTime;
         private Long sourceScheduleId;
         private String sourceTitle;
+        private Long targetScheduleId;
+        private LocalDate targetStartDate;
+        private String targetTitle;
+        private Integer estimatedDays;
+        private Integer preparationDays;
+        private Integer similarScheduleCount;
+        private String confidence;
         @Builder.Default
         private java.util.List<AssociatedItem> associatedItems = new java.util.ArrayList<>();
     }

@@ -36,6 +36,12 @@ import {
   toAiSchedule,
 } from '../calendar/calendarUtils'
 
+const AI_RECOMMENDATION_LABELS = {
+  'last-year': '작년 기록 기반',
+  pattern: '반복 패턴 분석',
+  preparation: '업무 준비 시점',
+}
+
 const SimpleModal = ({ open, onClose, title, children }) => {
   if (!open) return null
 
@@ -836,7 +842,7 @@ export default function Calendar({ showSidebar = true }) {
                       {todayAiSchedules.map((schedule) => (
                         <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
                           <div className="calendar-ai-label">
-                            {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : '다가오는 일정'}
+                            {AI_RECOMMENDATION_LABELS[schedule.aiType] || '다가오는 일정'}
                           </div>
                           <div className="calendar-ai-message">{schedule.title}</div>
                           <div className="calendar-ai-meta">{schedule.description}</div>

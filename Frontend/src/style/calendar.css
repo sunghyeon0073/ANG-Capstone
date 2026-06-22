@@ -665,6 +665,7 @@
 .calendar-ai-card--last-year { background: #fff7ed; border-color: #ffedd5; }
 .calendar-ai-card--pattern { background: #f0fdf4; border-color: #dcfce7; }
 .calendar-ai-card--upcoming { background: #eff6ff; border-color: #dbeafe; }
+.calendar-ai-card--preparation { background: #f5f3ff; border-color: #ddd6fe; }
 
 .calendar-ai-label {
   font-size: 11px;
@@ -677,6 +678,7 @@
 .calendar-ai-card--last-year .calendar-ai-label { color: #f97316; }
 .calendar-ai-card--pattern .calendar-ai-label { color: #10b981; }
 .calendar-ai-card--upcoming .calendar-ai-label { color: #3b82f6; }
+.calendar-ai-card--preparation .calendar-ai-label { color: #7c3aed; }
 
 .calendar-ai-message {
   font-size: 14px;
@@ -745,6 +747,7 @@
 .schedule-item--ai-last-year { border-left-color: #f97316; }
 .schedule-item--ai-pattern { border-left-color: #10b981; }
 .schedule-item--ai-upcoming { border-left-color: #3b82f6; }
+.schedule-item--ai-preparation { border-left-color: #7c3aed; }
 
 .calendar-schedule-overflow {
   font-size: 11px;
