@@ -120,7 +120,6 @@ public class ScheduleService {
         Integer scopeId = getDepartmentScopeId(owner);
 
         List<ScheduleDto.AiRecommendationResponse> recommendations = new ArrayList<>();
-        recommendations.addAll(buildLastYearRecommendations(owner, scopeId, rangeStart, rangeEnd));
         recommendations.addAll(buildPatternRecommendations(owner, scopeId, rangeStart, rangeEnd));
         recommendations.addAll(buildPreparationRecommendations(owner, scopeId, rangeStart, rangeEnd));
 

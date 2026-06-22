@@ -37,7 +37,6 @@ import {
 } from '../calendar/calendarUtils'
 
 const AI_RECOMMENDATION_LABELS = {
-  'last-year': '작년 기록 기반',
   pattern: '반복 패턴 분석',
   preparation: '업무 준비 시점',
 }
