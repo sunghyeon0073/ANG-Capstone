@@ -542,13 +542,13 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   const handleReject = () => setActionModal('reject')
   const handleDelegate = () => setActionModal('delegate')
 
-  const handleActionConfirm = async ({ comment, reason, delegateeId, delegateeName }) => {
+  const handleActionConfirm = async ({ comment, reason, delegateeId, delegateeName, signatureId }) => {
     if (!selectedApproval) return
     const type = actionModal
     setActionState(type)
     try {
       if (type === 'approve') {
-        await approveApprovalDoc(selectedApproval.id, { comment })
+        await approveApprovalDoc(selectedApproval.id, { comment, signatureId })
       } else if (type === 'reject') {
         await rejectApprovalDoc(selectedApproval.id, { reason })
       } else if (type === 'delegate') {

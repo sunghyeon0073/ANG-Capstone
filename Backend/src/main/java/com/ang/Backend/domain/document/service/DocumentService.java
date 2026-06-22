@@ -103,6 +103,7 @@ public class DocumentService {
     private final S3FileService s3FileService;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
+    private final DocumentParser documentParser;
 
     @Value("${ai.base-url}")
     private String aiBaseUrl;
@@ -184,7 +185,7 @@ public class DocumentService {
     }
 
     @Transactional
-    public Long create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
+    public DocumentDto.Response create(String title, MultipartFile file, User user, Integer targetScopeId) throws Exception {
         Scope targetScope = null;
         String subPath = null;
 
@@ -194,7 +195,7 @@ public class DocumentService {
             subPath = "Scopes" + File.separator + targetScope.getScopeCode();
         }
 
-        String originalContent = parseOriginalContent(file);
+        String originalContent = documentParser.parseOriginalContent(file);
 
         var storedFile = fileService.storeFile(file, user, subPath);
         FileItem previewFile = createPreviewFile(file, user, storedFile, originalContent);
@@ -209,7 +210,13 @@ public class DocumentService {
                 .originalContent(originalContent)
                 .build();
 
-        return documentRepository.save(doc).getDocId();
+        DocumentEntity savedDoc = documentRepository.save(doc);
+        DocumentDto.Response response = DocumentDto.Response.fromEntity(savedDoc);
+        
+        // 권한 정보 추가 (본인이 업로드했으므로 삭제 가능)
+        response.setCanDelete(true);
+        
+        return response;
     }
 
     public DocumentDto.PagedResponse getAllDocuments(User requester, Pageable pageable) {
@@ -235,7 +242,7 @@ public class DocumentService {
             throw new CustomException(ErrorCode.UNAUTHORIZED, "AI 생성을 위해서는 로그인이 필요합니다.");
         }
         if (prompt == null || prompt.isBlank()) {
-            throw new IllegalArgumentException("Prompt is required.");
+            throw new CustomException(ErrorCode.INVALID_INPUT, "프롬프트 내용이 비어 있습니다.");
         }
 
         AiOutputFormat format = AiOutputFormat.from(outputFormat);
@@ -252,7 +259,7 @@ public class DocumentService {
             }
             DocumentEntity sourceDoc = findSourceDocument(sourceDocId, attachedDocIds);
             if (sourceDoc == null) {
-                throw new IllegalArgumentException("수정할 원본 문서를 찾을 수 없습니다.");
+                throw new CustomException(ErrorCode.NOT_FOUND, "수정할 원본 문서를 찾을 수 없습니다.");
             }
             return editByContentWithAi(prompt, user, sourceDoc, format);
         }
@@ -262,14 +269,14 @@ public class DocumentService {
 
         String answer = callAiChat(finalPrompt);
         log.info("AI document generation finished: format={}, answerChars={}", format.extension, answer.length());
-        if (cleanParsedContent(answer).isBlank()) {
-            throw new IllegalStateException("AI returned an empty document.");
+        if (documentParser.cleanParsedContent(answer).isBlank()) {
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "AI가 빈 문서를 반환했습니다. 잠시 후 다시 시도해 주세요.");
         }
 
         if (!looksLikeCompleteDocument(answer, format)) {
             log.info("AI document generation result looked incomplete, retrying once: format={}", format.extension);
             String retryAnswer = callAiChat(finalPrompt + "\n\n" + AI_DOCUMENT_RETRY_REMINDER);
-            if (!cleanParsedContent(retryAnswer).isBlank()) {
+            if (!documentParser.cleanParsedContent(retryAnswer).isBlank()) {
                 answer = retryAnswer;
                 log.info("AI document generation retry finished: format={}, answerChars={}", format.extension, answer.length());
             }
@@ -282,16 +289,29 @@ public class DocumentService {
     }
 
     private String callAiChat(String message) {
+        if (aiBaseUrl == null || aiBaseUrl.isBlank()) {
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "AI 서버 주소가 설정되지 않았습니다.");
+        }
+
+        String url = aiBaseUrl.replaceAll("/+$", "") + "/chat";
         Map<String, String> aiRequest = Map.of("message", message);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> aiResponse = restTemplate.postForObject(
-                aiBaseUrl + "/chat",
-                aiRequest,
-                Map.class
-        );
-        return aiResponse != null && aiResponse.get("reply") != null
-                ? aiResponse.get("reply").toString()
-                : "";
+        
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> aiResponse = restTemplate.postForObject(url, aiRequest, Map.class);
+            
+            if (aiResponse == null || aiResponse.get("reply") == null) {
+                log.warn("AI server returned empty response or missing 'reply' field.");
+                return "";
+            }
+            return aiResponse.get("reply").toString();
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            log.error("AI server connection refused: url={}, error={}", url, e.getMessage());
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "AI 서버와 연결할 수 없습니다. 서버가 켜져 있는지, 주소(" + url + ")가 올바른지 확인하세요.");
+        } catch (Exception e) {
+            log.error("AI chat request failed: url={}, error={}", url, e.getMessage());
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "AI 서버 통신 중 오류가 발생했습니다: " + e.getMessage());
+        }
     }
 
     private static final String AI_DOCUMENT_RETRY_REMINDER = """
@@ -348,14 +368,14 @@ public class DocumentService {
 
         String answer = callAiChat(finalPrompt);
         log.info("AI content edit finished: format={}, answerChars={}", format.extension, answer.length());
-        if (cleanParsedContent(answer).isBlank()) {
+        if (documentParser.cleanParsedContent(answer).isBlank()) {
             throw new IllegalStateException("AI returned an empty document.");
         }
 
         if (!looksLikeCompleteDocument(answer, format)) {
             log.info("AI content edit result looked incomplete, retrying once: format={}", format.extension);
             String retryAnswer = callAiChat(finalPrompt + "\n\n" + AI_DOCUMENT_RETRY_REMINDER);
-            if (!cleanParsedContent(retryAnswer).isBlank()) {
+            if (!documentParser.cleanParsedContent(retryAnswer).isBlank()) {
                 answer = retryAnswer;
             }
         }
@@ -754,13 +774,16 @@ public class DocumentService {
             AiGeneratedFile generatedFile,
             User user) {
         return transactionTemplate.execute(status -> {
-            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            // Reload user to ensure it's managed in the current transaction
+            User managedUser = user != null ? userRepository.findById(user.getUserId()).orElse(user) : null;
+            
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, managedUser, "documents");
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(title)
                     .file(fileItem)
                     .previewFile(fileItem)
-                    .owner(user)
+                    .owner(managedUser)
                     .status(DocumentStatus.DRAFT)
                     .originalContent("""
                             AI HWP edit based on source document: %s
@@ -786,19 +809,22 @@ public class DocumentService {
             AiGeneratedFile generatedFile,
             User user) {
         return transactionTemplate.execute(status -> {
-            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            // Reload user to ensure it's managed in the current transaction
+            User managedUser = user != null ? userRepository.findById(user.getUserId()).orElse(user) : null;
+            
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, managedUser, "documents");
             FileItem previewFile = createAiPreviewFile(title, """
                     AI DOCX edit based on source document: %s
 
                     User request:
                     %s
-                    """.formatted(source.title(), prompt), user);
+                    """.formatted(source.title(), prompt), managedUser);
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(title)
                     .file(fileItem)
                     .previewFile(previewFile)
-                    .owner(user)
+                    .owner(managedUser)
                     .status(DocumentStatus.DRAFT)
                     .originalContent("""
                             AI DOCX edit based on source document: %s
@@ -919,7 +945,7 @@ public class DocumentService {
     }
 
     private String createAiGenerationSummary(String prompt, String aiTitle, String answer, AiOutputFormat format) {
-        String content = cleanParsedContent(answer);
+        String content = documentParser.cleanParsedContent(answer);
         if (content.length() > 8000) {
             content = content.substring(0, 8000);
         }
@@ -940,7 +966,7 @@ public class DocumentService {
                 """.formatted(prompt, aiTitle, format.extension.toUpperCase(), content);
 
         try {
-            String summary = cleanParsedContent(callAiChat(summaryPrompt));
+            String summary = documentParser.cleanParsedContent(callAiChat(summaryPrompt));
             if (!summary.isBlank()) {
                 return summary.length() > 500 ? summary.substring(0, 500).strip() : summary;
             }
@@ -1004,16 +1030,19 @@ public class DocumentService {
         AiGeneratedFile generatedFile = createAiGeneratedFile(aiTitle, answer, format);
 
         return transactionTemplate.execute(status -> {
-            FileItem fileItem = saveGeneratedFileItem(generatedFile, user, "documents");
+            // Reload user to ensure it's managed in the current transaction
+            User managedUser = user != null ? userRepository.findById(user.getUserId()).orElse(user) : null;
+            
+            FileItem fileItem = saveGeneratedFileItem(generatedFile, managedUser, "documents");
             FileItem previewFile = (format == AiOutputFormat.PDF || format == AiOutputFormat.HWP)
                     ? fileItem
-                    : createAiPreviewFile(aiTitle, answer, user);
+                    : createAiPreviewFile(aiTitle, answer, managedUser);
 
             DocumentEntity doc = DocumentEntity.builder()
                     .title(aiTitle)
                     .file(fileItem)
                     .previewFile(previewFile)
-                    .owner(user)
+                    .owner(managedUser)
                     .status(DocumentStatus.DRAFT)
                     .originalContent(answer)
                     .aiSummary(aiSummary)
@@ -1027,17 +1056,32 @@ public class DocumentService {
     }
 
     private FileItem saveGeneratedFileItem(AiGeneratedFile generatedFile, User user, String prefix) {
-        String s3Key = s3FileService.uploadBytes(
-                generatedFile.bytes(),
-                generatedFile.fileName(),
-                generatedFile.contentType(),
-                prefix
-        );
+        String storedFileName;
+        String filePath;
+        
+        try {
+            storedFileName = s3FileService.uploadBytes(
+                    generatedFile.bytes(),
+                    generatedFile.fileName(),
+                    generatedFile.contentType(),
+                    prefix
+            );
+            filePath = storedFileName;
+        } catch (Exception e) {
+            log.warn("S3 upload for generated AI file failed, falling back to local storage: {}", e.getMessage());
+            try {
+                filePath = fileService.storeBytesLocally(generatedFile.bytes(), generatedFile.fileName(), prefix);
+                storedFileName = new File(filePath).getName();
+            } catch (IOException ioException) {
+                log.error("Local storage fallback also failed: {}", ioException.getMessage());
+                throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "파일 저장에 실패했습니다 (S3 및 로컬 모두 실패).");
+            }
+        }
 
         return fileItemRepository.save(FileItem.builder()
                 .originalFileName(generatedFile.fileName())
-                .storedFileName(s3Key)
-                .filePath(s3Key)
+                .storedFileName(storedFileName)
+                .filePath(filePath)
                 .fileSize((long) generatedFile.bytes().length)
                 .contentType(generatedFile.contentType())
                 .uploader(user)
@@ -1504,11 +1548,18 @@ public class DocumentService {
                 case DOCX -> createDocxBytes(content);
                 case XLSX -> createXlsxBytes(content);
                 case HWP -> createHwpBytes(content, title);
-                case TXT -> cleanParsedContent(content).getBytes(StandardCharsets.UTF_8);
+                case TXT -> documentParser.cleanParsedContent(content).getBytes(StandardCharsets.UTF_8);
             };
             return new AiGeneratedFile(fileName, format.contentType, bytes);
+        } catch (CustomException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("AI document file generation failed.", e);
+            log.error("AI document conversion failed: format={}, title={}, error={}", format, title, e.getMessage(), e);
+            String detail = e.getMessage();
+            if (e instanceof IOException && detail.contains("LibreOffice")) {
+                throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "PDF 변환 엔진(LibreOffice) 실행에 실패했습니다. 관리자에게 문의하세요.");
+            }
+            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "문서 파일 생성 중 오류가 발생했습니다 (" + format.extension + "): " + detail);
         }
     }
 
@@ -1527,7 +1578,7 @@ public class DocumentService {
 
         Map<String, String> request = Map.of(
                 "title", safeDocumentTitle(title),
-                "content", cleanParsedContent(content)
+                "content", documentParser.cleanParsedContent(content)
         );
 
         ResponseEntity<byte[]> response = restTemplate.postForEntity(
@@ -1625,7 +1676,7 @@ public class DocumentService {
     }
 
     private String normalizeGeneratedDocxContent(String content) {
-        String cleaned = cleanParsedContent(content == null ? "" : content);
+        String cleaned = documentParser.cleanParsedContent(content == null ? "" : content);
         cleaned = cleaned.replaceAll("(?s)<think>.*?</think>", "");
         cleaned = cleaned.replaceAll("(?m)^```[a-zA-Z0-9_-]*\\s*$", "");
         cleaned = cleaned.replaceAll("(?m)^```\\s*$", "");
@@ -1941,7 +1992,7 @@ public class DocumentService {
     }
 
     private String buildDocxBodyXml(String content) {
-        List<String> lines = cleanParsedContent(content).lines().toList();
+        List<String> lines = documentParser.cleanParsedContent(content).lines().toList();
         StringBuilder body = new StringBuilder();
         List<List<String>> tableRows = new ArrayList<>();
 
@@ -2057,7 +2108,7 @@ public class DocumentService {
     }
 
     private XlsxSheet parseXlsxSheet(String content) {
-        String cleanedContent = cleanParsedContent(content);
+        String cleanedContent = documentParser.cleanParsedContent(content);
         List<String> lines = cleanedContent.lines().toList();
         List<List<String>> tableRows = extractMarkdownTableRows(lines);
         if (tableRows.isEmpty()) {
@@ -2270,521 +2321,6 @@ public class DocumentService {
                 .replace("'", "&apos;");
     }
 
-    private String parseOriginalContent(MultipartFile file) {
-        Path tempFile = null;
-        try {
-            String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
-            String lowerName = originalName.toLowerCase();
-            String contentType = file.getContentType() != null ? file.getContentType().toLowerCase() : "";
-
-            if (isPlainTextFile(lowerName, contentType)) {
-                String text = new String(file.getBytes(), StandardCharsets.UTF_8);
-                uploadParsedMarkdown(text, originalName);
-                return text;
-            }
-            if (isCsvFile(lowerName, contentType)) {
-                String csv = parseCsvContent(file.getBytes());
-                uploadParsedMarkdown(csv, originalName);
-                return csv;
-            }
-            if (isXlsxFile(lowerName, contentType)) {
-                String xlsx = parseXlsxContentWithPoi(file.getBytes());
-                if (xlsx.isBlank()) {
-                    xlsx = parseXlsxContent(file.getBytes());
-                }
-                if (!xlsx.isBlank()) {
-                    uploadParsedMarkdown(xlsx, originalName);
-                    return xlsx;
-                }
-            }
-            if (isDocxFile(lowerName, contentType)) {
-                String docx = parseDocxContent(file.getBytes());
-                if (!docx.isBlank()) {
-                    uploadParsedMarkdown(docx, originalName);
-                    return docx;
-                }
-            }
-            if (isPdfFile(lowerName, contentType)) {
-                String pdf = parsePdfContent(file.getBytes());
-                if (!pdf.isBlank()) {
-                    uploadParsedMarkdown(pdf, originalName);
-                    return pdf;
-                }
-            }
-            if (isHwpxFile(lowerName, contentType)) {
-                String hwpx = parseHwpxContent(file.getBytes());
-                if (!hwpx.isBlank()) {
-                    uploadParsedMarkdown(hwpx, originalName);
-                    return hwpx;
-                }
-            }
-
-            tempFile = Files.createTempFile("kordoc-", "-" + sanitizeFileName(originalName));
-            Files.write(tempFile, file.getBytes());
-
-            KordocResult result = runKordoc(tempFile);
-            if (result.exitCode() != 0) {
-                log.warn("kordoc parsing failed with exit code {}: {}", result.exitCode(), result.output());
-                return "";
-            }
-
-            String markdown = cleanParsedContent(result.output());
-            if (markdown == null || markdown.isBlank()) {
-                log.warn("kordoc parsing returned empty markdown for {}", originalName);
-                return "";
-            }
-
-            uploadParsedMarkdown(markdown, originalName);
-            return markdown;
-        } catch (Exception e) {
-            log.warn("kordoc parsing failed, upload will continue: {}", e.getMessage());
-            return "";
-        } finally {
-            if (tempFile != null) {
-                try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
-            }
-        }
-    }
-
-    private KordocResult runKordoc(Path file) throws IOException, InterruptedException {
-        try {
-            return runCommand(List.of("kordoc", file.toAbsolutePath().toString()));
-        } catch (IOException e) {
-            log.debug("Direct kordoc command failed, retrying with npx: {}", e.getMessage());
-            return runCommand(List.of("npx", "--no-install", "kordoc", file.toAbsolutePath().toString()));
-        }
-    }
-
-    private boolean isCsvFile(String lowerName, String contentType) {
-        return lowerName.endsWith(".csv") || contentType.contains("csv");
-    }
-
-    private boolean isXlsxFile(String lowerName, String contentType) {
-        return lowerName.endsWith(".xlsx") || contentType.contains("spreadsheetml");
-    }
-
-    private boolean isDocxFile(String lowerName, String contentType) {
-        return lowerName.endsWith(".docx") || contentType.contains("wordprocessingml");
-    }
-
-    private boolean isPdfFile(String lowerName, String contentType) {
-        return lowerName.endsWith(".pdf") || contentType.contains("pdf");
-    }
-
-    private boolean isHwpxFile(String lowerName, String contentType) {
-        return lowerName.endsWith(".hwpx") || contentType.contains("hwpx");
-    }
-
-    private String parseCsvContent(byte[] bytes) {
-        String csv = new String(bytes, StandardCharsets.UTF_8).strip();
-        if (csv.isBlank()) {
-            return "";
-        }
-        return csv.lines()
-                .map(line -> String.join("\t", parseCsvLine(line)))
-                .collect(Collectors.joining("\n"));
-    }
-
-    private List<String> parseCsvLine(String line) {
-        List<String> cells = new ArrayList<>();
-        StringBuilder cell = new StringBuilder();
-        boolean quoted = false;
-        for (int i = 0; i < line.length(); i++) {
-            char ch = line.charAt(i);
-            if (ch == '"') {
-                if (quoted && i + 1 < line.length() && line.charAt(i + 1) == '"') {
-                    cell.append('"');
-                    i++;
-                } else {
-                    quoted = !quoted;
-                }
-            } else if (ch == ',' && !quoted) {
-                cells.add(cell.toString().strip());
-                cell.setLength(0);
-            } else {
-                cell.append(ch);
-            }
-        }
-        cells.add(cell.toString().strip());
-        return cells;
-    }
-
-    private String parseXlsxContentWithPoi(byte[] bytes) {
-        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
-            DataFormatter formatter = new DataFormatter(java.util.Locale.KOREA);
-            StringBuilder parsed = new StringBuilder();
-            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
-                Sheet sheet = workbook.getSheetAt(i);
-                List<List<String>> rows = new ArrayList<>();
-                int maxColumn = 0;
-                for (Row row : sheet) {
-                    int lastCell = row.getLastCellNum();
-                    if (lastCell <= 0) {
-                        continue;
-                    }
-                    List<String> cells = new ArrayList<>();
-                    for (int c = 0; c < lastCell; c++) {
-                        Cell cell = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
-                        cells.add(cell == null ? "" : formatter.formatCellValue(cell).strip());
-                    }
-                    if (cells.stream().anyMatch(value -> !value.isBlank())) {
-                        maxColumn = Math.max(maxColumn, cells.size());
-                        rows.add(cells);
-                    }
-                }
-
-                if (!rows.isEmpty()) {
-                    if (!parsed.isEmpty()) {
-                        parsed.append("\n\n");
-                    }
-                    parsed.append("[Sheet: ").append(sheet.getSheetName()).append("]\n");
-                    parsed.append(toMarkdownTable(rows, maxColumn));
-                }
-            }
-            return parsed.toString().strip();
-        } catch (Exception e) {
-            log.warn("XLSX POI parsing failed: {}", e.getMessage());
-            return "";
-        }
-    }
-
-    private String parseDocxContent(byte[] bytes) {
-        try (XWPFDocument document = openDocxDocument(bytes)) {
-            StringBuilder parsed = new StringBuilder();
-
-            for (XWPFParagraph paragraph : document.getParagraphs()) {
-                String text = paragraph.getText();
-                if (text != null && !text.isBlank()) {
-                    parsed.append(text.strip()).append("\n\n");
-                }
-            }
-
-            for (XWPFTable table : document.getTables()) {
-                List<List<String>> rows = new ArrayList<>();
-                int maxColumn = 0;
-                for (XWPFTableRow row : table.getRows()) {
-                    List<String> cells = new ArrayList<>();
-                    for (XWPFTableCell cell : row.getTableCells()) {
-                        cells.add(cell.getText().replaceAll("\\s+", " ").strip());
-                    }
-                    if (cells.stream().anyMatch(value -> !value.isBlank())) {
-                        maxColumn = Math.max(maxColumn, cells.size());
-                        rows.add(cells);
-                    }
-                }
-                if (!rows.isEmpty()) {
-                    if (!parsed.isEmpty()) {
-                        parsed.append("\n");
-                    }
-                    parsed.append(toMarkdownTable(rows, maxColumn)).append("\n\n");
-                }
-            }
-
-            return parsed.toString().strip();
-        } catch (Exception e) {
-            log.warn("DOCX POI parsing failed: {}", e.getMessage());
-            return "";
-        }
-    }
-
-    private String parsePdfContent(byte[] bytes) {
-        try (PDDocument document = PDDocument.load(bytes)) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            stripper.setSortByPosition(true);
-            return cleanParsedContent(stripper.getText(document));
-        } catch (Exception e) {
-            log.warn("PDFBox parsing failed: {}", e.getMessage());
-            return "";
-        }
-    }
-
-    private XWPFDocument openDocxDocument(byte[] bytes) throws IOException {
-        double originalRatio = ZipSecureFile.getMinInflateRatio();
-        ZipSecureFile.setMinInflateRatio(DOCX_MIN_INFLATE_RATIO);
-        try {
-            return new XWPFDocument(new ByteArrayInputStream(bytes));
-        } finally {
-            ZipSecureFile.setMinInflateRatio(originalRatio);
-        }
-    }
-
-    private String parseHwpxContent(byte[] bytes) {
-        try {
-            Map<String, String> entries = unzipXmlEntries(bytes);
-            StringBuilder parsed = new StringBuilder();
-            entries.entrySet().stream()
-                    .filter(entry -> entry.getKey().matches(".*Contents/section\\d+\\.xml") || entry.getKey().matches(".*section\\d+\\.xml"))
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> {
-                        String sectionText = extractXmlText(entry.getValue());
-                        if (!sectionText.isBlank()) {
-                            if (!parsed.isEmpty()) {
-                                parsed.append("\n\n");
-                            }
-                            parsed.append(sectionText);
-                        }
-                    });
-            return parsed.toString().strip();
-        } catch (Exception e) {
-            log.warn("HWPX parsing failed: {}", e.getMessage());
-            return "";
-        }
-    }
-
-    private String toMarkdownTable(List<List<String>> rows, int maxColumn) {
-        if (rows.isEmpty()) {
-            return "";
-        }
-
-        int columnCount = Math.max(1, maxColumn);
-        List<String> headers = normalizeMarkdownHeader(rows.get(0), columnCount);
-        StringBuilder table = new StringBuilder();
-        appendMarkdownRow(table, headers, columnCount);
-        appendMarkdownSeparator(table, columnCount);
-
-        if (rows.size() == 1) {
-            appendMarkdownRow(table, List.of(""), columnCount);
-        } else {
-            for (int i = 1; i < rows.size(); i++) {
-                appendMarkdownRow(table, rows.get(i), columnCount);
-            }
-        }
-        return table.toString().strip();
-    }
-
-    private List<String> normalizeMarkdownHeader(List<String> row, int columnCount) {
-        List<String> headers = new ArrayList<>();
-        for (int i = 0; i < columnCount; i++) {
-            String value = i < row.size() ? row.get(i) : "";
-            headers.add(value.isBlank() ? "Column " + (i + 1) : value);
-        }
-        return headers;
-    }
-
-    private void appendMarkdownRow(StringBuilder table, List<String> row, int columnCount) {
-        table.append("|");
-        for (int i = 0; i < columnCount; i++) {
-            String value = i < row.size() ? row.get(i) : "";
-            table.append(" ").append(escapeMarkdownTableCell(value)).append(" |");
-        }
-        table.append("\n");
-    }
-
-    private void appendMarkdownSeparator(StringBuilder table, int columnCount) {
-        table.append("|");
-        for (int i = 0; i < columnCount; i++) {
-            table.append(" --- |");
-        }
-        table.append("\n");
-    }
-
-    private String escapeMarkdownTableCell(String value) {
-        return value == null ? "" : value.replace("|", "\\|").replace("\n", " ").strip();
-    }
-
-    private String parseXlsxContent(byte[] bytes) {
-        try {
-            Map<String, String> entries = unzipXmlEntries(bytes);
-            List<String> sharedStrings = parseSharedStrings(entries.getOrDefault("xl/sharedStrings.xml", ""));
-            List<String> sheetNames = entries.keySet().stream()
-                    .filter(name -> name.matches("xl/worksheets/sheet\\d+\\.xml"))
-                    .sorted(Comparator.comparingInt(this::extractSheetIndex))
-                    .toList();
-
-            StringBuilder parsed = new StringBuilder();
-            for (String sheetName : sheetNames) {
-                String sheetText = parseXlsxSheetXml(entries.get(sheetName), sharedStrings);
-                if (!sheetText.isBlank()) {
-                    if (!parsed.isEmpty()) {
-                        parsed.append("\n\n");
-                    }
-                    parsed.append("Sheet ").append(extractSheetIndex(sheetName)).append("\n");
-                    parsed.append(sheetText);
-                }
-            }
-            return parsed.toString().strip();
-        } catch (Exception e) {
-            log.warn("XLSX fallback parsing failed: {}", e.getMessage());
-            return "";
-        }
-    }
-
-    private Map<String, String> unzipXmlEntries(byte[] bytes) throws IOException {
-        Map<String, String> entries = new HashMap<>();
-        try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(bytes), StandardCharsets.UTF_8)) {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                if (!entry.isDirectory() && entry.getName().endsWith(".xml")) {
-                    entries.put(entry.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
-                }
-                zip.closeEntry();
-            }
-        }
-        return entries;
-    }
-
-    private int extractSheetIndex(String name) {
-        Matcher matcher = Pattern.compile("sheet(\\d+)\\.xml").matcher(name);
-        return matcher.find() ? Integer.parseInt(matcher.group(1)) : Integer.MAX_VALUE;
-    }
-
-    private List<String> parseSharedStrings(String xml) {
-        List<String> strings = new ArrayList<>();
-        Matcher itemMatcher = Pattern.compile("<si\\b[^>]*>(.*?)</si>", Pattern.DOTALL).matcher(xml);
-        while (itemMatcher.find()) {
-            strings.add(extractXmlText(itemMatcher.group(1)));
-        }
-        return strings;
-    }
-
-    private String parseXlsxSheetXml(String xml, List<String> sharedStrings) {
-        if (xml == null || xml.isBlank()) {
-            return "";
-        }
-
-        List<List<String>> rows = new ArrayList<>();
-        Matcher rowMatcher = Pattern.compile("<row\\b[^>]*>(.*?)</row>", Pattern.DOTALL).matcher(xml);
-        while (rowMatcher.find()) {
-            Map<Integer, String> cells = new HashMap<>();
-            Matcher cellMatcher = Pattern.compile("<c\\b([^>]*)>(.*?)</c>", Pattern.DOTALL).matcher(rowMatcher.group(1));
-            int maxColumn = 0;
-            while (cellMatcher.find()) {
-                String attrs = cellMatcher.group(1);
-                int column = extractCellColumn(attrs);
-                if (column <= 0) {
-                    column = maxColumn + 1;
-                }
-                maxColumn = Math.max(maxColumn, column);
-                cells.put(column, parseXlsxCellValue(attrs, cellMatcher.group(2), sharedStrings));
-            }
-
-            if (!cells.isEmpty()) {
-                List<String> row = new ArrayList<>();
-                for (int i = 1; i <= maxColumn; i++) {
-                    row.add(cells.getOrDefault(i, ""));
-                }
-                rows.add(row);
-            }
-        }
-
-        return rows.stream()
-                .map(row -> String.join("\t", row))
-                .collect(Collectors.joining("\n"));
-    }
-
-    private int extractCellColumn(String attrs) {
-        Matcher matcher = Pattern.compile("\\br=\"([A-Z]+)\\d+\"").matcher(attrs);
-        if (!matcher.find()) {
-            return 0;
-        }
-        int column = 0;
-        for (char ch : matcher.group(1).toCharArray()) {
-            column = column * 26 + (ch - 'A' + 1);
-        }
-        return column;
-    }
-
-    private String parseXlsxCellValue(String attrs, String body, List<String> sharedStrings) {
-        if (body.contains("<is")) {
-            return extractXmlText(body);
-        }
-
-        String rawValue = extractFirstTagText(body, "v");
-        if (rawValue.isBlank()) {
-            return "";
-        }
-        if (attrs.contains("t=\"s\"")) {
-            try {
-                int index = Integer.parseInt(rawValue.strip());
-                return index >= 0 && index < sharedStrings.size() ? sharedStrings.get(index) : "";
-            } catch (NumberFormatException ignored) {
-                return "";
-            }
-        }
-        return decodeXml(rawValue.strip());
-    }
-
-    private String extractXmlText(String xml) {
-        Matcher matcher = Pattern.compile("<t\\b[^>]*>(.*?)</t>", Pattern.DOTALL).matcher(xml);
-        List<String> parts = new ArrayList<>();
-        while (matcher.find()) {
-            parts.add(decodeXml(matcher.group(1)));
-        }
-        if (!parts.isEmpty()) {
-            return String.join("", parts).strip();
-        }
-        return decodeXml(xml.replaceAll("<[^>]+>", "")).strip();
-    }
-
-    private String extractFirstTagText(String xml, String tagName) {
-        Matcher matcher = Pattern.compile("<" + tagName + "\\b[^>]*>(.*?)</" + tagName + ">", Pattern.DOTALL).matcher(xml);
-        return matcher.find() ? decodeXml(matcher.group(1)) : "";
-    }
-
-    private String decodeXml(String text) {
-        return text
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&apos;", "'")
-                .replace("&#39;", "'")
-                .replace("&amp;", "&");
-    }
-
-    private KordocResult runCommand(List<String> command) throws IOException, InterruptedException {
-        return runCommand(command, 60, command.isEmpty() ? "command" : command.get(0));
-    }
-
-    private KordocResult runCommand(List<String> command, long timeoutSeconds, String commandName)
-            throws IOException, InterruptedException {
-        Process process = new ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .start();
-
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-            return new KordocResult(-1, commandName + " timed out after " + timeoutSeconds + " seconds");
-        }
-
-        return new KordocResult(process.exitValue(), output);
-    }
-
-    private void uploadParsedMarkdown(String markdown, String originalName) {
-        try {
-            String markdownName = originalName.replaceFirst("\\.[^.]+$", "") + ".md";
-            String key = s3FileService.uploadText(markdown, markdownName);
-            log.info("Uploaded parsed markdown to S3: {}", key);
-        } catch (Exception e) {
-            log.warn("Parsed markdown S3 upload failed, originalContent will still be saved: {}", e.getMessage());
-        }
-    }
-
-    private String cleanParsedContent(String content) {
-        if (content == null || content.isBlank()) {
-            return "";
-        }
-
-        return content
-                .replaceAll("(?i)<\\s*br\\s*/?\\s*>", "\n")
-                .replaceAll("(?i)</\\s*(p|div|li|h[1-6])\\s*>", "\n")
-                .replaceAll("(?i)</\\s*tr\\s*>", "\n")
-                .replaceAll("(?i)</\\s*(td|th)\\s*>", "\t")
-                .replaceAll("(?is)<\\s*(script|style)\\b[^>]*>.*?</\\s*\\1\\s*>", "")
-                .replaceAll("(?is)<[^>]+>", "")
-                .replace("&nbsp;", " ")
-                .replace("&amp;", "&")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&#39;", "'")
-                .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
-                .replaceAll(" *\\n *", "\n")
-                .replaceAll("\\n{3,}", "\n\n")
-                .strip();
-    }
-
     private FileItem createPreviewFile(MultipartFile file, User user, FileItem originalFile, String parsedContent) {
         if (originalFile == null || file == null || file.isEmpty()) {
             return null;
@@ -2954,7 +2490,7 @@ public class DocumentService {
     }
 
     private String toPreviewHtml(String content) {
-        String cleaned = cleanParsedContent(content);
+        String cleaned = documentParser.cleanParsedContent(content);
         boolean hasTable = cleaned.lines().map(String::strip).anyMatch(this::isMarkdownTableRow);
         String pageSize = hasTable ? "A4 landscape" : "A4";
 
@@ -3241,6 +2777,36 @@ public class DocumentService {
             String originalName) {}
 
     private record DocxTextBlock(String blockId, String text) {}
+
+    private boolean isDocxFile(String lowerName, String contentType) {
+        return lowerName.endsWith(".docx") || contentType.contains("wordprocessingml");
+    }
+
+    private XWPFDocument openDocxDocument(byte[] bytes) throws IOException {
+        double originalRatio = ZipSecureFile.getMinInflateRatio();
+        ZipSecureFile.setMinInflateRatio(DOCX_MIN_INFLATE_RATIO);
+        try {
+            return new XWPFDocument(new ByteArrayInputStream(bytes));
+        } finally {
+            ZipSecureFile.setMinInflateRatio(originalRatio);
+        }
+    }
+
+    private KordocResult runCommand(List<String> command, long timeoutSeconds, String commandName)
+            throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start();
+
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+        if (!finished) {
+            process.destroyForcibly();
+            return new KordocResult(-1, commandName + " timed out after " + timeoutSeconds + " seconds");
+        }
+
+        return new KordocResult(process.exitValue(), output);
+    }
 
     private record AiTextEditPlan(String title, List<Map<String, String>> replacements) {}
 

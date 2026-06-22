@@ -1,18 +1,10 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  FiDownload,
-  FiEdit2,
-  FiFile,
   FiLock,
-  FiLogOut,
   FiMessageCircle,
-  FiPaperclip,
   FiPlus,
   FiRefreshCw,
   FiSearch,
-  FiSend,
-  FiUserPlus,
-  FiUsers,
   FiUnlock,
   FiX,
 } from 'react-icons/fi'
@@ -31,8 +23,10 @@ import {
   uploadChatFile,
 } from '../../api/chatApi'
 import '../../style/chat.css'
+import { session } from '../../utils/storageUtils'
 import ChatRoomWindow from '../chat/ChatRoomWindow'
 
+// 새로고침 후에도 로그인 사용자를 찾을 수 있도록 세션에 저장된 사용자 정보를 읽는다.
 const getStoredUser = () => {
   try {
     return JSON.parse(sessionStorage.getItem('user') || '{}')
@@ -43,6 +37,7 @@ const getStoredUser = () => {
 
 const CHAT_SOCKET_ERROR_MESSAGE = '실시간 채팅 서버에 연결하지 못했습니다. 다른 기능은 정상적으로 사용할 수 있습니다.'
 
+// 현재 실행 환경을 기준으로 백엔드 WebSocket 주소를 만든다.
 const getBackendWsBase = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const host = window.location.hostname
@@ -77,11 +72,13 @@ const formatChatTime = value => {
   }).format(date)
 }
 
+// 서버와 임시 메시지 모두 비교할 수 있도록 메시지 ID 형식을 통일한다.
 const normalizeMessage = message => ({
   ...message,
   messageId: message.messageId ?? `${message.roomId || 'temp'}-${message.sentAt || Date.now()}-${message.content || message.fileName || ''}`,
 })
 
+// WebSocket 수신과 화면 선반영이 겹쳐 같은 메시지가 두 번 표시되는 것을 막는다.
 const isSameMessage = (left, right) => {
   if (left.messageId === right.messageId) return true
 
@@ -93,6 +90,7 @@ const isSameMessage = (left, right) => {
     && Math.abs(leftTime - rightTime) <= 1500
 }
 
+// API마다 다르게 내려올 수 있는 채팅방 ID 필드를 숫자 하나로 통일한다.
 const normalizeRoomId = value => {
   const roomId = typeof value === 'object'
     ? value?.roomId ?? value?.id ?? value?.chatRoomId ?? value?.data
@@ -111,6 +109,7 @@ const getChatRequestErrorMessage = error => {
   return '채팅 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
 }
 
+// 사용자 직급에 맞는 프로필 색상 CSS 클래스를 반환한다.
 const getPositionAvatarClass = position => {
   const normalizedPosition = String(position || '').replace(/\s/g, '')
 
@@ -138,6 +137,7 @@ const POSITION_AVATAR_COLORS = {
   'position-default': '#788894',
 }
 
+// 그룹 채팅 프로필 원을 멤버 직급 비율에 따라 여러 색으로 나눈다.
 const getGroupAvatarBackground = (members, memberCandidates, currentUser) => {
   const activeMembers = Array.isArray(members) ? members : []
   if (activeMembers.length === 0) return undefined
@@ -167,6 +167,7 @@ const getGroupAvatarBackground = (members, memberCandidates, currentUser) => {
   return `conic-gradient(${segments.join(', ')})`
 }
 
+// 과거 메시지와 실시간 메시지를 합치면서 중복을 제거하고 시간순으로 정렬한다.
 const mergeMessages = messages => {
   const merged = []
   messages.forEach(message => {
@@ -182,6 +183,7 @@ const sortOldestFirst = messages => [...messages]
   .sort((a, b) => new Date(a.sentAt || 0).getTime() - new Date(b.sentAt || 0).getTime())
   .map(normalizeMessage)
 
+// 1:1 채팅은 상대 이름, 그룹 채팅은 사용자가 지정한 방 이름을 표시한다.
 const getRoomDisplayName = (room, currentEmpNo) => {
   const activeMembers = Array.isArray(room.members) ? room.members : []
   const visibleMembers = activeMembers.filter(member => member.empNo !== currentEmpNo)
@@ -194,29 +196,7 @@ const getRoomDisplayName = (room, currentEmpNo) => {
   return room.name || '채팅방'
 }
 
-const getCompactRoomHeaderName = (room, members = [], currentEmpNo) => {
-  const roomName = room?.name?.trim()
-  const activeMembers = Array.isArray(members) && members.length > 0
-    ? members
-    : Array.isArray(room?.members)
-      ? room.members
-      : []
-  const memberNames = activeMembers
-    .filter(member => member.empNo !== currentEmpNo)
-    .map(member => member.name)
-    .filter(Boolean)
-  const commaNames = roomName?.includes(',')
-    ? roomName.split(',').map(name => name.trim()).filter(Boolean)
-    : []
-  const names = commaNames.length > 0 ? commaNames : memberNames
-
-  if (names.length > 2 && (!roomName || commaNames.length > 0)) {
-    return `${names.slice(0, 2).join(', ')} ...`
-  }
-
-  return roomName || names.join(', ') || '채팅방'
-}
-
+// 중복된 1:1 방을 정리하고 최근 메시지가 있는 채팅방부터 정렬한다.
 const normalizeChatRooms = (rooms, currentEmpNo) => {
   const roomMap = new Map()
 
@@ -281,6 +261,7 @@ export default function Chat({
   const currentUser = user || storedUser
   const currentEmpNo = currentUser?.empNo
 
+  // 채팅방, 메시지, 멤버처럼 서버에서 받아 화면 전체가 공유하는 데이터 상태이다.
   const [rooms, setRooms] = useState([])
   const [messagesByRoom, setMessagesByRoom] = useState({})
   const [messagePageByRoom, setMessagePageByRoom] = useState({})
@@ -288,7 +269,9 @@ export default function Chat({
   const [loadingOlderRoomIds, setLoadingOlderRoomIds] = useState([])
   const [uploadingRoomIds, setUploadingRoomIds] = useState([])
   const [roomMembersByRoom, setRoomMembersByRoom] = useState({})
-  const [openRoomIds, setOpenRoomIds] = useState([])
+  const [openRoomIds, setOpenRoomIds] = useState(() => session.getChatOpenRoomIds())
+
+  // 채팅방 생성/초대 모달과 각 비동기 작업의 화면 상태이다.
   const [leavingRoomIds, setLeavingRoomIds] = useState([])
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [inviteRoomId, setInviteRoomId] = useState(null)
@@ -300,6 +283,8 @@ export default function Chat({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [socketStatus, setSocketStatus] = useState('disconnected')
+
+  // PC 메신저처럼 채팅 목록 창을 이동하거나 크기를 조절하기 위한 상태이다.
   const [isWindowPositionLocked, setIsWindowPositionLocked] = useState(false)
   const [windowPosition, setWindowPosition] = useState(getInitialWindowPosition)
   const [windowSize, setWindowSize] = useState(() => ({
@@ -316,10 +301,13 @@ export default function Chat({
     onUnreadCountChange?.(totalUnreadCount)
   }, [onUnreadCountChange, totalUnreadCount])
 
+  // WebSocket 콜백은 오래 유지되므로 최신 상태를 참조할 값은 ref에도 보관한다.
   const stompClientRef = useRef(null)
   const chatWindowRef = useRef(null)
   const subscribedRoomsRef = useRef(new Map())
-  const openRoomIdsRef = useRef([])
+  const openRoomIdsRef = useRef(openRoomIds)
+  const restoredOpenRoomIdsRef = useRef(new Set(openRoomIds))
+  const hydratedOpenRoomIdsRef = useRef(new Set())
   const roomsRef = useRef([])
   const isWindowOpenRef = useRef(isWindowOpen)
   const openInvitedRoomRef = useRef(null)
@@ -327,6 +315,7 @@ export default function Chat({
   const onNotificationRef = useRef(onNotification)
   useEffect(() => { onNotificationRef.current = onNotification }, [onNotification])
 
+  // REST API로 사용자가 참여 중인 채팅방 목록을 다시 불러온다.
   const loadRooms = useCallback(async ({ showLoading = false } = {}) => {
     if (showLoading) setLoading(true)
     setError('')
@@ -351,6 +340,7 @@ export default function Chat({
     }
   }, [currentEmpNo])
 
+  // 선택한 채팅방의 최신 메시지 30개를 조회하고 읽음 처리한다.
   const loadMessages = useCallback(async roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
     if (!normalizedRoomId) return
@@ -371,6 +361,7 @@ export default function Chat({
     }
   }, [loadRooms])
 
+  // 메시지 목록 위쪽의 "이전 메시지" 버튼에서 다음 과거 페이지를 불러온다.
   const loadOlderMessages = async roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
     if (!normalizedRoomId || loadingOlderRoomIds.includes(normalizedRoomId)) return
@@ -397,6 +388,7 @@ export default function Chat({
     }
   }
 
+  // 방 이름, 멤버 목록, 직급별 프로필 색상에 필요한 참여자 정보를 조회한다.
   const loadRoomMembers = useCallback(async roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
     if (!normalizedRoomId) return []
@@ -412,6 +404,7 @@ export default function Chat({
     }
   }, [roomMembersByRoom])
 
+  // 채팅방별 STOMP 토픽을 한 번만 구독하고 새 메시지를 화면과 토스트에 반영한다.
   const subscribeRoom = useCallback(roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
     if (!normalizedRoomId || subscribedRoomsRef.current.has(normalizedRoomId)) return
@@ -477,6 +470,7 @@ export default function Chat({
     subscribedRoomsRef.current.set(normalizedRoomId, subscription)
   }, [currentEmpNo, loadRooms, onOpenChatWindow])
 
+  // SockJS 연결 위에 STOMP 클라이언트를 생성하고 개인 알림/초대 큐를 구독한다.
   const connectStompSocket = useCallback(async () => {
     if (stompClientRef.current?.active) return
 
@@ -573,6 +567,7 @@ export default function Chat({
     }
   }, [currentEmpNo, loadRooms, subscribeRoom])
 
+  // 컴포넌트가 열릴 때 REST 목록 조회와 WebSocket 연결을 동시에 시작한다.
   useEffect(() => {
     const subscriptions = subscribedRoomsRef.current
 
@@ -592,8 +587,10 @@ export default function Chat({
     }
   }, [connectStompSocket, loadRooms])
 
+  // F5 이후에도 열어둔 개별 채팅방을 복원할 수 있도록 방 ID를 세션에 저장한다.
   useEffect(() => {
     openRoomIdsRef.current = openRoomIds
+    session.setChatOpenRoomIds(openRoomIds)
   }, [openRoomIds])
 
   useEffect(() => {
@@ -611,6 +608,7 @@ export default function Chat({
 
   const filteredRooms = rooms
 
+  // 채팅방을 클릭하면 팝업을 열고 멤버, 메시지, 실시간 구독을 준비한다.
   const openRoom = useCallback(async room => {
     const roomId = normalizeRoomId(room.roomId ?? room)
     if (!roomId) {
@@ -633,6 +631,22 @@ export default function Chat({
     openInvitedRoomRef.current = openRoom
   }, [openRoom])
 
+  // 새로고침 전에 열려 있던 방은 목록 조회가 끝난 뒤 메시지와 멤버를 다시 불러온다.
+  useEffect(() => {
+    if (rooms.length === 0 || restoredOpenRoomIdsRef.current.size === 0) return
+
+    restoredOpenRoomIdsRef.current.forEach(roomId => {
+      const roomExists = rooms.some(room => normalizeRoomId(room.roomId) === roomId)
+      if (!roomExists || hydratedOpenRoomIdsRef.current.has(roomId)) return
+
+      hydratedOpenRoomIdsRef.current.add(roomId)
+      subscribeRoom(roomId)
+      loadRoomMembers(roomId)
+      loadMessages(roomId)
+    })
+  }, [loadMessages, loadRoomMembers, rooms, subscribeRoom])
+
+  // 조직도에서 채팅 버튼을 누르면 기존 1:1 방을 찾거나 새 방을 만든 뒤 바로 연다.
   useEffect(() => {
     const requestId = contactRequest?.requestId
     const contact = contactRequest?.contact
@@ -691,12 +705,14 @@ export default function Chat({
     openRoom,
   ])
 
+  // 창닫기는 방을 나가는 것이 아니라 화면에서 해당 팝업만 닫는다.
   const closeRoom = roomId => {
     const normalizedRoomId = normalizeRoomId(roomId)
     if (!normalizedRoomId) return
     setOpenRoomIds(prev => prev.filter(id => id !== normalizedRoomId))
   }
 
+  // 서로 다른 사용자 API 응답을 채팅 멤버 선택창에서 쓰는 공통 구조로 바꾼다.
   const normalizeCandidate = useCallback(candidate => {
     const primaryDepartment = candidate.departments?.[0] || {}
     return {
@@ -714,15 +730,21 @@ export default function Chat({
         || primaryDepartment.position
         || primaryDepartment.positionName
         || '',
+      roleLevel: Number(candidate.roleLevel ?? candidate.role?.roleLevel ?? 0),
     }
   }, [])
 
+  // 초대 가능한 활성 사용자를 조회하고 본인과 최고관리자를 목록에서 제외한다.
   const loadMemberCandidates = useCallback(async ({ silent = false } = {}) => {
     try {
       const data = await getChatMemberCandidates()
       const candidates = data
         .map(normalizeCandidate)
-        .filter(candidate => candidate.empNo && candidate.empNo !== currentEmpNo)
+        .filter(candidate => (
+          candidate.empNo
+          && candidate.empNo !== currentEmpNo
+          && candidate.roleLevel < 100
+        ))
       setMemberCandidates(candidates)
     } catch (err) {
       console.error('채팅 인원 목록 조회 실패', err)
@@ -792,6 +814,7 @@ export default function Chat({
 
   const inviteRoom = rooms.find(room => normalizeRoomId(room.roomId) === normalizeRoomId(inviteRoomId))
 
+  // 선택 인원이 1명이면 1:1 방, 여러 명이면 그룹 방을 만들며 기존 방에서는 멤버를 초대한다.
   const submitMemberModal = async event => {
     event.preventDefault()
     const empNos = getInputEmpNos()
@@ -830,6 +853,7 @@ export default function Chat({
     }
   }
 
+  // 방 이름 변경 API를 호출한 뒤 목록의 이름도 즉시 갱신한다.
   const renameRoom = async room => {
     const roomId = normalizeRoomId(room.roomId)
     if (!roomId) return
@@ -855,6 +879,7 @@ export default function Chat({
     }
   }
 
+  // 메시지는 REST가 아니라 STOMP의 /app/chat.send 경로로 전송한다.
   const sendMessage = (roomId, payload) => {
     const client = stompClientRef.current
     const sent = Boolean(client?.connected)
@@ -883,6 +908,7 @@ export default function Chat({
     if (!sent) setError('실시간 연결이 아직 준비되지 않았습니다.')
   }
 
+  // 파일을 먼저 REST API로 업로드한 뒤 반환된 파일 정보를 채팅 메시지로 전송한다.
   const uploadFile = async (roomId, file) => {
     const normalizedRoomId = normalizeRoomId(roomId)
     if (!normalizedRoomId || uploadingRoomIds.includes(normalizedRoomId)) return
@@ -906,6 +932,7 @@ export default function Chat({
     }
   }
 
+  // 서버에서 파일 Blob을 받아 임시 링크를 만들어 브라우저 다운로드를 실행한다.
   const downloadFile = async (fileUrl, fileName) => {
     if (!fileUrl) {
       setError('다운로드할 파일 정보가 없습니다.')
@@ -928,6 +955,7 @@ export default function Chat({
     }
   }
 
+  // 방 나가기는 서버 참여 상태를 변경하고 구독, 메시지, 멤버 캐시까지 정리한다.
   const leaveRoom = async roomId => {
     if (!window.confirm('채팅방에서 나가시겠습니까?')) return
 
@@ -1015,6 +1043,7 @@ export default function Chat({
     .filter(room => normalizeRoomId(room.roomId))
     .slice(-4)
 
+  // 채팅 목록 창의 제목 영역을 드래그하면 브라우저 화면 안에서 위치를 이동한다.
   const startWindowDrag = useCallback(event => {
     if (
       !windowMode
@@ -1050,6 +1079,7 @@ export default function Chat({
     window.addEventListener('mouseup', handleMouseUp)
   }, [isWindowPositionLocked, windowMode, windowPosition])
 
+  // 채팅 목록 창의 변과 모서리를 드래그해 너비와 높이를 조절한다.
   const startWindowResize = useCallback((event, direction) => {
     if (!windowMode || event.button !== 0) return
 
@@ -1102,6 +1132,7 @@ export default function Chat({
     window.addEventListener('mouseup', handleMouseUp)
   }, [windowMode, windowPosition, windowSize])
 
+  // 채팅 목록, 멤버 선택 모달, 열려 있는 개별 채팅방 팝업을 한 화면에 렌더링한다.
   return (
     <div
       ref={chatWindowRef}

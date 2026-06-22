@@ -41,7 +41,12 @@ export default function SignaturePage({ signatures, signatureFile, setSignatureF
   const getPos = (e, canvas) => {
     const rect = canvas.getBoundingClientRect()
     const src = e.touches ? e.touches[0] : e
-    return { x: src.clientX - rect.left, y: src.clientY - rect.top }
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    return {
+      x: (src.clientX - rect.left) * scaleX,
+      y: (src.clientY - rect.top) * scaleY,
+    }
   }
 
   const startDraw = (e) => {

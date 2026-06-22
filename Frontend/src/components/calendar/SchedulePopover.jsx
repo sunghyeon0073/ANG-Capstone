@@ -7,6 +7,9 @@ export default function SchedulePopover({ anchor, setAnchor, schedule, formData,
   if (!anchor || !schedule) return null
 
   const handlePointerDown = (e) => {
+    // 버튼이나 입력창 클릭 시에는 드래그를 시작하지 않음
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) return
+
     const header = e.target.closest('.popover-header')
     if (header) {
       dragStateRef.current = {

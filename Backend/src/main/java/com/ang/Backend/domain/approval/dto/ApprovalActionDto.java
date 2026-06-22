@@ -7,6 +7,7 @@ public class ApprovalActionDto {
     @Getter
     public static class ApproveRequest {
         private String comment;
+        private Long signatureId;
     }
 
     @Getter

@@ -9,6 +9,7 @@ import com.ang.Backend.domain.notification.service.NotificationService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -22,26 +23,26 @@ public class NotificationController {
     private final UserRepository userRepository;
 
     @GetMapping
-    public ApiResponse<PageResult<NotificationDto.Response>> getNotifications(
+    public ResponseEntity<ApiResponse<PageResult<NotificationDto.Response>>> getNotifications(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ApiResponse.ok(notificationService.getNotifications(resolveUser(userDetails), page, size));
+        return ResponseEntity.ok(ApiResponse.success(notificationService.getNotifications(resolveUser(userDetails), page, size)));
     }
 
     @PostMapping("/{id}/read")
-    public ApiResponse<Void> markAsRead(
+    public ResponseEntity<ApiResponse<Void>> markAsRead(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
         notificationService.markAsRead(id, resolveUser(userDetails));
-        return ApiResponse.ok("읽음 처리되었습니다.");
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PostMapping("/read-all")
-    public ApiResponse<Void> markAllAsRead(
+    public ResponseEntity<ApiResponse<Void>> markAllAsRead(
             @AuthenticationPrincipal UserDetails userDetails) {
         notificationService.markAllAsRead(resolveUser(userDetails));
-        return ApiResponse.ok("전체 읽음 처리되었습니다.");
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     private User resolveUser(UserDetails userDetails) {

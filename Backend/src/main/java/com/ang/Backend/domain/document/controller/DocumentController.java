@@ -7,6 +7,7 @@ import com.ang.Backend.domain.document.dto.DocumentDto;
 import com.ang.Backend.domain.document.service.DocumentService;
 import com.ang.Backend.domain.user.entity.User;
 import com.ang.Backend.domain.user.repository.UserRepository;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -30,16 +31,16 @@ public class DocumentController {
     private final UserRepository userRepository;
 
     @PostMapping("/sync")
-    public ApiResponse<Void> syncFiles() {
+    public ResponseEntity<ApiResponse<Void>> syncFiles() {
         documentService.manualSync();
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PostMapping
-    public ApiResponse<Long> create(@RequestParam String title,
-                                    @RequestPart MultipartFile file,
-                                    @RequestParam(required = false) String targetScopeId,
-                                    @AuthenticationPrincipal UserDetails userDetails) throws Exception {
+    public ResponseEntity<ApiResponse<DocumentDto.Response>> create(@RequestParam String title,
+                                                   @RequestPart MultipartFile file,
+                                                   @RequestParam(required = false) String targetScopeId,
+                                                   @AuthenticationPrincipal UserDetails userDetails) throws Exception {
         User user = null;
         if (userDetails != null && userDetails.getUsername() != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
@@ -48,40 +49,40 @@ public class DocumentController {
         Integer scopeId = (targetScopeId != null && !targetScopeId.isEmpty())
                 ? Integer.parseInt(targetScopeId) : null;
 
-        return ApiResponse.ok(documentService.create(title, file, user, scopeId));
+        return ResponseEntity.ok(ApiResponse.success(documentService.create(title, file, user, scopeId)));
     }
 
     @GetMapping
-    public ApiResponse<DocumentDto.PagedResponse> getDocuments(
+    public ResponseEntity<ApiResponse<DocumentDto.PagedResponse>> getDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         User user = null;
         if (userDetails != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.getAllDocuments(user, pageable));
+        return ResponseEntity.ok(ApiResponse.success(documentService.getAllDocuments(user, pageable)));
     }
 
     @PostMapping("/ai-generate")
-    public ApiResponse<DocumentDto.Response> generateWithAi(
-            @RequestBody DocumentDto.AiGenerateRequest request,
+    public ResponseEntity<ApiResponse<DocumentDto.Response>> generateWithAi(
+            @Valid @RequestBody DocumentDto.AiGenerateRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         User user = null;
         if (userDetails != null && userDetails.getUsername() != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.generateWithAi(
+        return ResponseEntity.ok(ApiResponse.success(documentService.generateWithAi(
                 request.getPrompt(),
                 user,
                 request.getSourceDocId(),
                 request.getAttachedDocIds(),
                 request.getOutputFormat(),
                 request.getMode()
-        ));
+        )));
     }
 
     @GetMapping("/my")
-    public ApiResponse<DocumentDto.PagedResponse> getMyDocuments(
+    public ResponseEntity<ApiResponse<DocumentDto.PagedResponse>> getMyDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(required = false) String keyword,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
@@ -89,31 +90,31 @@ public class DocumentController {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getMyDocuments(user, keyword, pageable));
+        return ResponseEntity.ok(ApiResponse.success(documentService.getMyDocuments(user, keyword, pageable)));
     }
 
     @GetMapping("/favorites")
-    public ApiResponse<DocumentDto.PagedResponse> getFavoriteDocuments(
+    public ResponseEntity<ApiResponse<DocumentDto.PagedResponse>> getFavoriteDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 20) Pageable pageable) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getFavoriteDocuments(user, pageable));
+        return ResponseEntity.ok(ApiResponse.success(documentService.getFavoriteDocuments(user, pageable)));
     }
 
     @PostMapping("/{id}/favorite")
-    public ApiResponse<Boolean> toggleFavorite(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Boolean>> toggleFavorite(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.toggleFavorite(id, user));
+        return ResponseEntity.ok(ApiResponse.success(documentService.toggleFavorite(id, user)));
     }
 
     @GetMapping("/department")
-    public ApiResponse<DocumentDto.PagedResponse> getDepartmentDocuments(
+    public ResponseEntity<ApiResponse<DocumentDto.PagedResponse>> getDepartmentDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestParam(required = false) Integer scopeId,
             @RequestParam(required = false) String keyword,
@@ -122,27 +123,27 @@ public class DocumentController {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getDepartmentDocuments(user, scopeId, keyword, pageable));
+        return ResponseEntity.ok(ApiResponse.success(documentService.getDepartmentDocuments(user, scopeId, keyword, pageable)));
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<DocumentDto.Response> getDocument(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<DocumentDto.Response>> getDocument(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         User user = null;
         if (userDetails != null) {
             user = userRepository.findByEmpNo(userDetails.getUsername()).orElse(null);
         }
-        return ApiResponse.ok(documentService.getDocument(id, user));
+        return ResponseEntity.ok(ApiResponse.success(documentService.getDocument(id, user)));
     }
 
     @GetMapping("/{id}/original-content")
-    public ApiResponse<String> getOriginalContent(@PathVariable Long id) {
-        return ApiResponse.ok("요청이 성공적으로 처리되었습니다.", documentService.getOriginalContent(id));
+    public ResponseEntity<ApiResponse<String>> getOriginalContent(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("요청이 성공적으로 처리되었습니다.", documentService.getOriginalContent(id)));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<Void> update(@PathVariable Long id, @RequestBody DocumentDto.UpdateRequest dto) {
+    public ResponseEntity<ApiResponse<Void>> update(@PathVariable Long id, @RequestBody DocumentDto.UpdateRequest dto) {
         documentService.update(id, dto);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PostMapping("/{id}/hwp-replace")
@@ -170,43 +171,43 @@ public class DocumentController {
     }
 
     @GetMapping("/trash")
-    public ApiResponse<DocumentDto.PagedResponse> getTrashDocuments(
+    public ResponseEntity<ApiResponse<DocumentDto.PagedResponse>> getTrashDocuments(
             @AuthenticationPrincipal UserDetails userDetails,
             @PageableDefault(size = 20, sort = "deletedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
-        return ApiResponse.ok(documentService.getTrashDocuments(user, pageable));
+        return ResponseEntity.ok(ApiResponse.success(documentService.getTrashDocuments(user, pageable)));
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.delete(id, user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @DeleteMapping("/{id}/permanent")
-    public ApiResponse<Void> permanentDelete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Void>> permanentDelete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.permanentDelete(id, user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PutMapping("/{id}/restore")
-    public ApiResponse<Void> restore(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
+    public ResponseEntity<ApiResponse<Void>> restore(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
         if (userDetails == null) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         User user = userRepository.findByEmpNo(userDetails.getUsername()).orElseThrow();
         documentService.restore(id, user);
-        return ApiResponse.ok(null);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

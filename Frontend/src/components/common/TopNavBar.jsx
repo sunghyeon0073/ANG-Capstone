@@ -2,6 +2,7 @@ import '../../style/navigation.css'
 import { useEffect, useRef, useState } from 'react'
 import { FiFileText, FiCheckCircle, FiCalendar, FiFolder, FiMail, FiMessageCircle, FiUsers, FiBell, FiShield, FiX, FiCheck } from 'react-icons/fi'
 import { getUserProfileImage } from '../../api/userApi'
+import { session } from '../../utils/storageUtils'
 
 const TYPE_LABEL = { BOARD: '게시판', MAIL: '메일', APPROVAL: '전자결재', CHAT: '채팅', AI: 'AI 예약' }
 const TYPE_COLOR = { BOARD: '#3b82f6', MAIL: '#10b981', APPROVAL: '#f59e0b', CHAT: '#8b5cf6', AI: '#ec4899' }
@@ -32,14 +33,17 @@ export default function TopNavBar({
   onNotificationNavigate,
 }) {
   const [profileImageSrc, setProfileImageSrc] = useState('')
-  const [showProfileMenu, setShowProfileMenu] = useState(false)
-  const [showNotifications, setShowNotifications] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(
+    () => session.isProfileMenuOpen()
+  )
+  const [showNotifications, setShowNotifications] = useState(
+    () => session.isNotificationPanelOpen()
+  )
   const notificationPanelRef = useRef(null)
   const notificationBtnRef = useRef(null)
 
   useEffect(() => {
     if (!user?.id || !user.profileImageUrl) {
-      setProfileImageSrc('')
       return undefined
     }
 
@@ -73,6 +77,14 @@ export default function TopNavBar({
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [showNotifications])
+
+  useEffect(() => {
+    session.setNotificationPanelOpen(showNotifications)
+  }, [showNotifications])
+
+  useEffect(() => {
+    session.setProfileMenuOpen(showProfileMenu)
+  }, [showProfileMenu])
 
   const menuItems = [
     { id: 'document', label: '문서작성', icon: FiFileText },

@@ -55,6 +55,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
   const [toast, setToast] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [internalCategory, setInternalCategory] = useState(currentSubPage)
+  const [totalCount, setTotalCount] = useState(0)
   const itemsPerPage = maxItems != null ? maxItems : 13
   const fileInputRef = useRef(null)
 
@@ -65,7 +66,9 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
     try {
       const type = categoryToType(catId ?? internalCategory)
       const res = await getBoardPosts(type)
-      setPosts(res.data?.data ?? [])
+      const data = res.data?.data ?? []
+      setPosts(data)
+      if (!type) setTotalCount(data.length)
     } catch {
       setPosts([])
     } finally {
@@ -78,6 +81,10 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
     loadPosts(currentSubPage)
     setMode('list')
     setSelectedPost(null)
+    // 전체 탭이 아닌 경우에도 전체 게시글 수 유지
+    if (currentSubPage !== 'board') {
+      getBoardPosts(null).then(res => setTotalCount((res.data?.data ?? []).length)).catch(() => {})
+    }
   }, [currentSubPage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setCurrentPage(1) }, [internalCategory, q])
@@ -224,6 +231,9 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
     setMode('list')
     setSelectedPost(null)
     loadPosts(catId)
+    if (catId !== 'board') {
+      getBoardPosts(null).then(res => setTotalCount((res.data?.data ?? []).length)).catch(() => {})
+    }
   }
 
   const isMyPost = (post) => post.authorId === me?.id
@@ -305,7 +315,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
                 onClick={() => handleCategoryChange(cat.id)}
               >
                 {cat.label}
-                {cat.id === 'board' && <span className="board-tab-count">{posts.length}</span>}
+                {cat.id === 'board' && <span className="board-tab-count">{totalCount}</span>}
               </button>
             ))}
           </div>

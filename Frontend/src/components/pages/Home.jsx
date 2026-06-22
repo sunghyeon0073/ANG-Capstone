@@ -780,182 +780,183 @@ export default function Home({ currentSubPage, onSubPageChange }) {
           <ReserveList onSubPageChange={onSubPageChange} />
         ) : (
           <div className="home-page">
-      <div className="home-reserve-card">
-        <div className="home-reserve-header">
-          <div>
-            <div className="home-reserve-title">예약 발송</div>
-            <div className="home-reserve-meta">메일과 채팅 메시지를 원하는 시간에 자동 발송합니다.</div>
-          </div>
-          <button type="button" className="btn btn-secondary" onClick={() => onSubPageChange?.('home-reserve-list')}>
-            <FiClock size={13} /> 예약 목록
-          </button>
-        </div>
+            <section className="home-panel home-calendar-panel">
+              <HomeCalendar onNavigateToCalendar={() => onSubPageChange?.('calendar')} />
+            </section>
 
-        {done ? (
-          <div className="home-reserve-done">
-            <div className="home-reserve-done-icon"><FiCheck size={28} /></div>
-            <p className="home-reserve-done-title">예약이 등록됐습니다.</p>
-            <p className="home-reserve-done-preview">{done.preview}</p>
-            <div className="home-reserve-done-actions">
-              <button type="button" className="btn btn-primary" onClick={reset}>새 예약</button>
-              <button type="button" className="btn btn-secondary" onClick={() => onSubPageChange?.('home-reserve-list')}>
-                예약 목록
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="home-reserve-steps">
-              {STEPS.map((label, i) => (
-                <div key={label} className={`home-reserve-step ${i === step ? 'is-active' : ''} ${i < step ? 'is-done' : ''}`}>
-                  <div className="home-reserve-step-dot">
-                    {i < step ? <FiCheck size={10} /> : <span>{i + 1}</span>}
+            <div className="home-dashboard-grid">
+              <div className="home-reserve-card">
+                <div className="home-reserve-header">
+                  <div>
+                    <div className="home-reserve-title">예약 발송</div>
+                    <div className="home-reserve-meta">메일과 채팅 메시지를 원하는 시간에 자동 발송합니다.</div>
                   </div>
-                  <span className="home-reserve-step-label">{label}</span>
+                  <button type="button" className="btn btn-secondary" onClick={() => onSubPageChange?.('home-reserve-list')}>
+                    <FiClock size={13} /> 예약 목록
+                  </button>
                 </div>
-              ))}
-            </div>
 
-            <div className="home-reserve-body">
-              {step === 0 && (
-                <div className="home-reserve-step-content">
-                  <label className="home-reserve-label"><FiUser size={13} /> 수신자</label>
-                  <RecipientSelector selected={recipients} onChange={setRecipients} />
-                  {recipients.length === 0 && (
-                    <p className="home-reserve-hint">한 명 이상 선택해야 다음 단계로 넘어갈 수 있습니다.</p>
-                  )}
-                </div>
-              )}
-
-              {step === 1 && (
-                <div className="home-reserve-step-content">
-                  <label className="home-reserve-label">
-                    <FiMail size={13} /> 제목
-                    <span className="home-reserve-optional">선택</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="home-reserve-input"
-                    placeholder={channel === 'mail' ? '메일 제목을 입력하세요' : '채팅은 제목 없이 보낼 수 있습니다'}
-                    value={subject}
-                    onChange={e => setSubject(e.target.value)}
-                    maxLength={200}
-                    autoFocus
-                  />
-                </div>
-              )}
-
-              {step === 2 && (
-                <div className="home-reserve-step-content">
-                  <label className="home-reserve-label"><FiMessageSquare size={13} /> 본문</label>
-                  <textarea
-                    className="home-reserve-textarea"
-                    placeholder="보낼 내용을 입력하세요"
-                    value={body}
-                    onChange={e => setBody(e.target.value)}
-                    rows={5}
-                    autoFocus
-                  />
-                </div>
-              )}
-
-              {step === 3 && (
-                <div className="home-reserve-step-content">
-                  <label className="home-reserve-label"><FiSend size={13} /> 전송 방식</label>
-                  <div className="home-reserve-channel-group">
-                    <button type="button"
-                      className={`home-reserve-channel-btn ${channel === 'chat' ? 'is-selected' : ''}`}
-                      onClick={() => setChannel('chat')}>
-                      <FiMessageSquare size={22} />
-                      <span>채팅</span>
-                    </button>
-                    <button type="button"
-                      className={`home-reserve-channel-btn ${channel === 'mail' ? 'is-selected' : ''}`}
-                      onClick={() => setChannel('mail')}>
-                      <FiMail size={22} />
-                      <span>메일</span>
-                    </button>
+                {done ? (
+                  <div className="home-reserve-done">
+                    <div className="home-reserve-done-icon"><FiCheck size={28} /></div>
+                    <p className="home-reserve-done-title">예약이 등록됐습니다.</p>
+                    <p className="home-reserve-done-preview">{done.preview}</p>
+                    <div className="home-reserve-done-actions">
+                      <button type="button" className="btn btn-primary" onClick={reset}>새 예약</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => onSubPageChange?.('home-reserve-list')}>
+                        예약 목록
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <>
+                    <div className="home-reserve-steps">
+                      {STEPS.map((label, i) => (
+                        <div key={label} className={`home-reserve-step ${i === step ? 'is-active' : ''} ${i < step ? 'is-done' : ''}`}>
+                          <div className="home-reserve-step-dot">
+                            {i < step ? <FiCheck size={10} /> : <span>{i + 1}</span>}
+                          </div>
+                          <span className="home-reserve-step-label">{label}</span>
+                        </div>
+                      ))}
+                    </div>
 
-              {step === 4 && (
-                <div className="home-reserve-step-content">
-                  <label className="home-reserve-label">
-                    <FiPaperclip size={13} /> 파일 첨부
-                    <span className="home-reserve-optional">메일 전용</span>
-                  </label>
-                  <DocumentAttachmentPicker selectedDocs={selectedDocs} onChange={setSelectedDocs} />
-                  {channel !== 'mail' && selectedDocs.length > 0 && (
-                    <p className="home-reserve-hint">현재 채팅 예약은 첨부 발송을 지원하지 않아, 메일 방식일 때만 첨부됩니다.</p>
-                  )}
-                </div>
-              )}
+                    <div className="home-reserve-body">
+                      {step === 0 && (
+                        <div className="home-reserve-step-content">
+                          <label className="home-reserve-label"><FiUser size={13} /> 수신자</label>
+                          <RecipientSelector selected={recipients} onChange={setRecipients} />
+                          {recipients.length === 0 && (
+                            <p className="home-reserve-hint">한 명 이상 선택해야 다음 단계로 넘어갈 수 있습니다.</p>
+                          )}
+                        </div>
+                      )}
 
-              {step === 5 && (
-                <div className="home-reserve-step-content">
-                  <label className="home-reserve-label">
-                    <FiClock size={13} /> 예약 시간
-                    <span className="home-reserve-optional">비우면 즉시 발송</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    className="home-reserve-input"
-                    value={scheduledAt}
-                    onChange={e => setScheduledAt(e.target.value)}
-                    min={minScheduleAt}
-                    autoFocus
-                  />
+                      {step === 1 && (
+                        <div className="home-reserve-step-content">
+                          <label className="home-reserve-label">
+                            <FiMail size={13} /> 제목
+                            <span className="home-reserve-optional">선택</span>
+                          </label>
+                          <input
+                            type="text"
+                            className="home-reserve-input"
+                            placeholder={channel === 'mail' ? '메일 제목을 입력하세요' : '채팅은 제목 없이 보낼 수 있습니다'}
+                            value={subject}
+                            onChange={e => setSubject(e.target.value)}
+                            maxLength={200}
+                            autoFocus
+                          />
+                        </div>
+                      )}
 
-                  <div className="home-reserve-summary">
-                    <p><strong>수신자</strong>{recipients.map(u => u.name).join(', ')}</p>
-                    {subject && <p><strong>제목</strong>{subject}</p>}
-                    <p><strong>본문</strong>{body.length > 80 ? `${body.slice(0, 80)}...` : body}</p>
-                    <p><strong>방식</strong>{channel === 'mail' ? '메일' : '채팅'}</p>
-                    <p><strong>첨부</strong>{channel === 'mail' && selectedDocs.length > 0 ? `${selectedDocs.length}개 문서` : '없음'}</p>
-                    <p><strong>시간</strong>{scheduledAt ? new Date(scheduledAt).toLocaleString('ko-KR') : '즉시 발송'}</p>
-                  </div>
+                      {step === 2 && (
+                        <div className="home-reserve-step-content">
+                          <label className="home-reserve-label"><FiMessageSquare size={13} /> 본문</label>
+                          <textarea
+                            className="home-reserve-textarea"
+                            placeholder="보낼 내용을 입력하세요"
+                            value={body}
+                            onChange={e => setBody(e.target.value)}
+                            rows={5}
+                            autoFocus
+                          />
+                        </div>
+                      )}
 
-                  {error && <p className="home-reserve-error">{error}</p>}
-                </div>
-              )}
+                      {step === 3 && (
+                        <div className="home-reserve-step-content">
+                          <label className="home-reserve-label"><FiSend size={13} /> 전송 방식</label>
+                          <div className="home-reserve-channel-group">
+                            <button type="button"
+                              className={`home-reserve-channel-btn ${channel === 'chat' ? 'is-selected' : ''}`}
+                              onClick={() => setChannel('chat')}>
+                              <FiMessageSquare size={22} />
+                              <span>채팅</span>
+                            </button>
+                            <button type="button"
+                              className={`home-reserve-channel-btn ${channel === 'mail' ? 'is-selected' : ''}`}
+                              onClick={() => setChannel('mail')}>
+                              <FiMail size={22} />
+                              <span>메일</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {step === 4 && (
+                        <div className="home-reserve-step-content">
+                          <label className="home-reserve-label">
+                            <FiPaperclip size={13} /> 파일 첨부
+                            <span className="home-reserve-optional">메일 전용</span>
+                          </label>
+                          <DocumentAttachmentPicker selectedDocs={selectedDocs} onChange={setSelectedDocs} />
+                          {channel !== 'mail' && selectedDocs.length > 0 && (
+                            <p className="home-reserve-hint">현재 채팅 예약은 첨부 발송을 지원하지 않아, 메일 방식일 때만 첨부됩니다.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {step === 5 && (
+                        <div className="home-reserve-step-content">
+                          <label className="home-reserve-label">
+                            <FiClock size={13} /> 예약 시간
+                            <span className="home-reserve-optional">비우면 즉시 발송</span>
+                          </label>
+                          <input
+                            type="datetime-local"
+                            className="home-reserve-input"
+                            value={scheduledAt}
+                            onChange={e => setScheduledAt(e.target.value)}
+                            min={minScheduleAt}
+                            autoFocus
+                          />
+
+                          <div className="home-reserve-summary">
+                            <p><strong>수신자</strong>{recipients.map(u => u.name).join(', ')}</p>
+                            {subject && <p><strong>제목</strong>{subject}</p>}
+                            <p><strong>본문</strong>{body.length > 80 ? `${body.slice(0, 80)}...` : body}</p>
+                            <p><strong>방식</strong>{channel === 'mail' ? '메일' : '채팅'}</p>
+                            <p><strong>첨부</strong>{channel === 'mail' && selectedDocs.length > 0 ? `${selectedDocs.length}개 문서` : '없음'}</p>
+                            <p><strong>시간</strong>{scheduledAt ? new Date(scheduledAt).toLocaleString('ko-KR') : '즉시 발송'}</p>
+                          </div>
+
+                          {error && <p className="home-reserve-error">{error}</p>}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="home-reserve-nav">
+                      <button type="button" className="btn btn-secondary"
+                        onClick={() => setStep(s => s - 1)} disabled={step === 0}>
+                        <FiChevronLeft size={14} /> 이전
+                      </button>
+
+                      {step < STEPS.length - 1 ? (
+                        <button type="button" className="btn btn-primary"
+                          onClick={() => setStep(s => s + 1)} disabled={!canNext()}>
+                          다음 <FiChevronRight size={14} />
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-primary"
+                          onClick={handleSubmit} disabled={submitting || !body.trim()}>
+                          {submitting
+                            ? <><FiLoader size={14} className="mascot-spin" /> 등록 중</>
+                            : <><FiCheck size={14} /> 예약 확정</>}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <section className="home-panel home-board-panel">
+                <Board currentSubPage="board" maxItems={5} onSubPageChange={onSubPageChange} />
+              </section>
+              <section className="home-panel home-approval-panel">
+                <ApprovalSummary onSubPageChange={onSubPageChange} />
+              </section>
             </div>
-
-            <div className="home-reserve-nav">
-              <button type="button" className="btn btn-secondary"
-                onClick={() => setStep(s => s - 1)} disabled={step === 0}>
-                <FiChevronLeft size={14} /> 이전
-              </button>
-
-              {step < STEPS.length - 1 ? (
-                <button type="button" className="btn btn-primary"
-                  onClick={() => setStep(s => s + 1)} disabled={!canNext()}>
-                  다음 <FiChevronRight size={14} />
-                </button>
-              ) : (
-                <button type="button" className="btn btn-primary"
-                  onClick={handleSubmit} disabled={submitting || !body.trim()}>
-                  {submitting
-                    ? <><FiLoader size={14} className="mascot-spin" /> 등록 중</>
-                    : <><FiCheck size={14} /> 예약 확정</>}
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="home-dashboard-grid">
-        <section className="home-panel home-calendar-panel" style={{ overflow: 'hidden' }}>
-          <HomeCalendar onNavigateToCalendar={() => onSubPageChange?.('calendar')} />
-        </section>
-        <section className="home-panel home-board-panel">
-          <Board currentSubPage="board" maxItems={5} onSubPageChange={onSubPageChange} />
-        </section>
-        <section className="home-panel home-approval-panel">
-          <ApprovalSummary onSubPageChange={onSubPageChange} />
-        </section>
-      </div>
           </div>
         )}
       </div>
