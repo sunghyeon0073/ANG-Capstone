@@ -238,13 +238,15 @@ export const toAiSchedule = (recommendation) => ({
   id: `ai-${recommendation.id}`,
   startDate: recommendation.recommendationDate,
   endDate: recommendation.recommendationDate,
-  title: recommendation.message,
+  title:
+    recommendation.type === 'preparation'
+      ? `${recommendation.targetTitle} 준비 시작`
+      : recommendation.message,
   startTime: recommendation.sourceStartTime || '09:00',
   endTime: recommendation.sourceEndTime || '10:00',
+  recommendationMessage: recommendation.message,
   description:
-    recommendation.type === 'last-year'
-      ? `기준 일정: ${recommendation.sourceStartDate} ${recommendation.sourceTitle}`
-      : recommendation.type === 'pattern'
+    recommendation.type === 'pattern'
         ? `분석된 주기 기반 추천: ${recommendation.sourceTitle}`
         : recommendation.type === 'preparation'
           ? `예정일: ${recommendation.targetStartDate} · 예상 ${recommendation.estimatedDays}일 · 유사 일정 ${recommendation.similarScheduleCount}건 · 신뢰도 ${recommendation.confidence}`

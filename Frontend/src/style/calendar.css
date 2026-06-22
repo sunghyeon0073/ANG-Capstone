@@ -460,6 +460,11 @@
 .calendar-schedule-bar--dept { background: #fff7ed; color: #9a3412; border-left: 3px solid #f97316; }
 .calendar-schedule-bar--todo { background: #eef2ff; color: #3730a3; border-left: 3px solid #6366f1; }
 .calendar-schedule-bar--ai { background: #ecfeff; color: #0e7490; border-left: 3px solid #06b6d4; }
+.calendar-schedule-bar--ai-preparation {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-left-color: #7c3aed;
+}
 
 
 
@@ -689,6 +694,44 @@
   font-size: 12px;
   color: var(--color-text-muted);
   line-height: 1.4;
+}
+
+.calendar-ai-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calendar-ai-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.calendar-ai-detail:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.calendar-ai-detail-label {
+  color: #7c3aed;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.calendar-ai-detail strong {
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.calendar-ai-detail > span:last-child {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 /* Filter Section */
