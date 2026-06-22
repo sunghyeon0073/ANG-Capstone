@@ -47,6 +47,7 @@ import {
 } from '../mail/mailUtils'
 
 const MAIL_PAGE_SIZE = 15
+const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000
 
 const emptyPageInfo = {
   page: 0,
@@ -60,12 +61,37 @@ const toFiniteNumber = (value, fallback) => {
   return Number.isFinite(numberValue) ? numberValue : fallback
 }
 
+const isAdminRecipient = (recipient) => {
+  const roleLevel = Number(recipient?.roleLevel ?? recipient?.role?.roleLevel ?? 0)
+  const positionText = String(recipient?.position || recipient?.roleName || recipient?.role?.name || '').replace(/\s/g, '')
+  const nameText = String(recipient?.name || recipient?.userName || '').replace(/\s/g, '')
+
+  return roleLevel >= 100 || positionText.includes('최고관리자') || nameText.includes('최고관리자')
+}
+
 const getMailTimeValue = (mail) => {
   const dateValue = mail?.sentAt || mail?.createdAt || mail?.updatedAt
   if (!dateValue) return 0
 
   const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(dateValue)
-  const date = new Date(hasTimeZone ? dateValue : `${dateValue}Z`)
+  if (hasTimeZone || typeof dateValue !== 'string') {
+    const date = new Date(dateValue)
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime()
+  }
+
+  const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3})\d*)?)?/)
+  const date = match
+    ? new Date(Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]),
+      Number(match[6] || 0),
+      Number((match[7] || '0').padEnd(3, '0')),
+    ) - KOREA_TIME_OFFSET_MS)
+    : new Date(dateValue.replace(' ', 'T'))
+
   return Number.isNaN(date.getTime()) ? 0 : date.getTime()
 }
 
@@ -193,6 +219,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
   const currentEmpNo = user?.empNo || getStoredUserEmpNo()
   const availableRecipientOptions = recipientOptions.filter(option => (
     option.empNo !== currentEmpNo
+    &&
+    !isAdminRecipient(option)
     &&
     !selectedRecipients.some(recipient => recipient.empNo === option.empNo)
   ))
