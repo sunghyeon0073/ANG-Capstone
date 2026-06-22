@@ -514,9 +514,8 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
     setSelectedRecipients(prev => prev.filter(recipient => recipient.empNo !== empNo))
   }
 
-  // 파일 선택: 브라우저에서 고른 새 파일을 중복 없이 작성 중 첨부 목록에 추가합니다.
-  const handleAttachmentSelect = (event) => {
-    const selectedFiles = Array.from(event.target.files || [])
+  const handleAttachmentSelect = (files) => {
+    const selectedFiles = Array.isArray(files) ? files : Array.from(files || [])
     if (selectedFiles.length === 0) return
 
     setAttachmentMessage('')
@@ -525,7 +524,6 @@ export default function Mail({ currentSubPage = 'mail-inbox', user, contactReque
       const uniqueFiles = selectedFiles.filter(file => !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`))
       return [...prev, ...uniqueFiles]
     })
-    event.target.value = ''
   }
 
   const removeAttachment = (index) => {

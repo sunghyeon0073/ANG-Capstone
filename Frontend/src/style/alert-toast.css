@@ -1,0 +1,111 @@
+.alert-toast-stack {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+}
+
+.alert-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px 11px 14px;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 260px;
+  max-width: 460px;
+  animation: alert-toast-in 200ms ease-out;
+}
+
+.alert-toast-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.alert-toast-message {
+  flex: 1;
+  line-height: 1.45;
+}
+
+.alert-toast-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.6;
+  padding: 2px;
+  border-radius: 4px;
+  transition: opacity 0.15s;
+}
+
+.alert-toast-close:hover {
+  opacity: 1;
+}
+
+/* success */
+.alert-toast-success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+.alert-toast-success .alert-toast-icon {
+  color: #059669;
+}
+
+/* error */
+.alert-toast-error {
+  background: #fff1f2;
+  color: #881337;
+  border: 1px solid #fda4af;
+}
+.alert-toast-error .alert-toast-icon {
+  color: #e11d48;
+}
+
+/* warning */
+.alert-toast-warning {
+  background: #fffbeb;
+  color: #78350f;
+  border: 1px solid #fcd34d;
+}
+.alert-toast-warning .alert-toast-icon {
+  color: #d97706;
+}
+
+/* info */
+.alert-toast-info {
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #93c5fd;
+}
+.alert-toast-info .alert-toast-icon {
+  color: #3b82f6;
+}
+
+@keyframes alert-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

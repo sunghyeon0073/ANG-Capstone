@@ -460,6 +460,11 @@
 .calendar-schedule-bar--dept { background: #fff7ed; color: #9a3412; border-left: 3px solid #f97316; }
 .calendar-schedule-bar--todo { background: #eef2ff; color: #3730a3; border-left: 3px solid #6366f1; }
 .calendar-schedule-bar--ai { background: #ecfeff; color: #0e7490; border-left: 3px solid #06b6d4; }
+.calendar-schedule-bar--ai-preparation {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-left-color: #7c3aed;
+}
 
 
 
@@ -662,9 +667,9 @@
   box-shadow: var(--shadow-soft-sm);
 }
 
-.calendar-ai-card--last-year { background: #fff7ed; border-color: #ffedd5; }
 .calendar-ai-card--pattern { background: #f0fdf4; border-color: #dcfce7; }
 .calendar-ai-card--upcoming { background: #eff6ff; border-color: #dbeafe; }
+.calendar-ai-card--preparation { background: #f5f3ff; border-color: #ddd6fe; }
 
 .calendar-ai-label {
   font-size: 11px;
@@ -674,9 +679,9 @@
   margin-bottom: 6px;
   color: #8b5cf6;
 }
-.calendar-ai-card--last-year .calendar-ai-label { color: #f97316; }
 .calendar-ai-card--pattern .calendar-ai-label { color: #10b981; }
 .calendar-ai-card--upcoming .calendar-ai-label { color: #3b82f6; }
+.calendar-ai-card--preparation .calendar-ai-label { color: #7c3aed; }
 
 .calendar-ai-message {
   font-size: 14px;
@@ -689,6 +694,44 @@
   font-size: 12px;
   color: var(--color-text-muted);
   line-height: 1.4;
+}
+
+.calendar-ai-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calendar-ai-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.calendar-ai-detail:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.calendar-ai-detail-label {
+  color: #7c3aed;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.calendar-ai-detail strong {
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.calendar-ai-detail > span:last-child {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 /* Filter Section */
@@ -742,9 +785,9 @@
 .calendar-filter-item--todo input[type="checkbox"]:checked { background-color: #4f46e5; border-color: #4f46e5; }
 .calendar-filter-item--ai input[type="checkbox"]:checked { background-color: #00e5ff; border-color: #00e5ff; }
 
-.schedule-item--ai-last-year { border-left-color: #f97316; }
 .schedule-item--ai-pattern { border-left-color: #10b981; }
 .schedule-item--ai-upcoming { border-left-color: #3b82f6; }
+.schedule-item--ai-preparation { border-left-color: #7c3aed; }
 
 .calendar-schedule-overflow {
   font-size: 11px;

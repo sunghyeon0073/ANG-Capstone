@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signUp } from '../../api/authApi'
 import { getSignupScopesTree } from '../../api/scopeApi'
+import { showAlert } from '../../utils/alertUtils'
 
 const normalizeScopeType = (scope) => scope?.scopeType ?? scope?.type ?? ''
 const scopeTypeOrder = { COMPANY: 0, DEPARTMENT: 1, TEAM: 2 }
@@ -92,17 +93,17 @@ export default function SignUp() {
   const handleSignUp = async (e) => {
     e.preventDefault()
     if (formData.password !== formData.passwordConfirm) {
-      alert('비밀번호가 일치하지 않습니다.')
+      showAlert('비밀번호가 일치하지 않습니다.', 'warning')
       return
     }
-    
+
     if (!selectedCompanyId) {
-      alert('학교를 선택해주세요.')
+      showAlert('학교를 선택해주세요.', 'warning')
       return
     }
 
     if (!selectedScope) {
-      alert('부서를 선택해주세요.')
+      showAlert('부서를 선택해주세요.', 'warning')
       return
     }
 
@@ -116,11 +117,11 @@ export default function SignUp() {
         password: formData.password,
         passwordConfirm: formData.passwordConfirm
       })
-      alert('회원가입이 완료되었습니다. 관리자 승인 후 로그인이 가능합니다.')
+      showAlert('회원가입이 완료되었습니다. 관리자 승인 후 로그인이 가능합니다.', 'success')
       navigate('/login')
     } catch (error) {
       const message = error.response?.data?.message || '회원가입에 실패했습니다.'
-      alert(message)
+      showAlert(message, 'error')
     }
   }
 

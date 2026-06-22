@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import '../../style/document.css'
 import '../../style/AIprompt.css'
 import { useState, useEffect, useRef, useMemo } from 'react'
+import FileSourceModal from '../common/FileSourceModal'
+import { showAlert } from '../../utils/alertUtils'
 // 리뷰 반영: 불필요한 axios import 제거
 import {
   getMyDocuments,
@@ -135,6 +137,7 @@ export default function DocumentWriter() {
   const [generationSummary, setGenerationSummary] = useState(null)
   const [isExporting, setIsExporting] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showFileSourceModal, setShowFileSourceModal] = useState(false)
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadTargetScopeId, setUploadTargetScopeId] = useState('')
@@ -145,7 +148,6 @@ export default function DocumentWriter() {
   const [titleEditMode, setTitleEditMode] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   
-  const fileInputRef = useRef(null)
   const mountedRef = useRef(true)
   const { isGenerating: aiLoading, startGeneration } = useAiGeneration()
 
@@ -178,7 +180,7 @@ export default function DocumentWriter() {
       }))
     },
     onError: (err) => {
-      alert('삭제 실패: ' + (err.response?.data?.message || '오류가 발생했습니다.'))
+      showAlert('삭제 실패: ' + (err.response?.data?.message || '오류가 발생했습니다.'), 'error')
     }
   })
 
@@ -196,7 +198,7 @@ export default function DocumentWriter() {
       setTitleEditMode(false)
     },
     onError: (err) => {
-      alert(err.response?.data?.message || err.message || '문서 제목 수정에 실패했습니다.')
+      showAlert(err.response?.data?.message || err.message || '문서 제목 수정에 실패했습니다.', 'error')
     }
   })
 
@@ -401,7 +403,7 @@ export default function DocumentWriter() {
     if (!selectedDoc || isTitleSaving) return
     const baseName = titleDraft.trim()
     if (!baseName) {
-      alert('문서 제목을 입력해 주세요.')
+      showAlert('문서 제목을 입력해 주세요.', 'warning')
       return
     }
     
@@ -476,7 +478,7 @@ export default function DocumentWriter() {
       }))
     } catch (err) {
       console.error('문서다운로드 실패:', err)
-      alert(err.response?.data?.message || err.message || '문서다운로드에 실패했습니다.')
+      showAlert(err.response?.data?.message || err.message || '문서다운로드에 실패했습니다.', 'error')
     } finally {
       setIsExporting(false)
     }
@@ -522,7 +524,7 @@ export default function DocumentWriter() {
       }
     } catch (err) {
       console.error('파일 업로드 실패:', err)
-      alert(err.response?.data?.message || err.message || '파일 업로드에 실패했습니다.')
+      showAlert(err.response?.data?.message || err.message || '파일 업로드에 실패했습니다.', 'error')
     } finally {
       setIsUploading(false)
     }
@@ -611,7 +613,7 @@ export default function DocumentWriter() {
     const hasDocxEditInstructions = mode === 'edit' && selectedKind === 'word' && docxEditInstructions.length > 0
 
     if (!prompt.trim() && !hasDocxEditInstructions) {
-      alert('프롬프트를 입력하세요.')
+      showAlert('프롬프트를 입력하세요.', 'warning')
       return
     }
 
@@ -639,12 +641,12 @@ export default function DocumentWriter() {
             : 'docx'
 
     if (mode === 'edit' && !selectedDoc) {
-      alert('수정할 문서를 선택하세요.')
+      showAlert('수정할 문서를 선택하세요.', 'warning')
       return
     }
 
     if (mode === 'edit' && !editOutputFormat) {
-      alert('이미지 형식은 AI 수정을 지원하지 않습니다.')
+      showAlert('이미지 형식은 AI 수정을 지원하지 않습니다.', 'warning')
       return
     }
 
@@ -687,7 +689,7 @@ export default function DocumentWriter() {
     } catch (err) {
       console.error('AI 문서 생성 실패:', err)
       if (mountedRef.current) {
-        alert(err.response?.data?.message || err.message || 'AI 문서 생성에 실패했습니다.')
+        showAlert(err.response?.data?.message || err.message || 'AI 문서 생성에 실패했습니다.', 'error')
       }
     } finally {
       if (mountedRef.current) {
@@ -1187,15 +1189,24 @@ export default function DocumentWriter() {
                 </select>
               </div>
 
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={e => {
-                  const file = e.target.files[0];
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowFileSourceModal(true)}
+                style={{ textAlign: 'left', justifyContent: 'flex-start' }}
+              >
+                {uploadFile ? uploadFile.name : '파일 선택...'}
+              </button>
+              <FileSourceModal
+                isOpen={showFileSourceModal}
+                onClose={() => setShowFileSourceModal(false)}
+                onFilesSelected={(files) => {
+                  const file = files[0];
                   setUploadFile(file);
                   if (file && !uploadTitle) setUploadTitle(file.name);
+                  setShowFileSourceModal(false);
                 }}
-                required
+                multiple={false}
               />
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)}>취소</button>

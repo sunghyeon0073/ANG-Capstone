@@ -18,7 +18,10 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -117,8 +120,8 @@ public class ScheduleService {
         Integer scopeId = getDepartmentScopeId(owner);
 
         List<ScheduleDto.AiRecommendationResponse> recommendations = new ArrayList<>();
-        recommendations.addAll(buildLastYearRecommendations(owner, scopeId, rangeStart, rangeEnd));
         recommendations.addAll(buildPatternRecommendations(owner, scopeId, rangeStart, rangeEnd));
+        recommendations.addAll(buildPreparationRecommendations(owner, scopeId, rangeStart, rangeEnd));
 
         // 각 추천 항목에 대해 연관 문서/메모 탐색
         recommendations.forEach(rec -> rec.getAssociatedItems().addAll(findAssociatedItems(owner, rec.getSourceTitle())));
@@ -129,6 +132,172 @@ public class ScheduleService {
                         .thenComparing(item -> item.getSourceStartTime() != null ? item.getSourceStartTime() : java.time.LocalTime.MIN)
                         .thenComparing(ScheduleDto.AiRecommendationResponse::getTitle))
                 .toList();
+    }
+
+    private List<ScheduleDto.AiRecommendationResponse> buildPreparationRecommendations(
+            User owner,
+            Integer scopeId,
+            LocalDate rangeStart,
+            LocalDate rangeEnd) {
+        LocalDate today = LocalDate.now();
+        LocalDate targetStart = rangeStart.isAfter(today) ? rangeStart : today;
+        LocalDate targetEnd = rangeEnd.plusDays(45);
+
+        List<Schedule> targets = scheduleRepository.findByOwnerOrScopeAndDateRangeOverlap(
+                owner, scopeId, targetStart, targetEnd);
+        List<Schedule> history = scheduleRepository.findByOwnerOrScopeAndStartDateBetween(
+                owner, scopeId, today.minusYears(2), today.minusDays(1));
+
+        if (targets.isEmpty() || history.isEmpty()) return List.of();
+
+        List<ScheduleDto.AiRecommendationResponse> results = new ArrayList<>();
+        for (Schedule target : targets) {
+            if (target.getStartDate().isBefore(today)) continue;
+
+            List<SimilarSchedule> similarSchedules = history.stream()
+                    .filter(candidate -> !candidate.getEndDate().isAfter(today.minusDays(1)))
+                    .filter(candidate -> candidate.getScheduleId() == null
+                            || !candidate.getScheduleId().equals(target.getScheduleId()))
+                    .map(candidate -> new SimilarSchedule(candidate, calculateSimilarity(target, candidate)))
+                    .filter(match -> match.score() >= 0.4)
+                    .sorted(Comparator
+                            .comparingDouble(SimilarSchedule::score).reversed()
+                            .thenComparing(match -> match.schedule().getEndDate(), Comparator.reverseOrder()))
+                    .limit(5)
+                    .toList();
+
+            if (similarSchedules.isEmpty()) continue;
+
+            List<Integer> durations = similarSchedules.stream()
+                    .map(match -> calculateRegisteredDuration(match.schedule()))
+                    .filter(days -> days >= 1 && days <= 90)
+                    .sorted()
+                    .toList();
+            if (durations.isEmpty()) continue;
+
+            int estimatedDays = calculateMedian(durations);
+            int bufferDays = Math.max(1, (int) Math.ceil(estimatedDays * 0.2));
+            int preparationDays = Math.min(60, estimatedDays + bufferDays);
+            LocalDate calculatedStart = target.getStartDate().minusDays(preparationDays);
+            LocalDate recommendationDate = calculatedStart.isBefore(today) ? today : calculatedStart;
+
+            if (recommendationDate.isBefore(rangeStart) || recommendationDate.isAfter(rangeEnd)) continue;
+
+            double averageScore = similarSchedules.stream()
+                    .mapToDouble(SimilarSchedule::score)
+                    .average()
+                    .orElse(0);
+            String confidence = calculateConfidence(similarSchedules.size(), averageScore);
+            Schedule closest = similarSchedules.get(0).schedule();
+            String timingMessage = calculatedStart.isBefore(today)
+                    ? "권장 준비일이 지났으므로 지금부터 준비하는 것이 좋습니다."
+                    : recommendationDate + "부터 준비하는 것이 좋습니다.";
+
+            results.add(ScheduleDto.AiRecommendationResponse.builder()
+                    .id("preparation-" + target.getScheduleId() + "-" + recommendationDate)
+                    .type("preparation")
+                    .title("AI 준비 시점 추천")
+                    .message(target.getTitle() + "은(는) 과거 유사 일정 "
+                            + similarSchedules.size() + "건 기준 약 " + estimatedDays
+                            + "일이 등록되어 있었습니다. 여유를 포함해 " + preparationDays
+                            + "일 전인 " + timingMessage)
+                    .recommendationDate(recommendationDate)
+                    .sourceStartDate(closest.getStartDate())
+                    .sourceEndDate(closest.getEndDate())
+                    .sourceStartTime(target.getStartTime())
+                    .sourceEndTime(target.getEndTime())
+                    .sourceScheduleId(closest.getScheduleId())
+                    .sourceTitle(closest.getTitle())
+                    .targetScheduleId(target.getScheduleId())
+                    .targetStartDate(target.getStartDate())
+                    .targetTitle(target.getTitle())
+                    .estimatedDays(estimatedDays)
+                    .preparationDays(preparationDays)
+                    .similarScheduleCount(similarSchedules.size())
+                    .confidence(confidence)
+                    .build());
+        }
+
+        return results;
+    }
+
+    private double calculateSimilarity(Schedule target, Schedule candidate) {
+        String targetTitle = normalizeText(target.getTitle());
+        String candidateTitle = normalizeText(candidate.getTitle());
+        if (targetTitle.isBlank() || candidateTitle.isBlank()) return 0;
+        if (targetTitle.equals(candidateTitle)) return 1;
+
+        Set<String> targetTitleTokens = tokenize(target.getTitle(), true);
+        Set<String> candidateTitleTokens = tokenize(candidate.getTitle(), true);
+        double titleScore = jaccardSimilarity(targetTitleTokens, candidateTitleTokens);
+
+        Set<String> targetAllTokens = tokenize(
+                target.getTitle() + " " + nullToEmpty(target.getDescription()), false);
+        Set<String> candidateAllTokens = tokenize(
+                candidate.getTitle() + " " + nullToEmpty(candidate.getDescription()), false);
+        double contentScore = jaccardSimilarity(targetAllTokens, candidateAllTokens);
+        double typeBonus = target.getType() == candidate.getType() ? 0.05 : 0;
+
+        return Math.min(1, (titleScore * 0.75) + (contentScore * 0.25) + typeBonus);
+    }
+
+    private Set<String> tokenize(String value, boolean removeGenericWords) {
+        Set<String> tokens = new HashSet<>();
+        String normalized = normalizeText(value);
+        if (normalized.isBlank()) return tokens;
+
+        Set<String> genericWords = Set.of(
+                "일정", "업무", "작업", "진행", "준비", "관련", "회의", "미팅", "등록");
+        for (String token : normalized.split("\\s+")) {
+            if (token.length() < 2 || token.chars().allMatch(Character::isDigit)) continue;
+            if (removeGenericWords && genericWords.contains(token)) continue;
+            tokens.add(token);
+        }
+        return tokens;
+    }
+
+    private String normalizeText(String value) {
+        if (value == null) return "";
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("\\d+", " ")
+                .replaceAll("[^가-힣a-z\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private double jaccardSimilarity(Set<String> left, Set<String> right) {
+        if (left.isEmpty() || right.isEmpty()) return 0;
+        Set<String> intersection = new HashSet<>(left);
+        intersection.retainAll(right);
+        if (intersection.isEmpty()) return 0;
+
+        Set<String> union = new HashSet<>(left);
+        union.addAll(right);
+        return (double) intersection.size() / union.size();
+    }
+
+    private int calculateRegisteredDuration(Schedule schedule) {
+        return (int) ChronoUnit.DAYS.between(schedule.getStartDate(), schedule.getEndDate()) + 1;
+    }
+
+    private int calculateMedian(List<Integer> sortedDurations) {
+        int size = sortedDurations.size();
+        if (size % 2 == 1) return sortedDurations.get(size / 2);
+        return (int) Math.ceil(
+                (sortedDurations.get((size / 2) - 1) + sortedDurations.get(size / 2)) / 2.0);
+    }
+
+    private String calculateConfidence(int matchCount, double averageScore) {
+        if (matchCount >= 4 && averageScore >= 0.65) return "HIGH";
+        if (matchCount >= 2 && averageScore >= 0.5) return "MEDIUM";
+        return "LOW";
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private record SimilarSchedule(Schedule schedule, double score) {
     }
 
     private List<ScheduleDto.AiRecommendationResponse> buildPatternRecommendations(User owner, Integer scopeId, LocalDate rangeStart, LocalDate rangeEnd) {

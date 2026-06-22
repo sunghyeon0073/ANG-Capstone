@@ -1,12 +1,15 @@
 // 리팩토링: React Query 도입
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import '../../style/file-storage.css'
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useRef } from 'react';
+import FileSourceModal from '../common/FileSourceModal';
+import { showAlert } from '../../utils/alertUtils';
 import { 
   FiFileText, FiGrid, FiList, FiSearch,
   FiFilter, FiInfo, FiDownload, FiTrash2, FiStar,
   FiUsers, FiFolder, FiChevronRight, FiUploadCloud,
-  FiShare2, FiRotateCcw, FiChevronLeft, FiEye
+  FiShare2, FiRotateCcw, FiChevronLeft, FiEye,
+  FiMessageSquare, FiMail
 } from 'react-icons/fi';
 import { FaStar, FaRegStar, FaFilePdf, FaFileWord, FaFileExcel, 
   FaFileImage, FaFileAlt, FaFilePowerpoint, FaFileCsv } from 'react-icons/fa';
@@ -23,10 +26,14 @@ import {
   toggleFavoriteFile,
   getFavoriteFiles,
   getAllFiles,
-  renameFile
+  renameFile,
+  shareFile,
 } from '../../api/fileApi';
 import { getMyScopes } from '../../api/scopeApi';
 import { getApprovalTemplates } from '../../api/approvalApi';
+import { getChatRooms, uploadChatFile } from '../../api/chatApi';
+import { searchUsers } from '../../api/userApi';
+import { saveMailDraft, uploadMailFile, sendMailDraft } from '../../api/mailApi';
 import { getFileTypeLabel, getDocumentPreviewKind } from '../../utils/documentFileUtils';
 // 리뷰 반영: 공통 유틸리티 사용
 import { formatDate, formatDateTime } from '../../utils/dateUtils';
@@ -68,6 +75,7 @@ export default function FileStorage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showFileSourceModal, setShowFileSourceModal] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
   const [targetScopeId, setTargetScopeId] = useState('');
@@ -75,6 +83,20 @@ export default function FileStorage({
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTab, setShareTab] = useState('dept');
+  const [shareTargetScopeId, setShareTargetScopeId] = useState('');
+  const [shareSaving, setShareSaving] = useState(false);
+  const [chatRooms, setChatRooms] = useState([]);
+  const [chatRoomsLoading, setChatRoomsLoading] = useState(false);
+  const [selectedChatRoomId, setSelectedChatRoomId] = useState(null);
+  const [chatSharing, setChatSharing] = useState(false);
+  const [mailRecipientQuery, setMailRecipientQuery] = useState('');
+  const [mailRecipientOptions, setMailRecipientOptions] = useState([]);
+  const [selectedMailRecipients, setSelectedMailRecipients] = useState([]);
+  const [mailSubject, setMailSubject] = useState('');
+  const [mailBody, setMailBody] = useState('');
+  const [mailSharing, setMailSharing] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'uploadedAt', direction: 'desc' });
   const [previewDoc, setPreviewDoc] = useState(null);
   // Pagination State
@@ -83,15 +105,18 @@ export default function FileStorage({
 
   const mainRef = useRef();
 
-  // 리팩토링: React Query의 useQuery를 사용하여 데이터 패칭 로직 교체
-  const { data: queryData = { content: [], totalPages: 0 }, isLoading, isError } = useQuery({
-    queryKey: ['files', activeTab, targetScopeId, currentPage, sortConfig.key, sortConfig.direction, searchQuery],
+  // 파일 유형 필터가 활성화된 경우 서버에서 전체를 가져와 클라이언트에서 재페이징
+  const isFiltered = !filterTypes.includes('all');
+
+  const { data: queryData = { content: [], totalPages: 0 }, isLoading } = useQuery({
+    // 필터 활성 시 currentPage를 key에서 제외 → 페이지 이동해도 서버 재요청 없음
+    queryKey: ['files', activeTab, targetScopeId, isFiltered ? 'all' : currentPage, sortConfig.key, sortConfig.direction, searchQuery],
     queryFn: async () => {
       let res;
       const isImportantTab = activeTab === 'important';
       const params = {
-        page: currentPage,
-        size: itemsPerPage,
+        page: isFiltered ? 0 : currentPage,
+        size: isFiltered ? 9999 : itemsPerPage,
         sort: `${isImportantTab ? 'createdAt' : sortConfig.key},${sortConfig.direction}`,
         keyword: searchQuery
       };
@@ -166,7 +191,7 @@ export default function FileStorage({
       setTargetScopeId('');
     },
     onError: (error) => {
-      alert('업로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'));
+      showAlert('업로드 실패: ' + (error.response?.data?.message || '오류가 발생했습니다.'), 'error');
     }
   });
 
@@ -177,7 +202,7 @@ export default function FileStorage({
       if (selectedDocId === variables.docId) setSelectedDocId(null);
       setPreviewDoc(null);
     },
-    onError: () => alert('삭제 실패')
+    onError: () => showAlert('삭제 실패', 'error')
   });
 
   const restoreMutation = useMutation({
@@ -185,9 +210,9 @@ export default function FileStorage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
       setPreviewDoc(null);
-      alert('문서가 복구되었습니다.');
+      showAlert('문서가 복구되었습니다.', 'success');
     },
-    onError: () => alert('복구 실패')
+    onError: () => showAlert('복구 실패', 'error')
   });
 
   const toggleFavoriteMutation = useMutation({
@@ -202,7 +227,7 @@ export default function FileStorage({
       queryClient.invalidateQueries({ queryKey: ['files'] });
       setShowRenameModal(false);
     },
-    onError: () => alert('이름 변경 실패')
+    onError: () => showAlert('이름 변경 실패', 'error')
   });
 
   const toggleFilter = (type) => {
@@ -243,18 +268,135 @@ export default function FileStorage({
     setCurrentPage(0);
   };
 
-  const selectedDoc = useMemo(() => {
-    return docs.find(d => d.docId === selectedDocId);
-  }, [docs, selectedDocId]);
+  const selectedDoc = docs.find(d => d.docId === selectedDocId);
+
+  // 클라이언트 필터 적용 (필터 활성 시 서버가 전체 반환했으므로 여기서 타입 필터링)
+  const filteredDocs = isFiltered ? docs.filter(doc => {
+    const kind = getDocumentPreviewKind(doc);
+    return filterTypes.some(f => {
+      if (f === 'pdf') return kind === 'pdf';
+      if (f === 'hwp') return kind === 'hwp' || kind === 'hwpx';
+      if (f === 'docx') return kind === 'word';
+      if (f === 'excel') return kind === 'excel';
+      if (f === 'image') return kind === 'image';
+      return false;
+    });
+  }) : docs;
+
+  // 필터 활성: 클라이언트 페이징 / 필터 비활성: 서버 페이징 그대로
+  const displayTotalPages = isFiltered ? Math.ceil(filteredDocs.length / itemsPerPage) : totalPages;
+  const displayDocs = isFiltered
+    ? filteredDocs.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage)
+    : filteredDocs;
+
+  const openShareModal = () => {
+    setShareTab('dept');
+    setShareTargetScopeId('');
+    setSelectedChatRoomId(null);
+    setSelectedMailRecipients([]);
+    setMailSubject(`파일 공유: ${getBaseName(selectedDoc?.title || '')}`);
+    setMailBody('');
+    setShowShareModal(true);
+  };
+
+  const mailSearchTimerRef = useRef(null);
+
+  const handleShareTabChange = async (tabKey) => {
+    setShareTab(tabKey);
+    if (tabKey === 'chat') {
+      setChatRoomsLoading(true);
+      try {
+        const rooms = await getChatRooms();
+        setChatRooms(rooms);
+      } catch {
+        showAlert('채팅방 목록을 불러오지 못했습니다.', 'error');
+      } finally {
+        setChatRoomsLoading(false);
+      }
+    }
+  };
+
+  const handleMailRecipientSearch = (value) => {
+    setMailRecipientQuery(value);
+    clearTimeout(mailSearchTimerRef.current);
+    if (!value.trim()) { setMailRecipientOptions([]); return; }
+    mailSearchTimerRef.current = setTimeout(() => {
+      searchUsers(value)
+        .then(res => setMailRecipientOptions(res.data?.data || []))
+        .catch(() => setMailRecipientOptions([]));
+    }, 300);
+  };
+
+  const handleChatShare = async () => {
+    if (!selectedChatRoomId) { showAlert('공유할 채팅방을 선택해주세요.', 'warning'); return; }
+    setChatSharing(true);
+    try {
+      const res = await apiDownloadFile(selectedDoc.fileId);
+      const file = new File([res.data], selectedDoc.originalFileName || selectedDoc.title, { type: res.data.type });
+      await uploadChatFile(selectedChatRoomId, file);
+      showAlert('파일이 채팅으로 공유되었습니다.', 'success');
+      setShowShareModal(false);
+      setSelectedChatRoomId(null);
+    } catch {
+      showAlert('채팅 공유에 실패했습니다.', 'error');
+    } finally {
+      setChatSharing(false);
+    }
+  };
+
+  const handleMailShare = async (e) => {
+    e.preventDefault();
+    if (selectedMailRecipients.length === 0) { showAlert('받는 사람을 선택해주세요.', 'warning'); return; }
+    if (!mailSubject.trim()) { showAlert('메일 제목을 입력해주세요.', 'warning'); return; }
+    setMailSharing(true);
+    try {
+      const recipientEmpNos = selectedMailRecipients.map(r => r.empNo);
+      const draftRes = await saveMailDraft({ title: mailSubject.trim(), body: mailBody, recipientEmpNos });
+      const mailId = draftRes.data?.data;
+      const fileRes = await apiDownloadFile(selectedDoc.fileId);
+      const file = new File([fileRes.data], selectedDoc.originalFileName || selectedDoc.title, { type: fileRes.data.type });
+      await uploadMailFile(mailId, file);
+      await sendMailDraft(mailId);
+      showAlert('파일이 메일로 공유되었습니다.', 'success');
+      setShowShareModal(false);
+      setSelectedMailRecipients([]);
+      setMailSubject('');
+      setMailBody('');
+    } catch {
+      showAlert('메일 공유에 실패했습니다.', 'error');
+    } finally {
+      setMailSharing(false);
+    }
+  };
+
+  const handleShareSubmit = async (e) => {
+    e.preventDefault();
+    if (!shareTargetScopeId) {
+      showAlert('공유할 부서를 선택해주세요.', 'warning');
+      return;
+    }
+    setShareSaving(true);
+    try {
+      await shareFile(selectedDoc.fileId, shareTargetScopeId);
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      showAlert('파일이 공유되었습니다.', 'success');
+      setShowShareModal(false);
+      setShareTargetScopeId('');
+    } catch {
+      showAlert('공유에 실패했습니다.', 'error');
+    } finally {
+      setShareSaving(false);
+    }
+  };
 
   const handleUpload = (e) => {
     e.preventDefault();
     if (!uploadFile) {
-      alert('업로드할 파일을 선택해주세요.');
+      showAlert('업로드할 파일을 선택해주세요.', 'warning');
       return;
     }
     if (!uploadTitle.trim()) {
-      alert('문서 제목을 입력해주세요.');
+      showAlert('문서 제목을 입력해주세요.', 'warning');
       return;
     }
     const formData = new FormData();
@@ -277,8 +419,8 @@ export default function FileStorage({
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
-      alert('파일 다운로드에 실패했습니다.');
+    } catch {
+      showAlert('파일 다운로드에 실패했습니다.', 'error');
     }
   };
 
@@ -474,14 +616,14 @@ export default function FileStorage({
                   <div className="spinner" />
                   <p>파일을 불러오는 중...</p>
                   </div>
-                  ) : docs.length === 0 ? (
+                  ) : displayDocs.length === 0 ? (
                   <div className="file-empty">
                   <FiFolder className="file-empty-icon" />
-                  <p>{searchQuery ? '검색 결과가 없습니다.' : '파일이 없습니다.'}</p>
+                  <p>{searchQuery ? '검색 결과가 없습니다.' : isFiltered ? '선택한 파일 유형이 없습니다.' : '파일이 없습니다.'}</p>
                   </div>
                   ) : viewMode === 'grid' ? (
                   <div className="file-grid">
-                  {docs.map(doc => (
+                  {displayDocs.map(doc => (
                   <div 
                   key={doc.docId} 
                   className={`file-card ${selectedDocId === doc.docId ? 'selected' : ''}`}
@@ -525,7 +667,7 @@ export default function FileStorage({
                   </tr>
                   </thead>
                   <tbody>
-                  {docs.map(doc => (
+                  {displayDocs.map(doc => (
                   <tr 
                   key={doc.docId} 
                   className={selectedDocId === doc.docId ? 'selected' : ''}
@@ -567,21 +709,21 @@ export default function FileStorage({
                   </table>
                   )}
                   </div>
-                  {totalPages > 1 && (
+                  {displayTotalPages > 1 && (
                     <footer className="file-pagination">
-                      <button 
-                        className="pagination-btn" 
+                      <button
+                        className="pagination-btn"
                         disabled={currentPage === 0}
                         onClick={() => setCurrentPage(prev => prev - 1)}
                       >
                         <FiChevronLeft />
                       </button>
                       <span className="pagination-info">
-                        Page <strong>{currentPage + 1}</strong> of {totalPages}
+                        Page <strong>{currentPage + 1}</strong> of {displayTotalPages}
                       </span>
-                      <button 
-                        className="pagination-btn" 
-                        disabled={currentPage >= totalPages - 1}
+                      <button
+                        className="pagination-btn"
+                        disabled={currentPage >= displayTotalPages - 1}
                         onClick={() => setCurrentPage(prev => prev + 1)}
                       >
                         <FiChevronRight />
@@ -662,7 +804,11 @@ export default function FileStorage({
                   >
                   <FiFileText /> 이름 변경
                   </button>
-                  <button className="btn btn-secondary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <button
+                  className="btn btn-secondary"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  onClick={openShareModal}
+                  >
                   <FiShare2 /> 공유하기
                   </button>
                   <button 
@@ -720,26 +866,30 @@ export default function FileStorage({
               </div>
               <div className="form-group">
                 <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>파일 선택</label>
-                <input 
-                  type="file" 
-                  id="file-upload-input"
-                  onChange={e => {
-                    const file = e.target.files[0];
-                    setUploadFile(file);
-                    if (file && !uploadTitle) setUploadTitle(getBaseName(file.name));
-                  }}
-                  required
-                  style={{ display: 'none' }}
-                />
-                <label htmlFor="file-upload-input" className="custom-file-upload">
+                <button
+                  type="button"
+                  className="custom-file-upload"
+                  onClick={() => setShowFileSourceModal(true)}
+                >
                   <FiUploadCloud style={{ marginRight: '8px' }} />
-                  {uploadFile ? '파일 변경' : '컴퓨터에서 파일 선택'}
-                </label>
+                  {uploadFile ? '파일 변경' : '파일 선택'}
+                </button>
                 {uploadFile && (
                   <div className="selected-file-info">
                     <strong>선택된 파일:</strong> {uploadFile.name} ({formatFileSize(uploadFile.size)})
                   </div>
                 )}
+                <FileSourceModal
+                  isOpen={showFileSourceModal}
+                  onClose={() => setShowFileSourceModal(false)}
+                  onFilesSelected={(files) => {
+                    const file = files[0];
+                    setUploadFile(file);
+                    if (file && !uploadTitle) setUploadTitle(getBaseName(file.name));
+                    setShowFileSourceModal(false);
+                  }}
+                  multiple={false}
+                />
               </div>
               <div className="form-actions" style={{ marginTop: '10px', display: 'flex', gap: '12px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowUploadModal(false)} style={{ flex: 1, margin: 0 }}>취소</button>
@@ -764,11 +914,208 @@ export default function FileStorage({
             setRenameTitle(getBaseName(doc.title));
             setShowRenameModal(true);
           }}
-          onShare={() => {}}
+          onShare={() => { setPreviewDoc(null); openShareModal(); }}
           onDelete={handleDeleteFromPreview}
           onRestore={handleRestoreFromPreview}
         />
       )}
+      {/* Share Modal */}
+      {showShareModal && selectedDoc && (
+        <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+          <div className="modal-content DMS-modal" onClick={e => e.stopPropagation()} style={{ width: '460px' }}>
+            <div className="modal-header">
+              <h3>파일 공유</h3>
+              <button className="modal-close" onClick={() => setShowShareModal(false)}>&times;</button>
+            </div>
+            <div style={{ padding: '0 20px 4px' }}>
+              <div style={{ background: '#f8f9fa', borderRadius: '6px', padding: '10px 14px', fontSize: '13px', color: '#555', marginBottom: '16px' }}>
+                <strong style={{ display: 'block', marginBottom: '2px', color: '#222' }}>{getBaseName(selectedDoc.title)}</strong>
+                현재 위치: {selectedDoc.scopeName && selectedDoc.scopeName !== 'N/A' ? selectedDoc.scopeName : '개인 보관함'}
+              </div>
+              {/* Tabs */}
+              <div style={{ display: 'flex', borderBottom: '2px solid #eee', marginBottom: '16px' }}>
+                {[
+                  { key: 'dept', label: '부서 공유', icon: <FiUsers size={14} /> },
+                  { key: 'chat', label: '채팅 공유', icon: <FiMessageSquare size={14} /> },
+                  { key: 'mail', label: '메일 공유', icon: <FiMail size={14} /> },
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => handleShareTabChange(tab.key)}
+                    style={{
+                      flex: 1, padding: '8px 4px', border: 'none', background: 'none',
+                      cursor: 'pointer', fontSize: '13px', fontWeight: shareTab === tab.key ? '600' : '400',
+                      color: shareTab === tab.key ? 'var(--color-primary)' : '#666',
+                      borderBottom: shareTab === tab.key ? '2px solid var(--color-primary)' : '2px solid transparent',
+                      marginBottom: '-2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                    }}
+                  >
+                    {tab.icon}{tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* 부서 공유 탭 */}
+              {shareTab === 'dept' && (
+                <form onSubmit={handleShareSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="form-group">
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>공유할 부서 선택</label>
+                    <select
+                      className="calendar-input"
+                      value={shareTargetScopeId}
+                      onChange={e => setShareTargetScopeId(e.target.value)}
+                      style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ced4da' }}
+                      required
+                    >
+                      <option value="">부서를 선택하세요</option>
+                      {myScopes.map(scope => (
+                        <option key={scope.id} value={scope.id}>{scope.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-actions" style={{ paddingBottom: '20px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowShareModal(false)}>취소</button>
+                    <button type="submit" className="btn btn-primary" disabled={shareSaving}>
+                      {shareSaving ? '공유 중...' : '공유하기'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* 채팅 공유 탭 */}
+              {shareTab === 'chat' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>채팅방 선택</label>
+                    {chatRoomsLoading ? (
+                      <div style={{ textAlign: 'center', padding: '24px', color: '#888' }}>채팅방 불러오는 중...</div>
+                    ) : chatRooms.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '24px', color: '#888' }}>참여 중인 채팅방이 없습니다.</div>
+                    ) : (
+                      <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #ced4da', borderRadius: '6px' }}>
+                        {chatRooms.map(room => (
+                          <div
+                            key={room.roomId}
+                            onClick={() => setSelectedChatRoomId(room.roomId)}
+                            style={{
+                              padding: '10px 14px', cursor: 'pointer',
+                              background: selectedChatRoomId === room.roomId ? '#e8f0fe' : 'transparent',
+                              borderBottom: '1px solid #f0f0f0',
+                              display: 'flex', alignItems: 'center', gap: '10px',
+                            }}
+                          >
+                            <FiMessageSquare size={16} style={{ color: '#1a73e8', flexShrink: 0 }} />
+                            <span style={{ fontSize: '14px', flex: 1 }}>
+                              {room.name || (room.type !== 'GROUP' ? '1:1 채팅' : '채팅방')}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#999' }}>
+                              {room.type === 'GROUP' ? `${room.members?.length || 0}명` : '1:1'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="form-actions" style={{ paddingBottom: '20px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowShareModal(false)}>취소</button>
+                    <button type="button" className="btn btn-primary" onClick={handleChatShare} disabled={chatSharing || !selectedChatRoomId}>
+                      {chatSharing ? '공유 중...' : '공유하기'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 메일 공유 탭 */}
+              {shareTab === 'mail' && (
+                <form onSubmit={handleMailShare} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="form-group" style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>받는 사람</label>
+                    <input
+                      className="calendar-input"
+                      value={mailRecipientQuery}
+                      onChange={e => handleMailRecipientSearch(e.target.value)}
+                      placeholder="이름 또는 사번으로 검색..."
+                      style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
+                      autoComplete="off"
+                    />
+                    {mailRecipientOptions.length > 0 && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                        background: '#fff', border: '1px solid #ced4da', borderRadius: '4px',
+                        maxHeight: '150px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                      }}>
+                        {mailRecipientOptions.map(user => (
+                          <div
+                            key={user.empNo}
+                            onClick={() => {
+                              if (!selectedMailRecipients.find(r => r.empNo === user.empNo)) {
+                                setSelectedMailRecipients(prev => [...prev, user]);
+                              }
+                              setMailRecipientQuery('');
+                              setMailRecipientOptions([]);
+                            }}
+                            style={{ padding: '8px 14px', cursor: 'pointer', fontSize: '13px' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f0f4ff'}
+                            onMouseLeave={e => e.currentTarget.style.background = ''}
+                          >
+                            {user.name} <span style={{ color: '#999' }}>({user.empNo})</span>
+                            {user.deptName && <span style={{ color: '#aaa', marginLeft: '8px', fontSize: '11px' }}>{user.deptName}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {selectedMailRecipients.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                        {selectedMailRecipients.map(r => (
+                          <span key={r.empNo} style={{
+                            background: '#e8f0fe', color: '#1a73e8', borderRadius: '12px',
+                            padding: '3px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px'
+                          }}>
+                            {r.name}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMailRecipients(prev => prev.filter(x => x.empNo !== r.empNo))}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1a73e8', padding: '0', lineHeight: '1' }}
+                            >×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>제목</label>
+                    <input
+                      className="calendar-input"
+                      value={mailSubject}
+                      onChange={e => setMailSubject(e.target.value)}
+                      style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ced4da', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500' }}>메시지 (선택)</label>
+                    <textarea
+                      value={mailBody}
+                      onChange={e => setMailBody(e.target.value)}
+                      rows={3}
+                      placeholder="첨부 파일에 대한 설명을 입력하세요."
+                      style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ced4da', resize: 'none', fontSize: '13px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div className="form-actions" style={{ paddingBottom: '20px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowShareModal(false)}>취소</button>
+                    <button type="submit" className="btn btn-primary" disabled={mailSharing}>
+                      {mailSharing ? '전송 중...' : '메일 보내기'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Rename Modal */}
       {showRenameModal && (
         <div className="modal-overlay" onClick={() => setShowRenameModal(false)}>

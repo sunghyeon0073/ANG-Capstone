@@ -22,6 +22,7 @@ import {
   toggleCompleteSchedule,
   updateSchedule,
 } from '../../api/scheduleApi'
+import { showAlert } from '../../utils/alertUtils'
 import MonthYearPicker from '../calendar/MonthYearPicker'
 import SchedulePopover from '../calendar/SchedulePopover'
 import {
@@ -35,6 +36,17 @@ import {
   buildCalendarScheduleBars,
   toAiSchedule,
 } from '../calendar/calendarUtils'
+
+const AI_RECOMMENDATION_LABELS = {
+  pattern: '반복 패턴 분석',
+  preparation: '업무 준비 시점',
+}
+
+const AI_CONFIDENCE_LABELS = {
+  HIGH: '높음',
+  MEDIUM: '보통',
+  LOW: '낮음',
+}
 
 const SimpleModal = ({ open, onClose, title, children }) => {
   if (!open) return null
@@ -307,7 +319,7 @@ export default function Calendar({ showSidebar = true }) {
       setPopoverAnchor(null)
       fetchCalendarData()
     } catch (error) {
-      alert(`일정 수정 실패: ${error.message}`)
+      showAlert(`일정 수정 실패: ${error.message}`, 'error')
     }
   }
 
@@ -332,7 +344,7 @@ export default function Calendar({ showSidebar = true }) {
 
     const extension = file.name.split('.').pop()?.toLowerCase()
     if (!['xls', 'xlsx'].includes(extension || '')) {
-      alert('엑셀 파일(.xls, .xlsx)만 업로드할 수 있습니다.')
+      showAlert('엑셀 파일(.xls, .xlsx)만 업로드할 수 있습니다.', 'warning')
       event.target.value = ''
       return
     }
@@ -343,7 +355,7 @@ export default function Calendar({ showSidebar = true }) {
       const { items, skippedRows } = parseExcelSchedules(arrayBuffer)
 
       if (items.length === 0) {
-        alert('엑셀에서 등록할 수 있는 일정을 찾지 못했습니다. 날짜와 제목 컬럼을 확인해주세요.')
+        showAlert('엑셀에서 등록할 수 있는 일정을 찾지 못했습니다. 날짜와 제목 컬럼을 확인해주세요.', 'warning')
         return
       }
 
@@ -353,7 +365,7 @@ export default function Calendar({ showSidebar = true }) {
       setIsExcelConfirmOpen(true)
     } catch (error) {
       console.error('엑셀 일정 파싱 실패', error)
-      alert(`엑셀 파일을 읽는 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`)
+      showAlert(`엑셀 파일을 읽는 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`, 'error')
     } finally {
       setIsImportingExcel(false)
       event.target.value = ''
@@ -376,7 +388,7 @@ export default function Calendar({ showSidebar = true }) {
       setIsModalOpen(false)
       fetchCalendarData()
     } catch (error) {
-      alert(`엑셀 일정 등록 실패: ${error.response?.data?.message || error.message || '오류가 발생했습니다.'}`)
+      showAlert(`엑셀 일정 등록 실패: ${error.response?.data?.message || error.message || '오류가 발생했습니다.'}`, 'error')
     } finally {
       setIsImportingExcel(false)
     }
@@ -400,12 +412,12 @@ export default function Calendar({ showSidebar = true }) {
 
   const handleSaveSchedule = async () => {
     if (!formData.title.trim()) {
-      alert('일정 제목을 입력해주세요.')
+      showAlert('일정 제목을 입력해주세요.', 'warning')
       return
     }
 
     if (!formData.startDate || !formData.endDate) {
-      alert('시작일과 종료일을 선택해주세요.')
+      showAlert('시작일과 종료일을 선택해주세요.', 'warning')
       return
     }
 
@@ -415,7 +427,7 @@ export default function Calendar({ showSidebar = true }) {
       resetForm()
       fetchCalendarData()
     } catch (error) {
-      alert(`일정 저장 실패: ${error.message || error.response?.data?.message || '오류가 발생했습니다.'}`)
+      showAlert(`일정 저장 실패: ${error.message || error.response?.data?.message || '오류가 발생했습니다.'}`, 'error')
     }
   }
 
@@ -433,7 +445,7 @@ export default function Calendar({ showSidebar = true }) {
       setSelectedSchedule(null)
       fetchCalendarData()
     } catch (error) {
-      alert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
+      showAlert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`, 'error')
     }
   }
 
@@ -443,7 +455,7 @@ export default function Calendar({ showSidebar = true }) {
       await toggleCompleteSchedule(schedule.id)
       fetchCalendarData()
     } catch (error) {
-      alert(`할 일 상태 변경 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
+      showAlert(`할 일 상태 변경 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`, 'error')
     }
   }
 
@@ -481,7 +493,7 @@ export default function Calendar({ showSidebar = true }) {
       setQuickTodoTitle('')
       fetchCalendarData()
     } catch (error) {
-      alert(`빠른 추가 실패: ${error.message}`)
+      showAlert(`빠른 추가 실패: ${error.message}`, 'error')
     }
   }
 
@@ -610,7 +622,7 @@ export default function Calendar({ showSidebar = true }) {
               {allDayEvents.map(schedule => (
                 <div 
                   key={schedule.id} 
-                  className={`calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)}`}
+                  className={`calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} ${schedule.isAiRecommendation ? `calendar-schedule-bar--ai-${schedule.aiType}` : ''}`}
                   onClick={() => handleEditSchedule(schedule)}
                   style={{ position: 'relative', marginBottom: '4px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', height: 'auto', ...schedule.isTodo && schedule.isCompleted ? { opacity: 0.6, textDecoration: 'line-through' } : {} }}
                 >
@@ -652,7 +664,7 @@ export default function Calendar({ showSidebar = true }) {
               return (
                 <div 
                   key={schedule.id}
-                  className={`calendar-day-event calendar-schedule-bar--${getScheduleGroup(schedule)}`}
+                  className={`calendar-day-event calendar-schedule-bar--${getScheduleGroup(schedule)} ${schedule.isAiRecommendation ? `calendar-schedule-bar--ai-${schedule.aiType}` : ''}`}
                   style={{
                     top: `calc(${top}% + 2px)`,
                     height: `calc(${Math.max(height, 1.5)}% - 4px)`, 
@@ -836,10 +848,34 @@ export default function Calendar({ showSidebar = true }) {
                       {todayAiSchedules.map((schedule) => (
                         <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
                           <div className="calendar-ai-label">
-                            {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : '다가오는 일정'}
+                            {AI_RECOMMENDATION_LABELS[schedule.aiType] || '다가오는 일정'}
                           </div>
-                          <div className="calendar-ai-message">{schedule.title}</div>
-                          <div className="calendar-ai-meta">{schedule.description}</div>
+                          {schedule.aiType === 'preparation' ? (
+                            <div className="calendar-ai-details">
+                              <div className="calendar-ai-detail">
+                                <span className="calendar-ai-detail-label">대상 일정</span>
+                                <strong>{schedule.targetTitle}</strong>
+                                <span>{schedule.targetStartDate} 예정</span>
+                              </div>
+                              <div className="calendar-ai-detail">
+                                <span className="calendar-ai-detail-label">추천 내용</span>
+                                <strong>{schedule.preparationDays}일 전부터 준비 권장</strong>
+                                <span>과거 등록 기간 기준 예상 {schedule.estimatedDays}일</span>
+                              </div>
+                              <div className="calendar-ai-detail">
+                                <span className="calendar-ai-detail-label">과거 일정 기반</span>
+                                <strong>{schedule.sourceTitle}</strong>
+                                <span>
+                                  유사 일정 {schedule.similarScheduleCount}건 · 신뢰도 {AI_CONFIDENCE_LABELS[schedule.confidence] || schedule.confidence}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="calendar-ai-message">{schedule.title}</div>
+                              <div className="calendar-ai-meta">{schedule.description}</div>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1041,6 +1077,7 @@ export default function Calendar({ showSidebar = true }) {
                               : 'middle';
 
                         let itemClasses = `calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} calendar-schedule-bar--${segmentType}`;
+                        if (schedule.isAiRecommendation) itemClasses += ` calendar-schedule-bar--ai-${schedule.aiType}`;
                         if (schedule.isTodo && schedule.isCompleted) itemClasses += ' todo-completed';
 
                         return (

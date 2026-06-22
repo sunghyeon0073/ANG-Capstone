@@ -1,7 +1,8 @@
 import '../../style/auth.css'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login } from '../../api/authApi';
+import { login } from '../../api/authApi'
+import { showAlert } from '../../utils/alertUtils'
 
 export default function Login() {
   const [employeeId, setEmployeeId] = useState('')
@@ -17,11 +18,11 @@ export default function Login() {
       sessionStorage.setItem('token', data.accessToken)
       sessionStorage.setItem('refreshToken', data.refreshToken)
       const username = data.user?.name || data.user?.empNo || '사용자'
-      alert(`${username}님 환영합니다.`)
+      showAlert(`${username}님 환영합니다.`, 'success')
       navigate('/dashboard', { replace: true })
     } catch (error) {
       const message = error.response?.data?.message || '로그인에 실패했습니다.'
-      alert(message)
+      showAlert(message, 'error')
     }
   }
 
