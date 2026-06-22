@@ -22,7 +22,7 @@ services:
       HWP_EDIT_BASE_URL: ${HWP_EDIT_BASE_URL:-http://10.30.4.178:8877}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
-      OLLAMA_MOCK: ${OLLAMA_MOCK:-true}
+      OLLAMA_MOCK: ${OLLAMA_MOCK:-false}
 
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
@@ -52,7 +52,7 @@ services:
     
     environment:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-ang-ai:latest}
-      OLLAMA_MOCK: ${OLLAMA_MOCK:-true}
+      OLLAMA_MOCK: ${OLLAMA_MOCK:-false}
       DOCKER_CONTAINER: "true"
     extra_hosts:
       - "host.docker.internal:host-gateway"
