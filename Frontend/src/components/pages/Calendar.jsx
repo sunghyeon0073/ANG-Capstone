@@ -22,6 +22,7 @@ import {
   toggleCompleteSchedule,
   updateSchedule,
 } from '../../api/scheduleApi'
+import { showAlert } from '../../utils/alertUtils'
 import MonthYearPicker from '../calendar/MonthYearPicker'
 import SchedulePopover from '../calendar/SchedulePopover'
 import {
@@ -307,7 +308,7 @@ export default function Calendar({ showSidebar = true }) {
       setPopoverAnchor(null)
       fetchCalendarData()
     } catch (error) {
-      alert(`일정 수정 실패: ${error.message}`)
+      showAlert(`일정 수정 실패: ${error.message}`, 'error')
     }
   }
 
@@ -332,7 +333,7 @@ export default function Calendar({ showSidebar = true }) {
 
     const extension = file.name.split('.').pop()?.toLowerCase()
     if (!['xls', 'xlsx'].includes(extension || '')) {
-      alert('엑셀 파일(.xls, .xlsx)만 업로드할 수 있습니다.')
+      showAlert('엑셀 파일(.xls, .xlsx)만 업로드할 수 있습니다.', 'warning')
       event.target.value = ''
       return
     }
@@ -343,7 +344,7 @@ export default function Calendar({ showSidebar = true }) {
       const { items, skippedRows } = parseExcelSchedules(arrayBuffer)
 
       if (items.length === 0) {
-        alert('엑셀에서 등록할 수 있는 일정을 찾지 못했습니다. 날짜와 제목 컬럼을 확인해주세요.')
+        showAlert('엑셀에서 등록할 수 있는 일정을 찾지 못했습니다. 날짜와 제목 컬럼을 확인해주세요.', 'warning')
         return
       }
 
@@ -353,7 +354,7 @@ export default function Calendar({ showSidebar = true }) {
       setIsExcelConfirmOpen(true)
     } catch (error) {
       console.error('엑셀 일정 파싱 실패', error)
-      alert(`엑셀 파일을 읽는 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`)
+      showAlert(`엑셀 파일을 읽는 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`, 'error')
     } finally {
       setIsImportingExcel(false)
       event.target.value = ''
@@ -376,7 +377,7 @@ export default function Calendar({ showSidebar = true }) {
       setIsModalOpen(false)
       fetchCalendarData()
     } catch (error) {
-      alert(`엑셀 일정 등록 실패: ${error.response?.data?.message || error.message || '오류가 발생했습니다.'}`)
+      showAlert(`엑셀 일정 등록 실패: ${error.response?.data?.message || error.message || '오류가 발생했습니다.'}`, 'error')
     } finally {
       setIsImportingExcel(false)
     }
@@ -400,12 +401,12 @@ export default function Calendar({ showSidebar = true }) {
 
   const handleSaveSchedule = async () => {
     if (!formData.title.trim()) {
-      alert('일정 제목을 입력해주세요.')
+      showAlert('일정 제목을 입력해주세요.', 'warning')
       return
     }
 
     if (!formData.startDate || !formData.endDate) {
-      alert('시작일과 종료일을 선택해주세요.')
+      showAlert('시작일과 종료일을 선택해주세요.', 'warning')
       return
     }
 
@@ -415,7 +416,7 @@ export default function Calendar({ showSidebar = true }) {
       resetForm()
       fetchCalendarData()
     } catch (error) {
-      alert(`일정 저장 실패: ${error.message || error.response?.data?.message || '오류가 발생했습니다.'}`)
+      showAlert(`일정 저장 실패: ${error.message || error.response?.data?.message || '오류가 발생했습니다.'}`, 'error')
     }
   }
 
@@ -433,7 +434,7 @@ export default function Calendar({ showSidebar = true }) {
       setSelectedSchedule(null)
       fetchCalendarData()
     } catch (error) {
-      alert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
+      showAlert(`일정 삭제 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`, 'error')
     }
   }
 
@@ -443,7 +444,7 @@ export default function Calendar({ showSidebar = true }) {
       await toggleCompleteSchedule(schedule.id)
       fetchCalendarData()
     } catch (error) {
-      alert(`할 일 상태 변경 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`)
+      showAlert(`할 일 상태 변경 실패: ${error.response?.data?.message || '오류가 발생했습니다.'}`, 'error')
     }
   }
 
@@ -481,7 +482,7 @@ export default function Calendar({ showSidebar = true }) {
       setQuickTodoTitle('')
       fetchCalendarData()
     } catch (error) {
-      alert(`빠른 추가 실패: ${error.message}`)
+      showAlert(`빠른 추가 실패: ${error.message}`, 'error')
     }
   }
 

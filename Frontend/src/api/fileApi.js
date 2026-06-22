@@ -31,3 +31,5 @@ export const getFilePreview = (fileId) =>
   api.get(`/files/preview/${fileId}`, { responseType: 'blob' });
 
 export const renameFile = (fileId, data) => api.put(`/files/${fileId}`, data);
+
+export const shareFile = (fileId, targetScopeId) => api.put(`/files/${fileId}`, { targetScopeId });

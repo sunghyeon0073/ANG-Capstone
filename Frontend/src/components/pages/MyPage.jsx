@@ -2,6 +2,7 @@ import '../../style/mypage.css'
 import { useEffect, useMemo, useState } from 'react'
 import { getScopes } from '../../api/scopeApi'
 import { getUserProfileImage, updateUser, uploadUserProfileImage } from '../../api/userApi'
+import { showAlert } from '../../utils/alertUtils'
 
 const normalizeScopeType = (scope) => scope?.scopeType ?? scope?.type ?? ''
 
@@ -116,7 +117,7 @@ export default function MyPage({ user, onUserUpdate }) {
     if (!file) return
 
     if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      alert('JPG 또는 PNG 이미지만 등록할 수 있습니다.')
+      showAlert('JPG 또는 PNG 이미지만 등록할 수 있습니다.', 'warning')
       return
     }
 
@@ -131,7 +132,7 @@ export default function MyPage({ user, onUserUpdate }) {
     event.preventDefault()
 
     if (!user?.id) {
-      alert('사용자 정보를 찾을 수 없습니다.')
+      showAlert('사용자 정보를 찾을 수 없습니다.', 'error')
       return
     }
 
@@ -158,11 +159,11 @@ export default function MyPage({ user, onUserUpdate }) {
       }
 
       sessionStorage.setItem('user', JSON.stringify(updatedUser))
-      alert('마이페이지 정보가 저장되었습니다.')
+      showAlert('마이페이지 정보가 저장되었습니다.', 'success')
     } catch (error) {
       const message = error.response?.data?.message || '프로필 저장에 실패했습니다.'
       setErrorMessage(message)
-      alert(message)
+      showAlert(message, 'error')
     } finally {
       setIsSaving(false)
     }

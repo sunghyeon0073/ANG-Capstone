@@ -4,6 +4,8 @@ import {
   FiPaperclip,
   FiX,
 } from 'react-icons/fi'
+import { useState } from 'react'
+import FileSourceModal from '../common/FileSourceModal'
 
 export default function MailCompose({
   draft,
@@ -29,6 +31,8 @@ export default function MailCompose({
   getInitial,
   formatFileSize,
 }) {
+  const [showFileSourceModal, setShowFileSourceModal] = useState(false)
+
   return (
     <form className="mail-compose-panel" onSubmit={onSubmit}>
       <label className="mail-compose-row mail-recipient-row">
@@ -108,11 +112,16 @@ export default function MailCompose({
       </label>
 
       <div className="mail-compose-attachments">
-        <label className="mail-attach-btn">
+        <button type="button" className="mail-attach-btn" onClick={() => setShowFileSourceModal(true)}>
           <FiPaperclip />
           파일 첨부
-          <input type="file" multiple onChange={onAttachmentSelect} />
-        </label>
+        </button>
+        <FileSourceModal
+          isOpen={showFileSourceModal}
+          onClose={() => setShowFileSourceModal(false)}
+          onFilesSelected={(files) => { onAttachmentSelect(files); setShowFileSourceModal(false); }}
+          multiple={true}
+        />
         <span className="mail-attach-hint">
           선택한 파일은 메일 저장 또는 발송 시 함께 업로드됩니다.
         </span>

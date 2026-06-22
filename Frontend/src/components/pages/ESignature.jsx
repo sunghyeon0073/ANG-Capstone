@@ -1,5 +1,7 @@
 ﻿import '../../style/esignature.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import FileSourceModal from '../common/FileSourceModal'
+import { showAlert } from '../../utils/alertUtils'
 import { AttachmentViewer, ExcelSheetViewer, HwpxViewer } from '../esignature/AttachmentViewers'
 import ActionModal from '../esignature/ActionModal'
 import SignaturePage, { SignatureImg } from '../esignature/SignaturePage'
@@ -262,6 +264,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   const [approvalLines, setApprovalLines] = useState([])
   const [attachmentFile, setAttachmentFile] = useState(null)
   const [attachmentFiles, setAttachmentFiles] = useState([])
+  const [showAttachSourceModal, setShowAttachSourceModal] = useState(false)
   const [selectedAttachmentId, setSelectedAttachmentId] = useState(null)
   const [userSearch, setUserSearch] = useState('')
   const [saveState, setSaveState] = useState('idle')
@@ -454,15 +457,15 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   }
 
   const saveMyLinePreset = async () => {
-    if (approvalLines.length === 0) { alert('먼저 결재선을 추가해주세요.'); return }
+    if (approvalLines.length === 0) { showAlert('먼저 결재선을 추가해주세요.', 'warning'); return }
     const presetName = window.prompt('즐겨찾기 결재선 이름을 입력해주세요.')
     if (!presetName) return
     setLinePresetSaving(true)
     try {
       await createMyApprovalLine({ name: presetName, items: approvalLines.map((line, i) => ({ approverId: line.approverId, lineOrder: i + 1, lineType: line.lineType })) })
       await refreshAll()
-      alert('즐겨찾기 결재선이 저장되었습니다.')
-    } catch (e) { console.error(e); alert('결재선 저장에 실패했습니다.') }
+      showAlert('즐겨찾기 결재선이 저장되었습니다.', 'success')
+    } catch (e) { console.error(e); showAlert('결재선 저장에 실패했습니다.', 'error') }
     finally { setLinePresetSaving(false) }
   }
 
@@ -476,7 +479,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   const removeMyLinePreset = async (presetId) => {
     if (!window.confirm('선택한 결재선을 삭제할까요?')) return
     try { await deleteMyApprovalLine(presetId); await refreshAll() }
-    catch (e) { console.error(e); alert('결재선 삭제에 실패했습니다.') }
+    catch (e) { console.error(e); showAlert('결재선 삭제에 실패했습니다.', 'error') }
   }
 
   const addApprover = (user) => {
@@ -510,8 +513,8 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
   })
 
   const persistApproval = async (submitNow) => {
-    if (!form.title.trim()) { alert('제목을 입력해주세요.'); return }
-    if (approvalLines.length === 0) { alert('결재선을 최소 1명 이상 지정해주세요.'); return }
+    if (!form.title.trim()) { showAlert('제목을 입력해주세요.', 'warning'); return }
+    if (approvalLines.length === 0) { showAlert('결재선을 최소 1명 이상 지정해주세요.', 'warning'); return }
     const payload = buildPayload()
     setSaveState(submitNow ? 'submitting' : 'saving')
     try {
@@ -531,10 +534,10 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       setAttachmentFile(null)
       setAttachmentFiles([])
       await refreshAll()
-      alert(submitNow ? '결재가 상신되었습니다.' : '임시저장되었습니다.')
+      showAlert(submitNow ? '결재가 상신되었습니다.' : '임시저장되었습니다.', 'success')
     } catch (e) {
       console.error(e)
-      alert(e.response?.data?.message || '결재 문서 저장에 실패했습니다.')
+      showAlert(e.response?.data?.message || '결재 문서 저장에 실패했습니다.', 'error')
     } finally { setSaveState('idle') }
   }
 
@@ -559,30 +562,30 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
       setActionModal(null)
     } catch (e) {
       console.error(e)
-      alert(e.response?.data?.message || '처리에 실패했습니다.')
+      showAlert(e.response?.data?.message || '처리에 실패했습니다.', 'error')
     } finally {
       setActionState('')
     }
   }
 
   const handleSignUpload = async () => {
-    if (!signatureFile) { alert('업로드할 서명 이미지를 선택해주세요.'); return }
+    if (!signatureFile) { showAlert('업로드할 서명 이미지를 선택해주세요.', 'warning'); return }
     setSignSaving(true)
     try {
       await uploadApprovalSign(signatureFile, signatureLabel.trim() || null)
       setSignatureFile(null)
       setSignatureLabel('')
       await refreshAll()
-      alert('서명이 등록되었습니다.')
+      showAlert('서명이 등록되었습니다.', 'success')
     }
-    catch (e) { console.error(e); alert(e.response?.data?.message || '서명 업로드에 실패했습니다.') }
+    catch (e) { console.error(e); showAlert(e.response?.data?.message || '서명 업로드에 실패했습니다.', 'error') }
     finally { setSignSaving(false) }
   }
 
   const handleSignDelete = async (id) => {
     if (!window.confirm('이 서명을 삭제할까요?')) return
     try { await deleteApprovalSign(id); await refreshAll() }
-    catch (e) { console.error(e); alert(e.response?.data?.message || '서명 삭제에 실패했습니다.') }
+    catch (e) { console.error(e); showAlert(e.response?.data?.message || '서명 삭제에 실패했습니다.', 'error') }
   }
 
   const openDraftToCompose = async () => {
@@ -763,23 +766,25 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                     </div>
                     <div className="esig-field">
                       <label>첨부파일</label>
-                      <label className="esig-file-add-btn">
+                      <button
+                        type="button"
+                        className="esig-file-add-btn"
+                        onClick={() => setShowAttachSourceModal(true)}
+                      >
                         <FiPlus size={13} /> 파일 추가
-                        <input
-                          type="file"
-                          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.hwp,.hwpx,.txt,image/*"
-                          multiple
-                          style={{ display: 'none' }}
-                          onChange={(e) => {
-                            const files = Array.from(e.target.files || [])
-                            setAttachmentFiles((prev) => {
-                              const names = new Set(prev.map((f) => f.name))
-                              return [...prev, ...files.filter((f) => !names.has(f.name))]
-                            })
-                            e.target.value = ''
-                          }}
-                        />
-                      </label>
+                      </button>
+                      <FileSourceModal
+                        isOpen={showAttachSourceModal}
+                        onClose={() => setShowAttachSourceModal(false)}
+                        onFilesSelected={(files) => {
+                          setAttachmentFiles((prev) => {
+                            const names = new Set(prev.map((f) => f.name))
+                            return [...prev, ...files.filter((f) => !names.has(f.name))]
+                          })
+                        }}
+                        multiple={true}
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.hwp,.hwpx,.txt,image/*"
+                      />
                       {attachmentFiles.length > 0 && (
                         <ul className="esig-file-list">
                           {attachmentFiles.map((file, idx) => (
@@ -1009,7 +1014,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                               a.click()
                               URL.revokeObjectURL(url)
                             } catch {
-                              alert('PDF 다운로드에 실패했습니다. 결재 완료 후 다운로드 가능합니다.')
+                              showAlert('PDF 다운로드에 실패했습니다. 결재 완료 후 다운로드 가능합니다.', 'error')
                             }
                           }}
                         >
@@ -1078,7 +1083,7 @@ export default function ESignature({ currentSubPage, me, onSubPageChange }) {
                                 a.click()
                                 URL.revokeObjectURL(url)
                               } catch {
-                                alert('파일 다운로드에 실패했습니다.')
+                                showAlert('파일 다운로드에 실패했습니다.', 'error')
                               }
                             }}
                           >

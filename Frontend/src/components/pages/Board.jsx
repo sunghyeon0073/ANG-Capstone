@@ -1,6 +1,8 @@
 import '../../style/board.css'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiDownload, FiEdit, FiFileText, FiFlag, FiPaperclip, FiStar, FiTrash2, FiX } from 'react-icons/fi'
+import FileSourceModal from '../common/FileSourceModal'
+import { showAlert } from '../../utils/alertUtils'
 import {
   getBoardPosts,
   createBoardPost,
@@ -56,8 +58,8 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
   const [currentPage, setCurrentPage] = useState(1)
   const [internalCategory, setInternalCategory] = useState(currentSubPage)
   const [totalCount, setTotalCount] = useState(0)
+  const [showFileSourceModal, setShowFileSourceModal] = useState(false)
   const itemsPerPage = maxItems != null ? maxItems : 13
-  const fileInputRef = useRef(null)
 
   const isDashboard = maxItems != null
 
@@ -115,7 +117,6 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
     setFormData({ title: '', content: '', type: 'general', pinned: false })
     setAttachments([])
     setSavedAttachments([])
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleOpenCompose = () => { setSelectedPost(null); resetForm(); setMode('compose') }
@@ -140,11 +141,9 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
     setMode('compose')
   }
 
-  const handleAttachmentSelect = (e) => {
-    const files = Array.from(e.target.files || [])
+  const handleFilesAdded = (files) => {
     if (!files.length) return
     setAttachments(prev => [...prev, ...files])
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleDownload = async (att) => {
@@ -155,7 +154,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
       a.href = url; a.download = att.fileName; a.click()
       URL.revokeObjectURL(url)
     } catch {
-      alert('파일 다운로드에 실패했습니다.')
+      showAlert('파일 다운로드에 실패했습니다.', 'error')
     }
   }
 
@@ -165,12 +164,12 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
       setSavedAttachments(prev => prev.filter(a => a.attachmentId !== attachmentId))
       setSelectedPost(prev => prev ? { ...prev, attachments: prev.attachments.filter(a => a.attachmentId !== attachmentId) } : prev)
     } catch {
-      alert('첨부파일 삭제에 실패했습니다.')
+      showAlert('첨부파일 삭제에 실패했습니다.', 'error')
     }
   }
 
   const handleSave = async () => {
-    if (!formData.title.trim() || !formData.content.trim()) { alert('제목과 내용을 모두 입력하세요.'); return }
+    if (!formData.title.trim() || !formData.content.trim()) { showAlert('제목과 내용을 모두 입력하세요.', 'warning'); return }
     try {
       let postId
       if (selectedPost) {
@@ -208,7 +207,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
       }
       resetForm()
     } catch {
-      alert('저장에 실패했습니다.')
+      showAlert('저장에 실패했습니다.', 'error')
     }
   }
 
@@ -219,7 +218,7 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
       setPosts(prev => prev.filter(p => p.id !== postId))
       setSelectedPost(null); setMode('list'); resetForm(); showMsg('삭제되었습니다.')
     } catch {
-      alert('삭제에 실패했습니다.')
+      showAlert('삭제에 실패했습니다.', 'error')
     }
   }
 
@@ -507,17 +506,20 @@ export default function Board({ me, currentSubPage = 'board', onSubPageChange, m
               )}
 
               <div className="board-compose-attach">
-                <label className="board-compose-attach-btn">
+                <button
+                  type="button"
+                  className="board-compose-attach-btn"
+                  onClick={() => setShowFileSourceModal(true)}
+                >
                   <FiPaperclip size={13} /> 파일 첨부
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.hwp,.txt"
-                    multiple
-                    onChange={handleAttachmentSelect}
-                    style={{ display: 'none' }}
-                  />
-                </label>
+                </button>
+                <FileSourceModal
+                  isOpen={showFileSourceModal}
+                  onClose={() => setShowFileSourceModal(false)}
+                  onFilesSelected={handleFilesAdded}
+                  multiple={true}
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.hwp,.txt"
+                />
                 {attachments.length > 0 && (
                   <div className="board-compose-file-list">
                     {attachments.map((file, idx) => (
