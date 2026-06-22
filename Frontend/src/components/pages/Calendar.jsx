@@ -37,6 +37,17 @@ import {
   toAiSchedule,
 } from '../calendar/calendarUtils'
 
+const AI_RECOMMENDATION_LABELS = {
+  pattern: '반복 패턴 분석',
+  preparation: '업무 준비 시점',
+}
+
+const AI_CONFIDENCE_LABELS = {
+  HIGH: '높음',
+  MEDIUM: '보통',
+  LOW: '낮음',
+}
+
 const SimpleModal = ({ open, onClose, title, children }) => {
   if (!open) return null
 
@@ -611,7 +622,7 @@ export default function Calendar({ showSidebar = true }) {
               {allDayEvents.map(schedule => (
                 <div 
                   key={schedule.id} 
-                  className={`calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)}`}
+                  className={`calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} ${schedule.isAiRecommendation ? `calendar-schedule-bar--ai-${schedule.aiType}` : ''}`}
                   onClick={() => handleEditSchedule(schedule)}
                   style={{ position: 'relative', marginBottom: '4px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', height: 'auto', ...schedule.isTodo && schedule.isCompleted ? { opacity: 0.6, textDecoration: 'line-through' } : {} }}
                 >
@@ -653,7 +664,7 @@ export default function Calendar({ showSidebar = true }) {
               return (
                 <div 
                   key={schedule.id}
-                  className={`calendar-day-event calendar-schedule-bar--${getScheduleGroup(schedule)}`}
+                  className={`calendar-day-event calendar-schedule-bar--${getScheduleGroup(schedule)} ${schedule.isAiRecommendation ? `calendar-schedule-bar--ai-${schedule.aiType}` : ''}`}
                   style={{
                     top: `calc(${top}% + 2px)`,
                     height: `calc(${Math.max(height, 1.5)}% - 4px)`, 
@@ -837,10 +848,34 @@ export default function Calendar({ showSidebar = true }) {
                       {todayAiSchedules.map((schedule) => (
                         <div key={schedule.id} className={`calendar-ai-card calendar-ai-card--${schedule.aiType}`}>
                           <div className="calendar-ai-label">
-                            {schedule.aiType === 'last-year' ? '작년 기록 기반' : schedule.aiType === 'pattern' ? '반복 패턴 분석' : '다가오는 일정'}
+                            {AI_RECOMMENDATION_LABELS[schedule.aiType] || '다가오는 일정'}
                           </div>
-                          <div className="calendar-ai-message">{schedule.title}</div>
-                          <div className="calendar-ai-meta">{schedule.description}</div>
+                          {schedule.aiType === 'preparation' ? (
+                            <div className="calendar-ai-details">
+                              <div className="calendar-ai-detail">
+                                <span className="calendar-ai-detail-label">대상 일정</span>
+                                <strong>{schedule.targetTitle}</strong>
+                                <span>{schedule.targetStartDate} 예정</span>
+                              </div>
+                              <div className="calendar-ai-detail">
+                                <span className="calendar-ai-detail-label">추천 내용</span>
+                                <strong>{schedule.preparationDays}일 전부터 준비 권장</strong>
+                                <span>과거 등록 기간 기준 예상 {schedule.estimatedDays}일</span>
+                              </div>
+                              <div className="calendar-ai-detail">
+                                <span className="calendar-ai-detail-label">과거 일정 기반</span>
+                                <strong>{schedule.sourceTitle}</strong>
+                                <span>
+                                  유사 일정 {schedule.similarScheduleCount}건 · 신뢰도 {AI_CONFIDENCE_LABELS[schedule.confidence] || schedule.confidence}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="calendar-ai-message">{schedule.title}</div>
+                              <div className="calendar-ai-meta">{schedule.description}</div>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1042,6 +1077,7 @@ export default function Calendar({ showSidebar = true }) {
                               : 'middle';
 
                         let itemClasses = `calendar-schedule-bar calendar-schedule-bar--${getScheduleGroup(schedule)} calendar-schedule-bar--${segmentType}`;
+                        if (schedule.isAiRecommendation) itemClasses += ` calendar-schedule-bar--ai-${schedule.aiType}`;
                         if (schedule.isTodo && schedule.isCompleted) itemClasses += ' todo-completed';
 
                         return (
