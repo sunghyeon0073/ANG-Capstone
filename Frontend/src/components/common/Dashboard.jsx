@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { session } from '../../utils/storageUtils'
 import { showAlert } from '../../utils/alertUtils'
@@ -44,6 +44,9 @@ const DEFAULT_SUB_PAGES = {
   admin: 'admin-approval',
 }
 
+const TOP_NAV_MENU_IDS = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization', 'admin']
+const DASHBOARD_PAGE_QUERY_KEY = 'page'
+
 // main-content--fill이 필요한 카테고리 (자체 높이 채움 레이아웃)
 const FILL_CATEGORIES = new Set(['esignature', 'board', 'mail'])
 
@@ -52,12 +55,28 @@ const getMainCategory = (page) => {
   return category === 'organization' ? 'org' : category
 }
 
+const normalizeDashboardPage = (page) => {
+  if (!page) return null
+
+  if (TOP_NAV_MENU_IDS.includes(page)) {
+    const category = page === 'organization' ? 'org' : page
+    return DEFAULT_SUB_PAGES[category] || page
+  }
+
+  const category = getMainCategory(page)
+  return PAGE_COMPONENTS[category] ? page : null
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const pageParam = searchParams.get(DASHBOARD_PAGE_QUERY_KEY)
   const queryClient = useQueryClient()
   const [user] = useState(() => session.getUser())
   const [currentPage, setCurrentPage] = useState(
-    () => session.getDashboardPage() || 'home-dashboard'
+    () => normalizeDashboardPage(pageParam)
+      || normalizeDashboardPage(session.getDashboardPage())
+      || 'home-dashboard'
   )
   const [contactRequest, setContactRequest] = useState(null)
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(
@@ -118,6 +137,21 @@ export default function Dashboard() {
   }, [currentPage])
 
   useEffect(() => {
+    const pageFromUrl = normalizeDashboardPage(pageParam)
+
+    if (pageFromUrl) {
+      if (pageFromUrl !== currentPage) setCurrentPage(pageFromUrl)
+      return
+    }
+
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set(DASHBOARD_PAGE_QUERY_KEY, currentPage)
+      return next
+    }, { replace: true })
+  }, [currentPage, pageParam, setSearchParams])
+
+  useEffect(() => {
     session.setChatWindowOpen(isChatWindowOpen)
   }, [isChatWindowOpen])
 
@@ -127,17 +161,29 @@ export default function Dashboard() {
     navigate('/login', { replace: true })
   }
 
-  const handlePageChange = (pageId) => {
-    const topNavMenuIds = ['home', 'document', 'esignature', 'calendar', 'file', 'board', 'mail', 'chat', 'organization', 'admin']
+  const moveDashboardPage = useCallback((pageId, options = {}) => {
+    const nextPage = normalizeDashboardPage(pageId)
+    if (!nextPage) return
 
-    if (topNavMenuIds.includes(pageId)) {
+    if (nextPage !== currentPage) setCurrentPage(nextPage)
+    if (pageParam === nextPage) return
+
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set(DASHBOARD_PAGE_QUERY_KEY, nextPage)
+      return next
+    }, { replace: Boolean(options.replace) })
+  }, [currentPage, pageParam, setSearchParams])
+
+  const handlePageChange = (pageId) => {
+    if (TOP_NAV_MENU_IDS.includes(pageId)) {
       const incomingCategory = pageId === 'organization' ? 'org' : pageId
       const currentCategory = getMainCategory(currentPage)
       if (incomingCategory !== currentCategory) {
-        setCurrentPage(DEFAULT_SUB_PAGES[incomingCategory] || pageId)
+        moveDashboardPage(DEFAULT_SUB_PAGES[incomingCategory] || pageId)
       }
     } else {
-      setCurrentPage(pageId)
+      moveDashboardPage(pageId)
     }
   }
 
@@ -148,7 +194,7 @@ export default function Dashboard() {
 
   const openMailCompose = (contact) => {
     setContactRequest({ channel: 'mail', contact, requestId: Date.now() })
-    setCurrentPage('mail-compose')
+    moveDashboardPage('mail-compose')
   }
 
   const openPrivateChat = (contact) => {

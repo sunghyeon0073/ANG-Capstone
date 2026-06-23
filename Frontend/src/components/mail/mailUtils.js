@@ -11,6 +11,7 @@ export const mailboxConfig = {
 }
 
 const KOREA_TIME_ZONE = 'Asia/Seoul'
+const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000
 
 export const getInitial = (name) => name?.charAt(0) || '?'
 export const getResponseData = (response) => response?.data?.data ?? response?.data ?? []
@@ -24,7 +25,23 @@ export { _formatFileSize as formatFileSize }
 const parseMailDateTime = (value) => {
   if (!value) return null
   const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)
-  const date = new Date(hasTimeZone ? value : `${value}Z`)
+  if (hasTimeZone || typeof value !== 'string') {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3})\d*)?)?/)
+  const date = match
+    ? new Date(Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]),
+      Number(match[6] || 0),
+      Number((match[7] || '0').padEnd(3, '0')),
+    ) - KOREA_TIME_OFFSET_MS)
+    : new Date(value.replace(' ', 'T'))
 
   return Number.isNaN(date.getTime()) ? null : date
 }
