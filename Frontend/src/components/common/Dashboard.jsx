@@ -258,12 +258,10 @@ export default function Dashboard() {
         onUnreadCountChange={setChatUnreadCount}
         onNotification={handleNewNotification}
       />
-      {mainCategory !== 'esignature' && (
-        <FloatingMascot
-          mode={mainCategory === 'document' ? 'ai' : 'default'}
-          onSubPageChange={handlePageChange}
-        />
-      )}
+      <FloatingMascot
+        mode={mainCategory === 'document' ? 'ai' : 'default'}
+        onSubPageChange={handlePageChange}
+      />
     </div>
   )
 }
