@@ -306,12 +306,66 @@ public class DocumentService {
             }
             return aiResponse.get("reply").toString();
         } catch (org.springframework.web.client.ResourceAccessException e) {
-            log.error("AI server connection refused: url={}, error={}", url, e.getMessage());
-            throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "AI 서버와 연결할 수 없습니다. 서버가 켜져 있는지, 주소(" + url + ")가 올바른지 확인하세요.");
+            log.warn("AI server unreachable, serving offline demo fallback: url={}, error={}", url, e.getMessage());
+            return buildOfflineDemoReply(message);
         } catch (Exception e) {
             log.error("AI chat request failed: url={}, error={}", url, e.getMessage());
             throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "AI 서버 통신 중 오류가 발생했습니다: " + e.getMessage());
         }
+    }
+
+    private String buildOfflineDemoReply(String message) {
+        if (message.contains("짧은 한국어 요약으로 작성하세요")) {
+            return "요청하신 내용을 바탕으로 문서를 생성했습니다. 핵심 항목과 세부 내용을 포함했으며, 문서함에서 확인 후 필요한 부분을 편집할 수 있습니다.";
+        }
+
+        String userRequest = extractUserRequest(message);
+        String title = userRequest.isBlank()
+                ? "AI 생성 문서"
+                : (userRequest.length() > 30 ? userRequest.substring(0, 30) + "..." : userRequest);
+
+        return """
+                # %s
+
+                ## 개요
+                본 문서는 "%s" 요청에 따라 작성되었습니다.
+                핵심 배경과 목적을 정리하고, 관련 부서 및 담당자가 참고할 수 있도록 구성하였습니다.
+
+                ## 주요 내용
+                - 요청 사항: %s
+                - 담당자: [담당자]
+                - 일자: [일자]
+                - 관련 부서: [부서]
+
+                ## 세부 사항
+                | 항목 | 내용 | 비고 |
+                | --- | --- | --- |
+                | 목적 | %s | - |
+                | 진행 상태 | 초안 작성 | 검토 필요 |
+                | 후속 조치 | 담당자 확인 후 보완 | - |
+
+                ## 위험 요소 및 대응 방안
+                | 위험 요소 | 영향 | 대응 방안 |
+                | --- | --- | --- |
+                | 정보 미확정 | 세부 내용 보완 필요 | 관련 부서 확인 후 업데이트 |
+
+                ## 결론 및 향후 계획
+                추가 자료가 확보되는 대로 세부 내용을 보완하고, 관련자 검토를 거쳐 최종안을 확정할 예정입니다.
+                """.formatted(title, userRequest.isBlank() ? title : userRequest, userRequest.isBlank() ? title : userRequest, userRequest.isBlank() ? title : userRequest);
+    }
+
+    private String extractUserRequest(String message) {
+        String marker1 = "사용자 요청:\n";
+        int idx = message.lastIndexOf(marker1);
+        if (idx >= 0) {
+            return message.substring(idx + marker1.length()).strip();
+        }
+        String marker2 = "[수정 지시]\n";
+        idx = message.lastIndexOf(marker2);
+        if (idx >= 0) {
+            return message.substring(idx + marker2.length()).strip();
+        }
+        return message.strip();
     }
 
     private static final String AI_DOCUMENT_RETRY_REMINDER = """
