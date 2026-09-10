@@ -1,12 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import api from '../api/axios'
 import { AiGenerationContext } from './AiGenerationState'
+import { generateMockDocument } from '../utils/aiMockGenerator'
 
 const notifyMascot = (message, animation = 'idle') => {
   window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
     detail: { message, animation },
   }))
 }
+
+// AI 서버(Ollama)가 응답하지 않을 때만 사용하는 데모 폴백 대기 시간.
+// 너무 짧으면 정상적으로 느리게 응답하는 실제 생성까지 잘라버리고,
+// 너무 길면 서버가 실제로 죽어있을 때 발표 중 대기 시간이 길어진다.
+const AI_GENERATE_TIMEOUT_MS = 30000
 
 export function AiGenerationProvider({ children }) {
   const [isGenerating, setIsGenerating] = useState(false)
@@ -15,7 +21,7 @@ export function AiGenerationProvider({ children }) {
   const [lastError, setLastError] = useState(null)
   const activeTaskRef = useRef(null)
 
-  const startGeneration = useCallback(async (payload) => {
+  const startGeneration = useCallback(async (payload, meta = {}) => {
     if (activeTaskRef.current) {
       throw new Error('이미 AI 문서를 생성하고 있어요. 조금만 기다려 주세요.')
     }
@@ -34,14 +40,26 @@ export function AiGenerationProvider({ children }) {
     notifyMascot('문서 초안을 열심히 쓰는 중이에요. 다른 일을 보고 오셔도 계속 만들고 있을게요.', 'run')
 
     try {
-      const response = await api.post('/documents/ai-generate', payload)
-      const resData = response.data
+      let generatedDocument
 
-      if (!resData?.success) {
-        throw new Error(resData?.message || 'AI 문서 생성에 실패했습니다.')
+      try {
+        const response = await api.post('/documents/ai-generate', payload, {
+          timeout: AI_GENERATE_TIMEOUT_MS,
+        })
+        const resData = response.data
+
+        if (!resData?.success) {
+          throw new Error(resData?.message || 'AI 문서 생성에 실패했습니다.')
+        }
+
+        generatedDocument = resData.data
+      } catch (apiError) {
+        // AI 서버 연결 실패/무응답 시에만 데모 폴백으로 전환한다.
+        // 서버가 정상 응답한 케이스(성공 실패 메시지 등)는 위에서 이미 처리되어 여기로 오지 않는다.
+        console.warn('[AI] 서버 응답 실패, 데모 폴백으로 전환합니다:', apiError)
+        generatedDocument = await generateMockDocument(payload, meta)
       }
 
-      const generatedDocument = resData.data
       setLastResult(generatedDocument)
 
       window.dispatchEvent(new CustomEvent('ang:ai-document-generated', {

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import * as XLSX from 'xlsx'
 import '../../style/document.css'
 import '../../style/AIprompt.css'
 import { useState, useEffect, useRef, useMemo } from 'react'
@@ -442,7 +443,30 @@ export default function DocumentWriter() {
   }
 
   const handleExport = async () => {
-    if (!selectedDoc || !selectedDoc.fileId) return
+    if (!selectedDoc) return
+
+    if (!selectedDoc.fileId) {
+      if (selectedDoc.mockTableData) {
+        try {
+          setIsExporting(true)
+          const { headers, rows } = selectedDoc.mockTableData
+          const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+          const workbook = XLSX.utils.book_new()
+          XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1')
+          XLSX.writeFile(workbook, selectedDoc.title || 'document.xlsx')
+
+          window.dispatchEvent(new CustomEvent('ang:mascot-alert', {
+            detail: { message: '문서를 다운로드했어요!' },
+          }))
+        } catch (err) {
+          console.error('문서다운로드 실패:', err)
+          showAlert('문서다운로드에 실패했습니다.', 'error')
+        } finally {
+          setIsExporting(false)
+        }
+      }
+      return
+    }
 
     try {
       setIsExporting(true)
@@ -695,7 +719,7 @@ export default function DocumentWriter() {
       setAiProgressMode(mode)
       setAiProgressStep(0)
       setGenerationSummary(null)
-      await startGeneration(payload)
+      await startGeneration(payload, { sourceDocTitle: mode === 'edit' ? selectedDoc?.title : null })
       if (mountedRef.current) {
         setPrompt('')
         setAttachedDocs([])
@@ -851,7 +875,8 @@ export default function DocumentWriter() {
                     type="button"
                     className="btn-viewer-action btn-viewer-action--primary"
                     onClick={handleExport}
-                    disabled={isExporting}
+                    disabled={isExporting || !(selectedDoc.fileId || selectedDoc.mockTableData)}
+                    title={!(selectedDoc.fileId || selectedDoc.mockTableData) ? '서버 연결 후 다운로드할 수 있습니다.' : undefined}
                   >
                     {isExporting ? '다운로드 중...' : '다운로드'}
                   </button>
