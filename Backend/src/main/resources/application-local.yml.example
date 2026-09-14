@@ -53,10 +53,9 @@ ai:
 hwp:
   edit-base-url: ${HWP_EDIT_BASE_URL:http://10.30.4.178:8877}
 
-ollama:
-  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  model: ${OLLAMA_MODEL:ang-ai:latest}
-  timeout: 120
+anthropic:
+  api-key: ${ANTHROPIC_API_KEY}
+  model: ${ANTHROPIC_MODEL:claude-haiku-4-5-20251001}
 
 server:
   port: 9090
@@ -74,4 +73,4 @@ cloud:
   aws:
     region: ap-northeast-3
     s3:
-      bucket: ang-s3-bucket-418295679042-ap-northeast-3-an
+      bucket: ang-s3-418295679042-ap-northeast-3-an

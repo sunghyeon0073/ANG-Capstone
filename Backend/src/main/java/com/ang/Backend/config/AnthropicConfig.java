@@ -5,21 +5,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
-
 @Configuration
-public class OllamaConfig {
+public class AnthropicConfig {
 
-    @Value("${ollama.base-url}")
-    private String baseUrl;
-
-    @Value("${ollama.timeout}")
-    private int timeoutSeconds;
+    @Value("${anthropic.api-key}")
+    private String apiKey;
 
     @Bean
-    public RestClient ollamaRestClient() {
+    public RestClient anthropicRestClient() {
         return RestClient.builder()
-                .baseUrl(baseUrl)
+                .baseUrl("https://api.anthropic.com")
+                .defaultHeader("x-api-key", apiKey)
+                .defaultHeader("anthropic-version", "2023-06-01")
                 .defaultHeader("Content-Type", "application/json")
                 .build();
     }
