@@ -13,7 +13,7 @@ spring:
         access-key: ${AWS_ACCESS_KEY_ID}
         secret-key: ${AWS_SECRET_ACCESS_KEY}
       s3:
-        bucket: ${S3_BUCKET:ang-s3-bucket-418295679042-ap-northeast-3-an}
+        bucket: ${S3_BUCKET:ang-s3-418295679042-ap-northeast-3-an}
 
   datasource:
     url: ${DB_URL}
@@ -59,11 +59,9 @@ file:
 ai:
   base-url: ${AI_BASE_URL:http://localhost:8888}
 
-ollama:
-  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-  model: ${OLLAMA_MODEL:ang-ai:latest}
-  secretary-model: ${OLLAMA_SECRETARY_MODEL:ang-secretary:latest}
-  timeout: 120
+anthropic:
+  api-key: ${ANTHROPIC_API_KEY}
+  model: ${ANTHROPIC_MODEL:claude-haiku-4-5-20251001}
 
 server:
   port: 9090

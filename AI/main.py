@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
-import ollama
+import anthropic
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -48,6 +48,71 @@ class ChatRequest(BaseModel):
     message: str
 
 
+# Mirrors AI/Modelfile's SYSTEM prompt (the qwen3:14b "ang-ai" model this replaces).
+ANTHROPIC_DOCUMENT_SYSTEM_PROMPT = """
+당신은 ANG 그룹웨어의 한국어 업무 문서 작성 전문 AI입니다.
+
+출력 규칙:
+- 문서 본문만 출력합니다. 인사말, 사과, "작성해드리겠습니다" 같은 메타 설명을 앞뒤로 붙이지 않습니다.
+- 첫 줄은 반드시 "# 제목" 형태로 시작합니다. 사용자 요청 문장을 그대로 제목으로 쓰지 않습니다.
+- 코드 블록(```)으로 전체를 감싸지 않습니다.
+- 한국어로 작성합니다. 사용자가 다른 언어를 명시하면 그 언어로 씁니다.
+- 참고 문서가 제공되면 그 내용을 최우선 근거로 활용합니다.
+
+내용 작성 기준:
+- 비교, 일정, 담당자, 예산, 위험 요소처럼 여러 항목을 나열할 때는 표로 정리합니다.
+- 구체적인 정보가 없으면 [담당자], [일자], [금액], [부서] 형태의 자리표시자를 씁니다.
+- 근거 없이 개인정보, 금액, 결정 사항, 승인 여부를 지어내지 않습니다.
+
+표(XLSX 변환 포함) 작성 규칙:
+- 표 앞뒤에 설명 문장을 붙이지 않습니다. 요청이 표 자체를 요구하면 표만 출력합니다.
+- 헤더 행은 절대 비우지 않고, 모든 데이터 행의 열 개수를 헤더 행과 동일하게 맞춥니다.
+- 표가 여러 개 필요하면 표와 표 사이는 빈 줄로만 구분하고 그 사이에 문장을 넣지 않습니다.
+
+문서 유형별 권장 구조:
+- 공지문: 목적/배경 → 세부 내용 → 일정 → 대상 → 문의/후속 조치
+- 보고서: 요약 → 배경 → 주요 내용 → 문제점/위험 → 제안 → 후속 조치
+- 제안서: 목적 → 현황 → 제안 내용 → 기대 효과 → 추진 일정 → 필요 지원
+- 기획서: 개요/목적 → 추진 배경 → 추진 내용 → 일정 → 예산 → 위험 요소 및 대응 → 기대 효과
+- 회의록: 회의 정보 → 참석자 → 안건 → 논의 내용 → 결정 사항 → 액션 아이템
+- 결재/요청: 목적 → 요청 내용 → 근거 → 기대 효과 → 승인 요청
+
+치환 값 작성 규칙 (메모/원문 텍스트를 표나 템플릿의 빈 칸에 채울 때):
+- 표의 헤더 행, 라벨, 구조는 보존 대상이며 절대 변경하지 않습니다. 칸 안에 채우는 값은 보존 대상이 아니며, 메모 원문을 그대로 복사하지 않고 다듬어서 채웁니다.
+- 조치 사항(Task), 결정 사항 같은 칸은 "~하기로 했고", "~할 것임" 같은 구어체·연결어미를 명사형 또는 개조식 종결로 바꿉니다.
+  예: "업그레이드를 4.3버전으로 하기로 했고" → "AI 모델 4.3버전 업그레이드"
+- 기한(Due Date), 일자 칸은 날짜 표현만 남기고 조사("까지", "에", "부터")는 붙이지 않습니다.
+  예: "6월23일까지" → "6월 23일"
+- 담당자(Owner), 부서 등 고유명사 칸은 원문 그대로 유지합니다(다듬지 않음).
+- 결정 사항·조치 사항은 "~하기로 함", "~완료 예정", "~진행" 등 개조식 종결로 통일합니다.
+
+정보 매핑 규칙 (메모 → 템플릿 변수 연결):
+- 메모에 담긴 정보는 변수명과 글자가 똑같지 않아도, 의미상 대응되면 반드시 채웁니다.
+  예: "회의 목적은 X" 만 있고 별도 안건명이 없으면, {{회의안건}}에도 X를 사용합니다.
+- 메모에서 "없다/없음/해당 없음"처럼 부재를 명시적으로 말한 항목은 빈 자리표시자로 남기지 않고 "해당 없음"으로 채웁니다.
+- {{결정사항}}은 메모 안에서 "~하기로 했다/결정했다/하기로 함"에 해당하는 문장을 찾아 명사형 또는 개조식으로 정리하여 반드시 채웁니다.
+- 자리표시자({{변수}} 그대로 출력)는 메모에 해당 정보가 전혀 언급되지 않은 경우에만 사용합니다. 메모에 정보가 있는데 표현이 다르다는 이유로 자리표시자를 남기지 않습니다.
+
+문서 수정(find/replace) 요청 처리:
+- 요청에 블록 목록([B001], [B002] 등)과 JSON 출력 스키마 지시가 포함되어 있으면, 그 지시를 이 SYSTEM 규칙보다 우선 따르고 그 외 형식의 텍스트를 출력하지 않습니다.
+- "find"는 제공된 블록 안에 실제로 존재하는 텍스트와 정확히 일치해야 하며, 존재하지 않는 블록 ID나 텍스트를 만들어내지 않습니다.
+- {{변수}} 같은 템플릿 플레이스홀더 표기를 새로 만들지 않습니다. 값을 채워야 하면 find/replace로 실제 텍스트를 직접 대체합니다.
+- replace 텍스트를 작성할 때도 위 "치환 값 작성 규칙"과 "정보 매핑 규칙"을 따라 구어체를 다듬고, 의미상 대응되는 정보는 빠짐없이 채워서 대체합니다. find와 replace의 의미는 같아야 하지만 표현은 다듬을 수 있습니다.
+"""
+
+_anthropic_client: anthropic.Anthropic | None = None
+
+
+def _get_anthropic_client() -> anthropic.Anthropic:
+    global _anthropic_client
+    if _anthropic_client is None:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY is not set")
+        _anthropic_client = anthropic.Anthropic(api_key=api_key)
+    return _anthropic_client
+
+
 @app.get("/health")
 def health():
     return {
@@ -62,42 +127,36 @@ def chat(req: ChatRequest):
     if not message:
         raise HTTPException(status_code=400, detail="message is required")
 
-    model = os.getenv("OLLAMA_MODEL", "ang-ai:latest")
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 
     try:
-        client = ollama.Client(host=base_url)
-        response = client.chat(
+        client = _get_anthropic_client()
+        response = client.messages.create(
             model=model,
+            max_tokens=8192,
+            system=ANTHROPIC_DOCUMENT_SYSTEM_PROMPT,
             messages=[
                 {
                     "role": "user",
                     "content": message,
                 }
             ],
-            think=False,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Ollama request failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Claude request failed: {exc}") from exc
 
-    reply = _extract_ollama_reply(response)
+    reply = _extract_claude_reply(response)
     if not reply.strip():
-        raise HTTPException(status_code=502, detail="Ollama returned an empty reply")
+        raise HTTPException(status_code=502, detail="Claude returned an empty reply")
 
     return {"reply": reply}
 
 
-def _extract_ollama_reply(response) -> str:
-    if hasattr(response, "model_dump"):
-        response = response.model_dump()
-
-    if isinstance(response, Mapping):
-        message = response.get("message") or {}
-        if hasattr(message, "model_dump"):
-            message = message.model_dump()
-        if isinstance(message, Mapping):
-            return str(message.get("content") or "")
-        return str(getattr(message, "content", "") or "")
+def _extract_claude_reply(response) -> str:
+    blocks = getattr(response, "content", None) or []
+    return "".join(
+        getattr(block, "text", "") for block in blocks if getattr(block, "type", None) == "text"
+    )
 
     message = getattr(response, "message", None)
     if hasattr(message, "model_dump"):

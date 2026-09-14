@@ -46,11 +46,11 @@ public class AiAssistantAskService {
     private final FileItemRepository fileItemRepository;
     private final ApprovalDocRepository approvalDocRepository;
     private final AiScheduledActionService aiScheduledActionService;
-    private final RestClient ollamaRestClient;
+    private final RestClient anthropicRestClient;
     private final ObjectMapper objectMapper;
 
-    @Value("${ollama.secretary-model:ang-secretary:latest}")
-    private String secretaryModel;
+    @Value("${anthropic.model:claude-haiku-4-5-20251001}")
+    private String anthropicModel;
 
     private static final int MAX_RESULTS = 5;
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("M월 d일");
@@ -99,20 +99,20 @@ public class AiAssistantAskService {
     private IntentResult classifyWithLLM(String prompt) {
         try {
             Map<String, Object> body = Map.of(
-                    "model", secretaryModel,
-                    "prompt", buildClassifyPrompt(prompt),
-                    "stream", false,
-                    "options", Map.of("temperature", 0.1, "num_predict", 120)
+                    "model", anthropicModel,
+                    "max_tokens", 120,
+                    "temperature", 0.1,
+                    "messages", List.of(Map.of("role", "user", "content", buildClassifyPrompt(prompt)))
             );
-            Map<String, Object> resp = ollamaRestClient.post()
-                    .uri("/api/generate")
+            Map<String, Object> resp = anthropicRestClient.post()
+                    .uri("/v1/messages")
                     .body(body)
                     .retrieve()
                     .body(Map.class);
 
-            if (resp == null || resp.get("response") == null) return null;
+            String raw = extractClaudeText(resp);
+            if (raw == null) return null;
 
-            String raw = stripThinkTags(resp.get("response").toString());
             int start = raw.indexOf('{');
             int end = raw.lastIndexOf('}');
             if (start == -1 || end <= start) return null;
@@ -447,6 +447,24 @@ public class AiAssistantAskService {
         return (llm != null && !llm.isBlank()) ? llm : fallback;
     }
 
+    private static final String SECRETARY_SYSTEM_PROMPT = """
+            당신은 ANG 그룹웨어의 개인 업무 비서 AI입니다.
+
+            역할:
+            - 사용자의 업무 데이터(일정, 메일, 문서, 파일, 결재)를 보고 질문에 정확하게 답변합니다.
+            - 제공된 데이터 범위 안에서만 답변하며, 없는 내용은 지어내지 않습니다.
+
+            답변 방식:
+            - 데이터에 있는 실제 이름, 시간, 제목, 발신자를 직접 언급하세요.
+              좋은 예: "오전 10시 팀 회의, 오후 3시 고객 미팅이 있어요."
+              나쁜 예: "일정이 2개 있습니다."
+            - 사용자가 다른 언어를 명시하지 않는 한 항상 한국어로 답변합니다.
+            - 자연스럽고 친근한 대화체로 답변하세요.
+            - 인사말, 사과, 부연 설명 없이 핵심 내용부터 답변합니다.
+            - 데이터가 비어 있으면 솔직하게 없다고 알립니다.
+            - 마크다운 헤더나 불필요한 서식 없이 자연스러운 문장으로 답변합니다.
+            """;
+
     @SuppressWarnings("unchecked")
     private String callSecretaryLLM(String userPrompt, String dataContext) {
         try {
@@ -460,19 +478,18 @@ public class AiAssistantAskService {
                     + "질문: " + userPrompt + "\n"
                     + "답변:";
             Map<String, Object> body = Map.of(
-                    "model", secretaryModel,
-                    "prompt", fullPrompt,
-                    "stream", false,
-                    "options", Map.of("temperature", 0.4, "num_predict", 300)
+                    "model", anthropicModel,
+                    "max_tokens", 300,
+                    "temperature", 0.4,
+                    "system", SECRETARY_SYSTEM_PROMPT,
+                    "messages", List.of(Map.of("role", "user", "content", fullPrompt))
             );
-            Map<String, Object> response = ollamaRestClient.post()
-                    .uri("/api/generate")
+            Map<String, Object> response = anthropicRestClient.post()
+                    .uri("/v1/messages")
                     .body(body)
                     .retrieve()
                     .body(Map.class);
-            if (response != null && response.get("response") != null) {
-                return stripThinkTags(response.get("response").toString());
-            }
+            return extractClaudeText(response);
         } catch (Exception e) {
             log.debug("Secretary LLM answer call failed: {}", e.getMessage());
         }
@@ -481,9 +498,18 @@ public class AiAssistantAskService {
 
     // ===== Helpers =====
 
-    private String stripThinkTags(String text) {
-        if (text == null) return null;
-        return text.replaceAll("(?s)<think>.*?</think>", "").trim();
+    @SuppressWarnings("unchecked")
+    private String extractClaudeText(Map<String, Object> response) {
+        if (response == null) return null;
+        Object contentObj = response.get("content");
+        if (!(contentObj instanceof List<?> blocks) || blocks.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (Object block : blocks) {
+            if (block instanceof Map<?, ?> m && "text".equals(m.get("type")) && m.get("text") != null) {
+                sb.append(m.get("text"));
+            }
+        }
+        return sb.isEmpty() ? null : sb.toString();
     }
 
     private String toStringOrNull(Object obj) {
