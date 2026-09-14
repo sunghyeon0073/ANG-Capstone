@@ -29,6 +29,8 @@ services:
       S3_BUCKET: ${S3_BUCKET}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ang-uploads:/app/uploads
   frontend:
     build:
       context: ./Frontend
@@ -52,3 +54,6 @@ services:
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
+
+volumes:
+  ang-uploads:
