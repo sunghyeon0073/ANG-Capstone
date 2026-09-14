@@ -14,6 +14,12 @@ const notifyMascot = (message, animation = 'idle') => {
 // 너무 길면 서버가 실제로 죽어있을 때 발표 중 대기 시간이 길어진다.
 const AI_GENERATE_TIMEOUT_MS = 30000
 
+// Claude API 응답이 너무 빨라 로딩 연출(단계별 진행 UI)이 끝나기 전에
+// 완료되어 버리는 것을 막기 위한 최소 로딩 체감 시간.
+const AI_MIN_LOADING_MS = 5000
+
+const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+
 export function AiGenerationProvider({ children }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [currentTask, setCurrentTask] = useState(null)
@@ -39,6 +45,8 @@ export function AiGenerationProvider({ children }) {
 
     notifyMascot('문서 초안을 열심히 쓰는 중이에요. 다른 일을 보고 오셔도 계속 만들고 있을게요.', 'run')
 
+    const startedAt = Date.now()
+
     try {
       let generatedDocument
 
@@ -58,6 +66,11 @@ export function AiGenerationProvider({ children }) {
         // 서버가 정상 응답한 케이스(성공 실패 메시지 등)는 위에서 이미 처리되어 여기로 오지 않는다.
         console.warn('[AI] 서버 응답 실패, 데모 폴백으로 전환합니다:', apiError)
         generatedDocument = await generateMockDocument(payload, meta)
+      }
+
+      const elapsedMs = Date.now() - startedAt
+      if (elapsedMs < AI_MIN_LOADING_MS) {
+        await wait(AI_MIN_LOADING_MS - elapsedMs)
       }
 
       setLastResult(generatedDocument)
