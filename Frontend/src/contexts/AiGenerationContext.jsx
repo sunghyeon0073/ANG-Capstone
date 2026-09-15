@@ -9,10 +9,11 @@ const notifyMascot = (message, animation = 'idle') => {
   }))
 }
 
-// AI 서버(Ollama)가 응답하지 않을 때만 사용하는 데모 폴백 대기 시간.
-// 너무 짧으면 정상적으로 느리게 응답하는 실제 생성까지 잘라버리고,
-// 너무 길면 서버가 실제로 죽어있을 때 발표 중 대기 시간이 길어진다.
-const AI_GENERATE_TIMEOUT_MS = 30000
+// AI 서버(Claude API)가 응답하지 않을 때만 사용하는 데모 폴백 대기 시간.
+// 백엔드 RestTemplate의 AI 호출 read timeout(180s, RestTemplateConfig)보다 짧으면
+// 백엔드가 정상적으로 문서를 생성 중인데도 프론트가 먼저 포기해 가짜 mock 문서로
+// 대체해버리는 문제가 생기므로, 그 타임아웃보다 작게 잡는다.
+const AI_GENERATE_TIMEOUT_MS = 170000
 
 // Claude API 응답이 너무 빨라 로딩 연출(단계별 진행 UI)이 끝나기 전에
 // 완료되어 버리는 것을 막기 위한 최소 로딩 체감 시간.
