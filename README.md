@@ -1,6 +1,6 @@
 <div align="center">
 
-# ANG (Admin Next Generation)
+# ANG (AI Network Group)
 
 **조직 문서 관리 · 전자결재 · 실시간 협업 · AI 문서 작성을 하나로 묶은 사내 그룹웨어**
 
