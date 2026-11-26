@@ -12,7 +12,7 @@
 ![React](https://img.shields.io/badge/React_19-61DAFB?style=flat-square&logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_FastAPI-3776AB?style=flat-square&logo=python&logoColor=white)
-![Claude](https://img.shields.io/badge/Anthropic_Claude_API-D97757?style=flat-square&logo=anthropic&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama_·_Qwen3-000000?style=flat-square&logo=ollama&logoColor=white)
 ![MariaDB](https://img.shields.io/badge/MariaDB_RDS-003545?style=flat-square&logo=mariadb&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS_EC2_·_S3-232F3E?style=flat-square&logo=amazonwebservices&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
@@ -59,7 +59,7 @@ ANG는 대학 행정 조직을 위한 그룹웨어입니다. 문서 관리, 실�
 |---|---|
 | Backend | Spring Boot 3.4, Java 21, Spring Security 6, Spring Data JPA, Spring WebSocket (STOMP) |
 | Frontend | React 19, Vite, React Router 7, Axios, @stomp/stompjs + SockJS |
-| AI | Python (FastAPI), Anthropic Claude API (문서 생성: Sonnet / AI 비서: Haiku) |
+| AI | Python (FastAPI), Ollama + Qwen3 (문서 생성: qwen3:14b `ang-ai` / AI 비서: qwen3:8b `ang-secretary`) |
 | 문서 처리 | Apache POI (DOCX/XLSX), 한컴오피스 COM 자동화 (HWP Bridge) |
 | 인증 | JWT (Access 30분 / Refresh 7일), STOMP CONNECT 토큰 검증 |
 | Database / Storage | MariaDB (AWS RDS), AWS S3 |
@@ -78,7 +78,7 @@ flowchart LR
     end
 
     Hwp["HWP Bridge<br/>(Windows + 한글 :8877)"]
-    Claude["Anthropic<br/>Claude API"]
+    Ollama["Ollama<br/>(Qwen3 :11434)"]
     DB[("MariaDB RDS")]
     S3[("AWS S3")]
 
@@ -87,8 +87,8 @@ flowchart LR
     Boot --> DB
     Boot --> S3
     Boot -- "문서 생성 요청" --> AI
-    Boot -- "AI 비서 의도 분류/답변" --> Claude
-    AI --> Claude
+    Boot -- "AI 비서 의도 분류/답변" --> Ollama
+    AI --> Ollama
     Boot -- "HWP 치환/변환" --> Hwp
 ```
 
@@ -107,13 +107,13 @@ flowchart LR
 - **해결:** AI는 **최소한의 find/replace 목록(JSON)** 만 돌려주게 하고, 실제 치환은 서버가 합니다. DOCX·XLSX는 Apache POI로 단락과 표 셀을 직접 고치고, HWP는 HWP Bridge(한컴 COM 자동화)에 치환 목록을 넘깁니다. 구어체 메모를 개조식으로 다듬는 규칙, 변수명이 정확히 같지 않아도 뜻이 맞는 칸에 채우는 규칙은 프롬프트(`AI/Modelfile`)에 정리했습니다.
 - 📄 `domain/document/service/DocumentService.java`, `AI/main.py`, `HwpBridge/main.py`
 
-### 3. 배포된 AI가 소스 코드와 다르게 동작하는 문제 → Claude API로 전환
-- **문제:** 처음에는 EC2에서 Ollama로 로컬 모델을 돌렸습니다. 그런데 Modelfile을 고칠 때마다 서버에서 모델을 다시 빌드해야 했습니다. 이 단계가 CD에서 빠지면서 배포된 AI가 소스와 다르게 동작했습니다.
-- **해결:** 문서 생성(AI 서버)과 AI 비서(백엔드) 모두 **Anthropic Claude API**로 바꿨습니다. 프롬프트가 코드와 함께 배포되므로 모델을 다시 빌드할 필요가 없어졌습니다. 작업 성격에 맞춰 문서 생성은 Sonnet, 빠른 의도 분류는 Haiku를 씁니다.
-- 📄 `config/AnthropicConfig.java`, `domain/aiassistant/service/AiAssistantAskService.java`, `AI/main.py`
+### 3. 배포된 AI가 소스 코드와 다르게 동작하는 문제 → CD에서 Ollama 모델 자동 재생성
+- **문제:** 프롬프트와 파라미터를 Modelfile로 관리하는데, Modelfile을 고쳐도 서버의 Ollama 모델은 다시 만들기 전까지 예전 그대로였습니다. 그래서 배포된 AI가 소스와 다르게 동작했습니다.
+- **해결:** CD 배포 스크립트에 `ollama create` 단계를 넣어, 배포할 때마다 Modelfile로 `ang-ai`(qwen3:14b)와 `ang-secretary`(qwen3:8b) 모델을 다시 만들게 했습니다. 작업 성격에 맞춰 문서 생성은 14b, 빠른 의도 분류는 8b 모델을 씁니다.
+- 📄 `AI/Modelfile`, `AI/Modelfile_secretary`, `.github/workflows/cd.yml`
 
 ### 4. AI 응답 시간과 프론트 타임아웃이 서로 맞지 않는 문제
-- **문제:** 프론트 타임아웃(30초)이 백엔드의 AI 호출 대기 시간(180초)보다 짧았습니다. 그래서 백엔드가 문서를 정상적으로 만드는 중인데도 프론트가 먼저 포기했습니다. 반대로 Claude 응답이 너무 빨라서 4단계 진행 연출이 끝나기도 전에 결과가 뜨는 일도 있었습니다.
+- **문제:** 프론트 타임아웃(30초)이 백엔드의 AI 호출 대기 시간(180초)보다 짧았습니다. 그래서 백엔드가 문서를 정상적으로 만드는 중인데도 프론트가 먼저 포기했습니다. 반대로 AI 응답이 너무 빨라서 4단계 진행 연출이 끝나기도 전에 결과가 뜨는 일도 있었습니다.
 - **해결:** 프론트 타임아웃을 **백엔드보다 조금 짧은 170초**로 맞추고, 로딩 화면은 **최소 5초** 보여주게 했습니다. AI 서버가 응답하지 않으면 데모용 문서로 대신 보여줘서 화면이 비지 않게 했습니다.
 - 📄 `Frontend/src/contexts/AiGenerationContext.jsx`, `Frontend/src/utils/aiMockGenerator.js`
 
@@ -140,7 +140,7 @@ flowchart LR
 
 <!-- 실제 역할에 맞게 수정해주세요 -->
 - AI 문서 생성 흐름 설계: 프롬프트 규칙, find/replace 치환 방식, 타임아웃·폴백 처리
-- Ollama → Anthropic Claude API 전환 (AI 서버, AI 비서)
+- Ollama + Qwen3 기반 AI 서버·AI 비서 구성 (Modelfile 프롬프트 관리)
 - Docker Compose · GitHub Actions 기반 CI/CD, 업로드 볼륨 영속화, nginx 프록시 정리
 
 ## 📂 폴더 구조
@@ -149,7 +149,7 @@ flowchart LR
 ANG-Capstone/
 ├── Backend/                     # Spring Boot (:9090, context-path /api)
 │   └── src/main/java/com/ang/Backend/
-│       ├── config/              # Security, WebSocket/STOMP 인증, S3, Anthropic, 초기 데이터
+│       ├── config/              # Security, WebSocket/STOMP 인증, S3, Ollama, 초기 데이터
 │       ├── security/            # JWT 필터 · 토큰 Provider
 │       ├── common/              # 공통 enum, 예외, 응답 형식
 │       └── domain/
@@ -165,7 +165,7 @@ ANG-Capstone/
 │       ├── components/          # pages · common · chat · esignature · file · mail ...
 │       ├── contexts/            # AI 문서 생성 상태
 │       ├── router/  hooks/  utils/  style/
-├── AI/                          # Python AI 서버 (:8888), Claude API 호출 · 프롬프트(Modelfile)
+├── AI/                          # Python AI 서버 (:8888), Ollama 호출 · 프롬프트(Modelfile)
 ├── HwpBridge/                   # Windows 한컴오피스 COM 자동화 서버 (:8877)
 ├── docs/                        # 기능 정의서, API 명세서, ERD
 ├── scripts/                     # 로컬 개발 헬퍼 (HWP Bridge + Compose 동시 실행)
@@ -196,7 +196,7 @@ ANG-Capstone/
 | JDK | **21** | 백엔드를 직접 실행할 때 | 개발 시 |
 | Node.js | **22** | 프론트를 직접 실행할 때 | 개발 시 |
 | Python | **3.12** | AI 서버를 직접 실행할 때 | 개발 시 |
-| Anthropic API Key | — | AI 기능 | ✅ |
+| Ollama | 최신 | AI 모델 실행 (Qwen3) | ✅ |
 | AWS S3 버킷 + IAM 키 | — | 파일 업로드 | 선택 |
 
 > Docker로만 실행할 거라면 **Git + Docker**만 있으면 됩니다. JDK·Node·Python은 컨테이너 안에서 설치됩니다.
@@ -289,8 +289,9 @@ ADMIN_INIT_PASSWORD=qwer1234!
 
 # ── AI ──
 AI_BASE_URL=http://ai:8888
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
-ANTHROPIC_MODEL=claude-sonnet-5
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=ang-ai:latest
+OLLAMA_SECRETARY_MODEL=ang-secretary:latest
 
 # ── AWS S3 ──
 AWS_ACCESS_KEY_ID=dummy
@@ -305,7 +306,8 @@ S3_BUCKET=본인-버킷-이름
 | `JWT_SECRET` | 로그인 토큰 서명 키. **32자 이상** 필수 |
 | `ADMIN_INIT_PASSWORD` | 초기 관리자 비밀번호 |
 | `AI_BASE_URL` | 백엔드 → AI 서버 주소. Docker 안에서는 `http://ai:8888` |
-| `ANTHROPIC_API_KEY` | AI 기능용 키 ([console.anthropic.com](https://console.anthropic.com)) |
+| `OLLAMA_BASE_URL` | Ollama 서버 주소. Docker 컨테이너에서 호스트의 Ollama에 접속할 때는 `http://host.docker.internal:11434` |
+| `OLLAMA_MODEL` / `OLLAMA_SECRETARY_MODEL` | 문서 생성 / AI 비서 모델 이름 ([Ollama 설치](#3-5-ollama-설치와-qwen-모델-준비) 참고) |
 | `AWS_*`, `S3_BUCKET` | 파일 업로드용. 없으면 `dummy`로 두면 서버는 뜨고 업로드만 실패 |
 
 > `.env`는 `.gitignore`에 등록되어 있습니다. **절대 커밋하지 마세요.**
@@ -349,6 +351,37 @@ docker image prune -f                 # 안 쓰는 이미지 정리
 ```
 
 ---
+
+#### 3-5. Ollama 설치와 Qwen 모델 준비
+
+AI 기능(문서 생성, AI 비서)은 **Ollama**로 **Qwen3** 모델을 돌립니다. Ollama는 Docker 컨테이너가 아니라 **호스트(PC 또는 EC2)에 직접 설치**합니다.
+
+**설치**
+
+| OS | 설치 방법 |
+|----|-----------|
+| Windows / macOS | [ollama.com/download](https://ollama.com/download)에서 설치 파일 실행 |
+| Ubuntu (EC2) | `curl -fsSL https://ollama.com/install.sh \| sh` |
+
+```bash
+ollama --version
+ollama serve        # 백그라운드 실행 중이 아니라면 (기본 포트 11434)
+```
+
+**Qwen 모델 받기 + 프로젝트 모델 만들기** (프로젝트 루트에서)
+
+```bash
+ollama pull qwen3:14b
+ollama pull qwen3:8b
+
+ollama create ang-ai -f AI/Modelfile                   # 문서 생성용 (qwen3:14b 기반)
+ollama create ang-secretary -f AI/Modelfile_secretary  # AI 비서용 (qwen3:8b 기반)
+
+ollama list         # ang-ai, ang-secretary 가 보이면 완료
+```
+
+> - `AI/Modelfile`을 수정했다면 `ollama create`를 다시 실행해야 반영됩니다.
+> - qwen3:14b는 약 9GB입니다. 메모리(또는 GPU VRAM)가 부족하면 응답이 매우 느려질 수 있습니다.
 
 ### 4. 백엔드 설치 및 실행
 
@@ -396,7 +429,7 @@ $env:DB_USERNAME="ang"
 $env:DB_PASSWORD="ang_local_password"
 $env:JWT_SECRET="32자-이상의-랜덤-문자열을-넣으세요-abcdefghijklmnop"
 $env:ADMIN_INIT_PASSWORD="qwer1234!"
-$env:ANTHROPIC_API_KEY="sk-ant-xxxxxxxx"
+$env:OLLAMA_BASE_URL="http://localhost:11434"
 $env:AWS_ACCESS_KEY_ID="dummy"
 $env:AWS_SECRET_ACCESS_KEY="dummy"
 .\gradlew.bat bootRun
@@ -411,7 +444,7 @@ export DB_USERNAME=ang
 export DB_PASSWORD=ang_local_password
 export JWT_SECRET="32자-이상의-랜덤-문자열을-넣으세요-abcdefghijklmnop"
 export ADMIN_INIT_PASSWORD="qwer1234!"
-export ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
+export OLLAMA_BASE_URL=http://localhost:11434
 export AWS_ACCESS_KEY_ID=dummy
 export AWS_SECRET_ACCESS_KEY=dummy
 chmod +x gradlew
@@ -458,7 +491,7 @@ cd AI
 python -m venv .venv
 source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env               # Windows: copy .env.example .env  → 키 입력
+cp .env.example .env               # Windows: copy .env.example .env  → OLLAMA 값 확인
 uvicorn main:app --reload --port 8888 --env-file .env
 ```
 
@@ -478,7 +511,7 @@ GitHub Actions로 **CI(빌드 검증)**와 **CD(EC2 자동 배포)**를 합니�
        │ dev 또는 dev-server 에 push 되면
        ▼
 ┌──────────────┐  GitHub → EC2 SSH 접속
-│  CD (cd.yml) │  git reset --hard → docker compose down → up -d --build
+│  CD (cd.yml) │  git reset --hard → ollama create → docker compose up -d --build
 └──────────────┘
 ```
 
@@ -502,6 +535,8 @@ cd $DEPLOY_PATH
 git fetch origin
 git checkout <브랜치>
 git reset --hard origin/<브랜치>
+ollama create ang-ai -f AI/Modelfile                   # Modelfile 변경 반영
+ollama create ang-secretary -f AI/Modelfile_secretary
 docker compose down
 docker compose up -d --build
 docker image prune -f
@@ -518,7 +553,9 @@ docker image prune -f
    | 5500 | 웹 화면 |
    | 9090 | 백엔드 API (필요 시) |
 
-3. **Docker 설치** — [3-1 Ubuntu](#3-1-docker-설치) 명령 실행
+   > 11434(Ollama) 포트는 외부에 열지 않습니다. 서버 내부에서만 사용합니다.
+
+3. **Docker 설치** — [3-1 Ubuntu](#3-1-docker-설치) 명령 실행. 이어서 **Ollama 설치 + Qwen 모델 생성** — [3-5](#3-5-ollama-설치와-qwen-모델-준비) 명령 실행
 4. **프로젝트 클론**
 
    ```bash
@@ -583,7 +620,8 @@ cat ~/.ssh/ang_deploy        # 출력된 개인키 전체를 복사 → DEPLOY_K
 | EC2 빌드 중 멈춤 / 컨테이너 종료 | 메모리 부족 → 인스턴스 크기 상향 또는 스왑 추가 |
 | CD `ssh: handshake failed` | `DEPLOY_KEY` 줄바꿈 누락, `DEPLOY_USER` 오타, 보안 그룹 22번 포트 확인 |
 | CD `cd: ... No such file or directory` | `DEPLOY_PATH`가 EC2의 실제 클론 경로와 다름 |
-| AI 기능 500 에러 | `ANTHROPIC_API_KEY` 확인, AI 컨테이너 실행 여부 확인 |
+| AI 기능 500 에러 | `ollama list`로 `ang-ai`, `ang-secretary` 모델 확인, `ollama serve` 실행 여부 확인 |
+| `model "ang-ai" not found` | `ollama create ang-ai -f AI/Modelfile` 실행 |
 
 ## 📚 문서
 
