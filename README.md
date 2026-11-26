@@ -136,13 +136,6 @@ flowchart LR
 - **해결:** 마지막 승인 시 `ApprovalCompletedEvent`를 발행하고, **트랜잭션 커밋이 끝난 뒤 비동기로** PDF를 만들어 S3에 올립니다(`@TransactionalEventListener(AFTER_COMMIT)` + `@Async`). 승인 API는 바로 응답하고, 롤백된 결재로 PDF가 만들어지는 일도 없습니다. 보관 기간이 지난 문서는 매일 새벽 스케줄러가 정리합니다.
 - 📄 `domain/approval/service/ApprovalPdfService.java`, `ApprovalRetentionScheduler.java`
 
-## 👤 담당 역할
-
-<!-- 실제 역할에 맞게 수정해주세요 -->
-- AI 문서 생성 흐름 설계: 프롬프트 규칙, find/replace 치환 방식, 타임아웃·폴백 처리
-- Ollama + Qwen3 기반 AI 서버·AI 비서 구성 (Modelfile 프롬프트 관리)
-- Docker Compose · GitHub Actions 기반 CI/CD, 업로드 볼륨 영속화, nginx 프록시 정리
-
 ## 📂 폴더 구조
 
 ```
